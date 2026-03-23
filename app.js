@@ -1024,6 +1024,12 @@ const STATUS_COLORS = {
   'Waiting on Materials': '#2196F3'
 };
 
+const GMAPS_KEY_STORAGE = 'astra_gmaps_key';
+function getGmapsKey() { return localStorage.getItem(GMAPS_KEY_STORAGE) || ''; }
+function saveGmapsKey(key) {
+  localStorage.setItem(GMAPS_KEY_STORAGE, key.trim());
+}
+
 async function geocodeAddress(address) {
   // Check if already geocoded in address DB
   const addrs = loadAddresses();
@@ -1032,12 +1038,30 @@ async function geocodeAddress(address) {
     return { lat: existing.lat, lng: existing.lng };
   }
 
+  const apiKey = getGmapsKey();
+
   try {
-    const resp = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(address));
-    const results = await resp.json();
-    if (results.length > 0) {
-      const lat = parseFloat(results[0].lat);
-      const lng = parseFloat(results[0].lon);
+    let lat, lng;
+
+    if (apiKey) {
+      // Google Geocoding API
+      const resp = await fetch('https://maps.googleapis.com/maps/api/geocode/json?address=' + encodeURIComponent(address) + '&key=' + apiKey);
+      const data = await resp.json();
+      if (data.status === 'OK' && data.results.length > 0) {
+        lat = data.results[0].geometry.location.lat;
+        lng = data.results[0].geometry.location.lng;
+      }
+    } else {
+      // Fallback to Nominatim (free, no key)
+      const resp = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(address));
+      const results = await resp.json();
+      if (results.length > 0) {
+        lat = parseFloat(results[0].lat);
+        lng = parseFloat(results[0].lon);
+      }
+    }
+
+    if (lat !== undefined && lng !== undefined) {
       // Cache coordinates in address record
       if (existing) {
         updateAddress(existing.id, { lat, lng });
@@ -1260,6 +1284,10 @@ async function renderSettings() {
     <div class="dash-row"><div class="dash-row-label">Drawings</div><div class="dash-row-value">${drawings}</div></div>
     <div class="dash-row"><div class="dash-row-label">Properties</div><div class="dash-row-value">${loadAddresses().length}</div></div>
   `;
+
+  // Load Google Maps API key into settings input
+  const gmapsInput = document.getElementById('gmaps-key');
+  if (gmapsInput) gmapsInput.value = getGmapsKey();
 
   // Storage usage — IndexedDB (media) + localStorage (metadata)
   let mediaBytes = 0;

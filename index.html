@@ -646,6 +646,15 @@ body {
     <button class="btn btn-secondary" style="margin-bottom:16px;" onclick="document.getElementById('import-input').click()">Import Data from Backup</button>
     <input type="file" class="hidden-input" id="import-input" accept=".json" onchange="importData(this)">
 
+    <div class="section-title">Google Maps API</div>
+    <div class="dash-card" style="margin-bottom:16px;padding:14px;">
+      <div style="font-size:13px;color:#777;margin-bottom:8px;">Used for address geocoding on the route map. Get a key from Google Cloud Console.</div>
+      <div class="field" style="margin-bottom:0;">
+        <input type="text" id="gmaps-key" placeholder="Paste your API key…" style="font-size:14px;"
+          value="" onblur="saveGmapsKey(this.value)">
+      </div>
+    </div>
+
     <div class="section-title">Storage</div>
     <div id="storage-info" class="dash-card" style="margin-bottom:16px;"></div>
 
