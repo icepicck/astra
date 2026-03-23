@@ -1025,9 +1025,55 @@ const STATUS_COLORS = {
 };
 
 const GMAPS_KEY_STORAGE = 'astra_gmaps_key';
+let gmapsScriptLoaded = false;
+let gmapsGeocoder = null;
+
 function getGmapsKey() { return localStorage.getItem(GMAPS_KEY_STORAGE) || ''; }
 function saveGmapsKey(key) {
-  localStorage.setItem(GMAPS_KEY_STORAGE, key.trim());
+  const trimmed = key.trim();
+  localStorage.setItem(GMAPS_KEY_STORAGE, trimmed);
+  // Reset so it reloads with new key next time
+  gmapsScriptLoaded = false;
+  gmapsGeocoder = null;
+}
+
+function loadGmapsScript() {
+  return new Promise((resolve, reject) => {
+    if (gmapsScriptLoaded && window.google && window.google.maps) {
+      resolve();
+      return;
+    }
+    const apiKey = getGmapsKey();
+    if (!apiKey) { reject('No API key'); return; }
+
+    // Remove old script if exists
+    const old = document.getElementById('gmaps-script');
+    if (old) old.remove();
+
+    const script = document.createElement('script');
+    script.id = 'gmaps-script';
+    script.src = 'https://maps.googleapis.com/maps/api/js?key=' + apiKey + '&libraries=geocoding';
+    script.onload = function() {
+      gmapsScriptLoaded = true;
+      gmapsGeocoder = new google.maps.Geocoder();
+      resolve();
+    };
+    script.onerror = function() { reject('Failed to load Google Maps'); };
+    document.head.appendChild(script);
+  });
+}
+
+function googleGeocode(address) {
+  return new Promise((resolve, reject) => {
+    gmapsGeocoder.geocode({ address: address }, function(results, status) {
+      if (status === 'OK' && results.length > 0) {
+        const loc = results[0].geometry.location;
+        resolve({ lat: loc.lat(), lng: loc.lng() });
+      } else {
+        reject('Geocode failed: ' + status);
+      }
+    });
+  });
 }
 
 async function geocodeAddress(address) {
@@ -1038,35 +1084,35 @@ async function geocodeAddress(address) {
     return { lat: existing.lat, lng: existing.lng };
   }
 
-  const apiKey = getGmapsKey();
-
   try {
-    let lat, lng;
+    let coords = null;
+    const apiKey = getGmapsKey();
 
     if (apiKey) {
-      // Google Geocoding API
-      const resp = await fetch('https://maps.googleapis.com/maps/api/geocode/json?address=' + encodeURIComponent(address) + '&key=' + apiKey);
-      const data = await resp.json();
-      if (data.status === 'OK' && data.results.length > 0) {
-        lat = data.results[0].geometry.location.lat;
-        lng = data.results[0].geometry.location.lng;
+      // Google Maps JavaScript API geocoder
+      try {
+        await loadGmapsScript();
+        coords = await googleGeocode(address);
+      } catch (e) {
+        console.warn('Google geocode failed, trying Nominatim:', e);
       }
-    } else {
+    }
+
+    if (!coords) {
       // Fallback to Nominatim (free, no key)
       const resp = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(address));
       const results = await resp.json();
       if (results.length > 0) {
-        lat = parseFloat(results[0].lat);
-        lng = parseFloat(results[0].lon);
+        coords = { lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon) };
       }
     }
 
-    if (lat !== undefined && lng !== undefined) {
+    if (coords) {
       // Cache coordinates in address record
       if (existing) {
-        updateAddress(existing.id, { lat, lng });
+        updateAddress(existing.id, { lat: coords.lat, lng: coords.lng });
       }
-      return { lat, lng };
+      return coords;
     }
   } catch (e) {
     console.warn('Geocode failed for:', address, e);
