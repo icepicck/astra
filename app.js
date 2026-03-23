@@ -163,6 +163,7 @@ function goTo(screenId, jobId) {
   if (screenId === 'screen-dashboard') renderDashboard();
   if (screenId === 'screen-addresses') { renderAddressList(''); document.getElementById('addr-search').value = ''; }
   if (screenId === 'screen-addr-detail' && jobId !== undefined) renderAddrDetail(jobId);
+  if (screenId === 'screen-map') renderMap();
   if (screenId === 'screen-settings') renderSettings();
   if (screenId === 'screen-search') {
     setTimeout(() => {
@@ -184,7 +185,8 @@ function goTo(screenId, jobId) {
   prev.classList.add('slide-out');
   next.classList.add('active');
   currentScreen = screenId;
-  next.querySelector('.screen-body').scrollTop = 0;
+  const scrollBody = next.querySelector('.screen-body');
+  if (scrollBody) scrollBody.scrollTop = 0;
   setTimeout(() => prev.classList.remove('slide-out'), 300);
 }
 
@@ -964,6 +966,212 @@ function getTouchDist(touches) {
 
 function closeOverlay() {
   document.getElementById('media-overlay').classList.remove('active');
+}
+
+// ═══════════════════════════════════════════
+// MAP & ROUTE OPTIMIZATION
+// ═══════════════════════════════════════════
+let astraMap = null;
+let mapMarkers = [];
+let mapRouteLine = null;
+let mapJobsData = [];
+
+const STATUS_COLORS = {
+  'Not Started': '#FF6B00',
+  'In Progress': '#c9a800',
+  'Complete': '#2d8a4e',
+  'Needs Callback': '#c0392b',
+  'Waiting on Materials': '#2196F3'
+};
+
+async function geocodeAddress(address) {
+  // Check if already geocoded in address DB
+  const addrs = loadAddresses();
+  const existing = addrs.find(a => a.address.toLowerCase() === address.toLowerCase());
+  if (existing && existing.lat && existing.lng) {
+    return { lat: existing.lat, lng: existing.lng };
+  }
+
+  try {
+    const resp = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(address));
+    const results = await resp.json();
+    if (results.length > 0) {
+      const lat = parseFloat(results[0].lat);
+      const lng = parseFloat(results[0].lon);
+      // Cache coordinates in address record
+      if (existing) {
+        updateAddress(existing.id, { lat, lng });
+      }
+      return { lat, lng };
+    }
+  } catch (e) {
+    console.warn('Geocode failed for:', address, e);
+  }
+  return null;
+}
+
+function createMarkerIcon(color, number) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42">
+    <path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 26 16 26s16-14 16-26C32 7.2 24.8 0 16 0z" fill="${color}" stroke="#fff" stroke-width="1.5"/>
+    ${number ? `<text x="16" y="18" text-anchor="middle" fill="#fff" font-size="14" font-weight="800" font-family="sans-serif">${number}</text>` : '<circle cx="16" cy="15" r="5" fill="#fff"/>'}
+  </svg>`;
+  return L.divIcon({
+    html: svg,
+    iconSize: [32, 42],
+    iconAnchor: [16, 42],
+    popupAnchor: [0, -42],
+    className: ''
+  });
+}
+
+async function renderMap() {
+  const jobs = loadJobs().filter(j => !j.archived && j.status !== 'Complete');
+  mapJobsData = [];
+  mapMarkers = [];
+
+  // Init map if needed
+  if (!astraMap) {
+    astraMap = L.map('map-container', {
+      zoomControl: false,
+      attributionControl: false
+    }).setView([32.7, -97.3], 10); // Default to DFW area
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(astraMap);
+
+    L.control.zoom({ position: 'bottomright' }).addTo(astraMap);
+  }
+
+  // Clear existing markers and route
+  mapMarkers.forEach(m => astraMap.removeLayer(m));
+  mapMarkers = [];
+  if (mapRouteLine) { astraMap.removeLayer(mapRouteLine); mapRouteLine = null; }
+
+  // Need to invalidate size after screen transition
+  setTimeout(() => astraMap.invalidateSize(), 350);
+
+  if (jobs.length === 0) {
+    document.getElementById('map-optimize-btn').style.display = 'none';
+    document.getElementById('map-legend').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('map-optimize-btn').style.display = '';
+  document.getElementById('map-legend').style.display = '';
+
+  const btn = document.getElementById('map-optimize-btn');
+  btn.textContent = 'Loading pins…';
+  btn.disabled = true;
+
+  const bounds = [];
+
+  for (const job of jobs) {
+    const coords = await geocodeAddress(job.address);
+    if (!coords) continue;
+
+    const color = STATUS_COLORS[job.status] || '#FF6B00';
+    const marker = L.marker([coords.lat, coords.lng], {
+      icon: createMarkerIcon(color)
+    }).addTo(astraMap);
+
+    const types = (job.types || []).join(', ');
+    marker.bindPopup(`
+      <div style="font-family:sans-serif;min-width:160px;">
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${esc(job.address)}</div>
+        <div style="font-size:12px;color:#666;margin-bottom:6px;">${esc(types)}</div>
+        <div style="font-size:12px;margin-bottom:8px;">
+          <span style="display:inline-block;padding:2px 8px;border-radius:6px;font-weight:700;font-size:11px;color:#fff;background:${color};">${esc(job.status)}</span>
+        </div>
+        <button onclick="goTo('screen-detail','${job.id}')" style="background:#FF6B00;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;width:100%;">View Ticket</button>
+      </div>
+    `);
+
+    mapMarkers.push(marker);
+    mapJobsData.push({ job, coords, marker });
+    bounds.push([coords.lat, coords.lng]);
+  }
+
+  if (bounds.length > 0) {
+    astraMap.fitBounds(bounds, { padding: [40, 40] });
+  }
+
+  btn.textContent = 'Optimize Route';
+  btn.disabled = mapJobsData.length < 2;
+}
+
+async function optimizeRoute() {
+  if (mapJobsData.length < 2) return;
+
+  const btn = document.getElementById('map-optimize-btn');
+  btn.textContent = 'Optimizing…';
+  btn.disabled = true;
+
+  try {
+    // Build coordinate string for OSRM trip API
+    const coordStr = mapJobsData.map(d => d.coords.lng + ',' + d.coords.lat).join(';');
+    const url = 'https://router.project-osrm.org/trip/v1/driving/' + coordStr + '?overview=full&geometries=geojson&roundtrip=true';
+
+    const resp = await fetch(url);
+    const data = await resp.json();
+
+    if (data.code !== 'Ok' || !data.trips || !data.trips[0]) {
+      throw new Error('OSRM returned: ' + (data.code || 'unknown error'));
+    }
+
+    const trip = data.trips[0];
+    const waypoints = data.waypoints;
+
+    // Draw route line
+    if (mapRouteLine) astraMap.removeLayer(mapRouteLine);
+    const routeCoords = trip.geometry.coordinates.map(c => [c[1], c[0]]);
+    mapRouteLine = L.polyline(routeCoords, {
+      color: '#FF6B00',
+      weight: 4,
+      opacity: 0.8,
+      dashArray: '8, 8'
+    }).addTo(astraMap);
+
+    // Update markers with route numbers
+    const order = waypoints.map(wp => wp.waypoint_index);
+    for (let i = 0; i < mapJobsData.length; i++) {
+      const routePos = order[i] + 1;
+      const d = mapJobsData[i];
+      const color = STATUS_COLORS[d.job.status] || '#FF6B00';
+      d.marker.setIcon(createMarkerIcon(color, routePos));
+      d.routeOrder = order[i];
+    }
+
+    // Calculate total drive time
+    const totalMin = Math.round(trip.duration / 60);
+    const totalMi = (trip.distance / 1609.34).toFixed(1);
+
+    btn.textContent = totalMin + ' min · ' + totalMi + ' mi';
+    btn.disabled = false;
+    btn.onclick = function() {
+      // Second tap clears the route
+      clearRoute();
+    };
+
+  } catch (e) {
+    console.error('Route optimization failed:', e);
+    btn.textContent = 'Route failed — retry?';
+    btn.disabled = false;
+    btn.onclick = optimizeRoute;
+  }
+}
+
+function clearRoute() {
+  if (mapRouteLine) { astraMap.removeLayer(mapRouteLine); mapRouteLine = null; }
+  // Reset markers to dots
+  for (const d of mapJobsData) {
+    const color = STATUS_COLORS[d.job.status] || '#FF6B00';
+    d.marker.setIcon(createMarkerIcon(color));
+  }
+  const btn = document.getElementById('map-optimize-btn');
+  btn.textContent = 'Optimize Route';
+  btn.disabled = mapJobsData.length < 2;
+  btn.onclick = optimizeRoute;
 }
 
 // ═══════════════════════════════════════════
