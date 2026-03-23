@@ -1009,64 +1009,42 @@ function closeOverlay() {
 }
 
 // ═══════════════════════════════════════════
-// MAP & ROUTE OPTIMIZATION
+// GOOGLE MAPS — MAP & ROUTE OPTIMIZATION
 // ═══════════════════════════════════════════
-let astraMap = null;
-let mapMarkers = [];
-let mapRouteLine = null;
-let mapJobsData = [];
-
-const STATUS_COLORS = {
-  'Not Started': '#FF6B00',
-  'In Progress': '#c9a800',
-  'Complete': '#2d8a4e',
-  'Needs Callback': '#c0392b',
-  'Waiting on Materials': '#2196F3'
-};
-
 const GMAPS_KEY_STORAGE = 'astra_gmaps_key';
-let gmapsScriptLoaded = false;
-let gmapsGeocoder = null;
+let gmapsLoaded = false;
+let gMap = null;
+let gMarkers = [];
+let gDirectionsRenderer = null;
+let gMapJobs = [];
 
 function getGmapsKey() { return localStorage.getItem(GMAPS_KEY_STORAGE) || ''; }
 function saveGmapsKey(key) {
-  const trimmed = key.trim();
-  localStorage.setItem(GMAPS_KEY_STORAGE, trimmed);
-  // Reset so it reloads with new key next time
-  gmapsScriptLoaded = false;
-  gmapsGeocoder = null;
+  localStorage.setItem(GMAPS_KEY_STORAGE, key.trim());
+  gmapsLoaded = false;
+  gMap = null;
 }
 
-function loadGmapsScript() {
+function loadGmaps() {
   return new Promise((resolve, reject) => {
-    if (gmapsScriptLoaded && window.google && window.google.maps) {
-      resolve();
-      return;
-    }
-    const apiKey = getGmapsKey();
-    if (!apiKey) { reject('No API key'); return; }
-
-    // Remove old script if exists
+    if (gmapsLoaded && window.google && window.google.maps) { resolve(); return; }
+    const key = getGmapsKey();
+    if (!key) { reject('No Google Maps API key. Add one in Settings.'); return; }
     const old = document.getElementById('gmaps-script');
     if (old) old.remove();
-
-    const script = document.createElement('script');
-    script.id = 'gmaps-script';
-    script.src = 'https://maps.googleapis.com/maps/api/js?key=' + apiKey + '&libraries=geocoding';
-    script.onload = function() {
-      gmapsScriptLoaded = true;
-      gmapsGeocoder = new google.maps.Geocoder();
-      resolve();
-    };
-    script.onerror = function() { reject('Failed to load Google Maps'); };
-    document.head.appendChild(script);
+    const s = document.createElement('script');
+    s.id = 'gmaps-script';
+    s.src = 'https://maps.googleapis.com/maps/api/js?key=' + key + '&libraries=places';
+    s.onload = () => { gmapsLoaded = true; resolve(); };
+    s.onerror = () => reject('Failed to load Google Maps. Check your API key.');
+    document.head.appendChild(s);
   });
 }
 
-function googleGeocode(address) {
+function gmapGeocode(address) {
   return new Promise((resolve, reject) => {
-    gmapsGeocoder.geocode({ address: address }, function(results, status) {
-      if (status === 'OK' && results.length > 0) {
+    new google.maps.Geocoder().geocode({ address }, (results, status) => {
+      if (status === 'OK' && results[0]) {
         const loc = results[0].geometry.location;
         resolve({ lat: loc.lat(), lng: loc.lng() });
       } else {
@@ -1076,219 +1054,267 @@ function googleGeocode(address) {
   });
 }
 
-async function geocodeAddress(address) {
-  // Check if already geocoded in address DB
-  const addrs = loadAddresses();
-  const existing = addrs.find(a => a.address.toLowerCase() === address.toLowerCase());
-  if (existing && existing.lat && existing.lng) {
-    return { lat: existing.lat, lng: existing.lng };
-  }
-
-  try {
-    let coords = null;
-    const apiKey = getGmapsKey();
-
-    if (apiKey) {
-      // Google Maps JavaScript API geocoder
-      try {
-        await loadGmapsScript();
-        coords = await googleGeocode(address);
-      } catch (e) {
-        console.warn('Google geocode failed, trying Nominatim:', e);
-      }
-    }
-
-    if (!coords) {
-      // Fallback to Nominatim (free, no key)
-      const resp = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(address));
-      const results = await resp.json();
-      if (results.length > 0) {
-        coords = { lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon) };
-      }
-    }
-
-    if (coords) {
-      // Cache coordinates in address record
-      if (existing) {
-        updateAddress(existing.id, { lat: coords.lat, lng: coords.lng });
-      }
-      return coords;
-    }
-  } catch (e) {
-    console.warn('Geocode failed for:', address, e);
-  }
-  return null;
-}
-
-function createMarkerIcon(color, number) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42">
-    <path d="M16 0C7.2 0 0 7.2 0 16c0 12 16 26 16 26s16-14 16-26C32 7.2 24.8 0 16 0z" fill="${color}" stroke="#fff" stroke-width="1.5"/>
-    ${number ? `<text x="16" y="18" text-anchor="middle" fill="#fff" font-size="14" font-weight="800" font-family="sans-serif">${number}</text>` : '<circle cx="16" cy="15" r="5" fill="#fff"/>'}
-  </svg>`;
-  return L.divIcon({
-    html: svg,
-    iconSize: [32, 42],
-    iconAnchor: [16, 42],
-    popupAnchor: [0, -42],
-    className: ''
-  });
+function setMapStatus(msg) {
+  const el = document.getElementById('map-status');
+  if (msg) { el.textContent = msg; el.style.display = ''; }
+  else { el.style.display = 'none'; }
 }
 
 async function renderMap() {
-  const jobs = loadJobs().filter(j => !j.archived && j.status !== 'Complete');
-  mapJobsData = [];
-  mapMarkers = [];
-
-  // Init map if needed
-  if (!astraMap) {
-    astraMap = L.map('map-container', {
-      zoomControl: false,
-      attributionControl: false
-    }).setView([29.76, -95.37], 11); // Default to Houston
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19
-    }).addTo(astraMap);
-
-    L.control.zoom({ position: 'bottomright' }).addTo(astraMap);
-
-    // Center on user's actual location
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(function(pos) {
-        astraMap.setView([pos.coords.latitude, pos.coords.longitude], 11);
-      }, function() {}, { timeout: 5000 });
-    }
-  }
-
-  // Clear existing markers and route
-  mapMarkers.forEach(m => astraMap.removeLayer(m));
-  mapMarkers = [];
-  if (mapRouteLine) { astraMap.removeLayer(mapRouteLine); mapRouteLine = null; }
-
-  // Need to invalidate size after screen transition
-  setTimeout(() => astraMap.invalidateSize(), 350);
-
-  if (jobs.length === 0) {
-    document.getElementById('map-optimize-btn').style.display = 'none';
-    document.getElementById('map-legend').style.display = 'none';
+  const key = getGmapsKey();
+  if (!key) {
+    document.getElementById('map-container').innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:40px;text-align:center;color:#666;font-size:15px;line-height:1.6;">Add your Google Maps API key in<br><b style="color:#FF6B00;">Settings</b> to use the route map.</div>';
+    document.getElementById('map-controls').style.display = 'none';
     return;
   }
 
-  document.getElementById('map-optimize-btn').style.display = '';
-  document.getElementById('map-legend').style.display = '';
+  try {
+    setMapStatus('Loading map…');
+    await loadGmaps();
+  } catch (e) {
+    setMapStatus(e);
+    return;
+  }
 
-  const btn = document.getElementById('map-optimize-btn');
-  btn.textContent = 'Loading pins…';
-  btn.disabled = true;
+  const jobs = loadJobs().filter(j => !j.archived && j.status !== 'Complete');
 
-  const bounds = [];
+  // Init map
+  if (!gMap) {
+    gMap = new google.maps.Map(document.getElementById('map-container'), {
+      center: { lat: 29.76, lng: -95.37 },
+      zoom: 11,
+      mapId: 'astra-dark',
+      disableDefaultUI: true,
+      zoomControl: true,
+      zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
+      styles: [
+        { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
+        { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
+        { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
+        { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#38414e' }] },
+        { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9ca5b3' }] },
+        { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] }
+      ]
+    });
+
+    // Center on user location
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(pos => {
+        gMap.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+      }, () => {}, { timeout: 5000 });
+    }
+  } else {
+    // Trigger resize for screen transition
+    setTimeout(() => google.maps.event.trigger(gMap, 'resize'), 350);
+  }
+
+  // Clear old markers
+  gMarkers.forEach(m => m.setMap(null));
+  gMarkers = [];
+  gMapJobs = [];
+  if (gDirectionsRenderer) { gDirectionsRenderer.setMap(null); gDirectionsRenderer = null; }
+
+  if (jobs.length === 0) {
+    setMapStatus('No active jobs to show.');
+    document.getElementById('map-controls').style.display = 'none';
+    return;
+  }
+
+  setMapStatus('Geocoding ' + jobs.length + ' addresses…');
+  const bounds = new google.maps.LatLngBounds();
+  let geocoded = 0;
 
   for (const job of jobs) {
-    const coords = await geocodeAddress(job.address);
-    if (!coords) continue;
+    try {
+      // Check cache first
+      const addrs = loadAddresses();
+      const addrRec = addrs.find(a => a.address.toLowerCase() === job.address.toLowerCase());
+      let coords;
 
-    const color = STATUS_COLORS[job.status] || '#FF6B00';
-    const marker = L.marker([coords.lat, coords.lng], {
-      icon: createMarkerIcon(color)
-    }).addTo(astraMap);
+      if (addrRec && addrRec.lat && addrRec.lng) {
+        coords = { lat: addrRec.lat, lng: addrRec.lng };
+      } else {
+        coords = await gmapGeocode(job.address);
+        if (addrRec) updateAddress(addrRec.id, { lat: coords.lat, lng: coords.lng });
+      }
 
-    const types = (job.types || []).join(', ');
-    marker.bindPopup(`
-      <div style="font-family:sans-serif;min-width:160px;">
-        <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${esc(job.address)}</div>
-        <div style="font-size:12px;color:#666;margin-bottom:6px;">${esc(types)}</div>
-        <div style="font-size:12px;margin-bottom:8px;">
-          <span style="display:inline-block;padding:2px 8px;border-radius:6px;font-weight:700;font-size:11px;color:#fff;background:${color};">${esc(job.status)}</span>
-        </div>
-        <button onclick="goTo('screen-detail','${job.id}')" style="background:#FF6B00;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;width:100%;">View Ticket</button>
-      </div>
-    `);
+      const statusColors = {
+        'Not Started': '#FF6B00', 'In Progress': '#FBBF24',
+        'Needs Callback': '#EF4444', 'Waiting on Materials': '#3B82F6'
+      };
+      const color = statusColors[job.status] || '#FF6B00';
 
-    mapMarkers.push(marker);
-    mapJobsData.push({ job, coords, marker });
-    bounds.push([coords.lat, coords.lng]);
+      const marker = new google.maps.Marker({
+        position: coords,
+        map: gMap,
+        title: job.address,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: color,
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 2,
+          scale: 10
+        }
+      });
+
+      const types = (job.types || []).join(', ');
+      const infoWindow = new google.maps.InfoWindow({
+        content: `<div style="font-family:sans-serif;min-width:180px;padding:4px;">
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${esc(job.address)}</div>
+          <div style="font-size:12px;color:#666;margin-bottom:6px;">${esc(types)}</div>
+          <div style="margin-bottom:8px;">
+            <span style="display:inline-block;padding:2px 8px;border-radius:6px;font-weight:700;font-size:11px;color:#fff;background:${color};">${esc(job.status)}</span>
+          </div>
+          <button onclick="goTo('screen-detail','${job.id}')" style="background:#FF6B00;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;width:100%;">View Ticket</button>
+        </div>`
+      });
+
+      marker.addListener('click', () => infoWindow.open(gMap, marker));
+
+      gMarkers.push(marker);
+      gMapJobs.push({ job, coords, marker });
+      bounds.extend(coords);
+      geocoded++;
+      setMapStatus('Geocoded ' + geocoded + ' of ' + jobs.length + '…');
+
+    } catch (e) {
+      console.warn('Failed to geocode:', job.address, e);
+    }
   }
 
-  if (bounds.length > 0) {
-    astraMap.fitBounds(bounds, { padding: [40, 40] });
+  if (geocoded > 0) {
+    gMap.fitBounds(bounds, { top: 60, bottom: 80, left: 40, right: 40 });
   }
 
-  btn.textContent = 'Optimize Route';
-  btn.disabled = mapJobsData.length < 2;
+  setMapStatus(null);
+  document.getElementById('map-controls').style.display = 'flex';
+  document.getElementById('map-optimize-btn').disabled = gMapJobs.length < 2;
+  document.getElementById('map-clear-btn').style.display = 'none';
 }
 
 async function optimizeRoute() {
-  if (mapJobsData.length < 2) return;
+  if (gMapJobs.length < 2) return;
 
   const btn = document.getElementById('map-optimize-btn');
   btn.textContent = 'Optimizing…';
   btn.disabled = true;
 
   try {
-    // Build coordinate string for OSRM trip API
-    const coordStr = mapJobsData.map(d => d.coords.lng + ',' + d.coords.lat).join(';');
-    const url = 'https://router.project-osrm.org/trip/v1/driving/' + coordStr + '?overview=full&geometries=geojson&roundtrip=true';
+    const directionsService = new google.maps.DirectionsService();
 
-    const resp = await fetch(url);
-    const data = await resp.json();
+    // First job as origin, last as destination, rest as waypoints
+    const origin = gMapJobs[0].coords;
+    const destination = gMapJobs[gMapJobs.length - 1].coords;
+    const waypoints = gMapJobs.slice(1, -1).map(d => ({
+      location: d.coords,
+      stopover: true
+    }));
 
-    if (data.code !== 'Ok' || !data.trips || !data.trips[0]) {
-      throw new Error('OSRM returned: ' + (data.code || 'unknown error'));
-    }
+    const result = await new Promise((resolve, reject) => {
+      directionsService.route({
+        origin: origin,
+        destination: destination,
+        waypoints: waypoints,
+        optimizeWaypoints: true,
+        travelMode: google.maps.TravelMode.DRIVING
+      }, (result, status) => {
+        if (status === 'OK') resolve(result);
+        else reject('Directions failed: ' + status);
+      });
+    });
 
-    const trip = data.trips[0];
-    const waypoints = data.waypoints;
+    // Draw the route
+    if (gDirectionsRenderer) gDirectionsRenderer.setMap(null);
+    gDirectionsRenderer = new google.maps.DirectionsRenderer({
+      map: gMap,
+      directions: result,
+      suppressMarkers: true,
+      polylineOptions: {
+        strokeColor: '#FF6B00',
+        strokeWeight: 4,
+        strokeOpacity: 0.8
+      }
+    });
 
-    // Draw route line
-    if (mapRouteLine) astraMap.removeLayer(mapRouteLine);
-    const routeCoords = trip.geometry.coordinates.map(c => [c[1], c[0]]);
-    mapRouteLine = L.polyline(routeCoords, {
-      color: '#FF6B00',
-      weight: 4,
-      opacity: 0.8,
-      dashArray: '8, 8'
-    }).addTo(astraMap);
+    // Get optimized order and update markers with numbers
+    const order = result.routes[0].waypoint_order;
+    const orderedJobs = [0, ...order.map(i => i + 1), gMapJobs.length - 1];
 
-    // Update markers with route numbers
-    const order = waypoints.map(wp => wp.waypoint_index);
-    for (let i = 0; i < mapJobsData.length; i++) {
-      const routePos = order[i] + 1;
-      const d = mapJobsData[i];
-      const color = STATUS_COLORS[d.job.status] || '#FF6B00';
-      d.marker.setIcon(createMarkerIcon(color, routePos));
-      d.routeOrder = order[i];
-    }
+    // Update marker labels with route order
+    gMarkers.forEach(m => m.setMap(null));
+    orderedJobs.forEach((jobIdx, routePos) => {
+      const d = gMapJobs[jobIdx];
+      const marker = new google.maps.Marker({
+        position: d.coords,
+        map: gMap,
+        label: {
+          text: String(routePos + 1),
+          color: '#fff',
+          fontWeight: '800',
+          fontSize: '13px'
+        },
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          fillColor: '#FF6B00',
+          fillOpacity: 1,
+          strokeColor: '#fff',
+          strokeWeight: 2,
+          scale: 16
+        }
+      });
+      gMarkers[jobIdx] = marker;
+    });
 
-    // Calculate total drive time
-    const totalMin = Math.round(trip.duration / 60);
-    const totalMi = (trip.distance / 1609.34).toFixed(1);
+    // Calculate totals
+    const route = result.routes[0];
+    let totalDist = 0, totalTime = 0;
+    route.legs.forEach(leg => {
+      totalDist += leg.distance.value;
+      totalTime += leg.duration.value;
+    });
+    const totalMin = Math.round(totalTime / 60);
+    const totalMi = (totalDist / 1609.34).toFixed(1);
 
     btn.textContent = totalMin + ' min · ' + totalMi + ' mi';
     btn.disabled = false;
-    btn.onclick = function() {
-      // Second tap clears the route
-      clearRoute();
-    };
+    document.getElementById('map-clear-btn').style.display = '';
 
   } catch (e) {
     console.error('Route optimization failed:', e);
-    btn.textContent = 'Route failed — retry?';
+    btn.textContent = 'Failed — retry?';
     btn.disabled = false;
-    btn.onclick = optimizeRoute;
   }
 }
 
 function clearRoute() {
-  if (mapRouteLine) { astraMap.removeLayer(mapRouteLine); mapRouteLine = null; }
-  // Reset markers to dots
-  for (const d of mapJobsData) {
-    const color = STATUS_COLORS[d.job.status] || '#FF6B00';
-    d.marker.setIcon(createMarkerIcon(color));
-  }
-  const btn = document.getElementById('map-optimize-btn');
-  btn.textContent = 'Optimize Route';
-  btn.disabled = mapJobsData.length < 2;
-  btn.onclick = optimizeRoute;
+  if (gDirectionsRenderer) { gDirectionsRenderer.setMap(null); gDirectionsRenderer = null; }
+  // Restore original markers
+  gMarkers.forEach(m => m.setMap(null));
+  gMarkers = [];
+  const statusColors = {
+    'Not Started': '#FF6B00', 'In Progress': '#FBBF24',
+    'Needs Callback': '#EF4444', 'Waiting on Materials': '#3B82F6'
+  };
+  gMapJobs.forEach(d => {
+    const color = statusColors[d.job.status] || '#FF6B00';
+    const marker = new google.maps.Marker({
+      position: d.coords,
+      map: gMap,
+      title: d.job.address,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        fillColor: color, fillOpacity: 1,
+        strokeColor: '#fff', strokeWeight: 2, scale: 10
+      }
+    });
+    gMarkers.push(marker);
+    d.marker = marker;
+  });
+  document.getElementById('map-optimize-btn').textContent = 'Optimize Route';
+  document.getElementById('map-optimize-btn').disabled = gMapJobs.length < 2;
+  document.getElementById('map-clear-btn').style.display = 'none';
 }
 
 // ═══════════════════════════════════════════
