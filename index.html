@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#FF6B00">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<title>Astra — Field Service</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #2b2b2b; color: #fff; font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Layout ── */
+.screen {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  display: flex; flex-direction: column;
+  opacity: 0; pointer-events: none; visibility: hidden;
+  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s 0.25s;
+  transform: translateX(30px);
+  z-index: 1;
+}
+.screen.active {
+  opacity: 1; pointer-events: auto; visibility: visible;
+  transform: translateX(0); z-index: 2;
+  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s;
+}
+.screen.slide-out { opacity: 0; transform: translateX(-30px); }
+
+/* ── Top Nav ── */
+.nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; background: #333; min-height: 56px;
+  flex-shrink: 0; position: relative; z-index: 10;
+}
+.nav-logo { font-size: 22px; font-weight: 800; color: #FF6B00; letter-spacing: 1px; }
+.nav-icons { display: flex; gap: 2px; flex-shrink: 0; }
+.nav-btn {
+  width: 44px; height: 48px; border: none; background: none;
+  color: #fff; font-size: 20px; border-radius: 12px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+}
+.nav-btn:active { background: rgba(255,107,0,0.2); }
+.back-btn { font-size: 24px; }
+
+/* ── Scrollable body ── */
+.screen-body {
+  flex: 1; overflow-y: auto; padding: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── Cards ── */
+.card {
+  background: #333; border-radius: 14px; padding: 16px;
+  margin-bottom: 12px; cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.card:active { background: #3a3a3a; transform: scale(0.985); }
+.card-address { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+.card-subtitle { font-size: 13px; color: #888; margin-bottom: 8px; }
+.card-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.card-panel-chip { display: inline-block; font-size: 11px; font-weight: 600; color: #FF6B00; background: rgba(255,107,0,0.12); padding: 3px 8px; border-radius: 8px; }
+.card-last-visit { font-size: 11px; color: #666; margin-left: auto; }
+
+/* ── Badges ── */
+.badge {
+  display: inline-block; padding: 4px 10px; border-radius: 8px;
+  font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.5px; white-space: nowrap;
+}
+.badge-type { background: rgba(255,255,255,0.12); color: #ccc; }
+.badge-not-started { background: #666; color: #fff; }
+.badge-in-progress { background: #c9a800; color: #1a1a1a; }
+.badge-complete { background: #2d8a4e; color: #fff; }
+.badge-needs-callback { background: #c0392b; color: #fff; }
+.badge-waiting-materials { background: #FF6B00; color: #fff; }
+.badge-status { cursor: pointer; min-height: 32px; min-width: 48px; text-align: center; }
+
+/* ── FAB ── */
+.fab {
+  position: fixed; bottom: 24px; right: 20px;
+  width: 64px; height: 64px; border-radius: 20px;
+  background: #FF6B00; border: none; color: #fff;
+  font-size: 32px; font-weight: 300; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 16px rgba(255,107,0,0.4);
+  transition: transform 0.15s, box-shadow 0.15s;
+  z-index: 50;
+}
+.fab:active { transform: scale(0.92); box-shadow: 0 2px 8px rgba(255,107,0,0.3); }
+
+/* ── Form elements ── */
+.field { margin-bottom: 16px; }
+.field label {
+  display: block; font-size: 13px; font-weight: 600;
+  color: #999; text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+.field input, .field textarea, .field select {
+  width: 100%; padding: 14px; border-radius: 12px;
+  border: 2px solid #444; background: #2b2b2b; color: #fff;
+  font-size: 16px; font-family: inherit;
+  transition: border-color 0.15s;
+  min-height: 48px;
+}
+.field input:focus, .field textarea:focus, .field select:focus {
+  outline: none; border-color: #FF6B00;
+}
+.field textarea { resize: vertical; min-height: 100px; }
+.field select { appearance: none; cursor: pointer; }
+
+/* ── Buttons ── */
+.btn {
+  display: block; width: 100%; padding: 16px;
+  border: none; border-radius: 14px; font-size: 17px;
+  font-weight: 700; cursor: pointer; text-align: center;
+  transition: opacity 0.15s, transform 0.1s;
+  min-height: 52px;
+}
+.btn:active { opacity: 0.85; transform: scale(0.98); }
+.btn-primary { background: #FF6B00; color: #fff; }
+.btn-secondary { background: #444; color: #fff; }
+
+/* ── Ticket Detail sections ── */
+.detail-header { background: #333; border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+.detail-address { font-size: 20px; font-weight: 700; margin-bottom: 10px; }
+.detail-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 0; font-size: 14px; color: #aaa;
+}
+.detail-row span:last-child { color: #fff; font-weight: 500; }
+
+.section-title {
+  font-size: 14px; font-weight: 700; color: #999;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin: 20px 0 10px;
+}
+
+.upload-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; padding: 14px; border-radius: 12px;
+  border: 2px dashed #555; background: none; color: #888;
+  font-size: 15px; cursor: pointer; min-height: 52px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.upload-btn:active { border-color: #FF6B00; color: #FF6B00; }
+
+/* ── Media grid (photos + drawings) ── */
+.media-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  margin-top: 10px;
+}
+.media-thumb {
+  aspect-ratio: 4/3; background: #3a3a3a; border-radius: 12px;
+  cursor: pointer; transition: transform 0.1s;
+  border: none; overflow: hidden; position: relative;
+}
+.media-thumb:active { transform: scale(0.96); }
+.media-thumb img {
+  width: 100%; height: 100%; object-fit: cover; border-radius: 12px;
+}
+.media-delete {
+  position: absolute; top: 4px; right: 4px;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(0,0,0,0.7); border: none; color: #ff4444;
+  font-size: 16px; cursor: pointer; z-index: 5;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+}
+.media-delete:active { background: #c0392b; color: #fff; }
+.media-thumb-label {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  padding: 4px 8px; background: rgba(0,0,0,0.6);
+  font-size: 11px; color: #ccc; text-align: center;
+  border-radius: 0 0 12px 12px;
+}
+
+/* ── Fullscreen overlay ── */
+.overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: #1a1a1a; z-index: 100;
+  display: flex; flex-direction: column;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+.overlay.active { opacity: 1; pointer-events: auto; }
+.overlay-top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; flex-shrink: 0;
+}
+.overlay-title { font-size: 17px; font-weight: 600; }
+.overlay-close {
+  width: 48px; height: 48px; border: none; background: #333;
+  color: #fff; font-size: 24px; border-radius: 12px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s;
+}
+.overlay-close:active { background: #FF6B00; }
+.overlay-body {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 0; color: #666; font-size: 15px; overflow: hidden;
+  touch-action: none;
+}
+.overlay-body img, .overlay-body video {
+  max-width: 100%; max-height: 100%; object-fit: contain;
+  transform-origin: center center;
+  transition: transform 0.05s linear;
+}
+.media-thumb video {
+  width: 100%; height: 100%; object-fit: cover; border-radius: 12px;
+}
+.media-thumb .video-badge {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(0,0,0,0.6); color: #fff; font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+
+/* ── Multi-select chips ── */
+.chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  padding: 10px 16px; border-radius: 10px; border: 2px solid #444;
+  background: none; color: #aaa; font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; min-height: 48px;
+  display: flex; align-items: center;
+}
+.chip.selected { border-color: #FF6B00; background: rgba(255,107,0,0.15); color: #FF6B00; }
+.chip:active { transform: scale(0.95); }
+
+/* ── Status picker ── */
+.status-picker {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: #333; border-radius: 20px 20px 0 0;
+  padding: 16px; z-index: 90;
+  transform: translateY(100%);
+  transition: transform 0.25s ease;
+}
+.status-picker.active { transform: translateY(0); }
+.status-picker-backdrop {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5); z-index: 89;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.25s;
+}
+.status-picker-backdrop.active { opacity: 1; pointer-events: auto; }
+.status-option {
+  display: block; width: 100%; padding: 14px 16px;
+  border: none; background: none; color: #fff;
+  font-size: 16px; font-weight: 600; text-align: left;
+  border-radius: 12px; cursor: pointer; min-height: 48px;
+  transition: background 0.15s;
+}
+.status-option:active { background: rgba(255,107,0,0.2); }
+.status-option .badge { margin-right: 10px; }
+
+/* ── Settings ── */
+.sync-status {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px; background: #333; border-radius: 12px;
+  font-size: 15px; margin-bottom: 16px;
+}
+.sync-dot { width: 12px; height: 12px; border-radius: 50%; background: #666; flex-shrink: 0; }
+.sync-dot.connected { background: #2d8a4e; }
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center; padding: 60px 20px; color: #555;
+}
+.empty-state div:first-child { font-size: 48px; margin-bottom: 12px; }
+.empty-state div:last-child { font-size: 15px; }
+
+/* ── Archive button ── */
+.btn-archive {
+  background: none; border: 2px solid #444; color: #777;
+  margin-top: 24px;
+}
+.btn-archive:active { border-color: #c0392b; color: #c0392b; }
+.btn-unarchive {
+  background: none; border: 2px solid #444; color: #FF6B00;
+  margin-top: 8px;
+}
+.btn-unarchive:active { border-color: #FF6B00; }
+
+/* ── Archive badge on cards ── */
+.badge-archived { background: #444; color: #888; }
+
+/* ── Search ── */
+.search-bar {
+  position: relative; margin-bottom: 16px;
+}
+.search-bar input {
+  width: 100%; padding: 14px 14px 14px 48px; border-radius: 14px;
+  border: 2px solid #444; background: #333; color: #fff;
+  font-size: 16px; font-family: inherit; min-height: 52px;
+  transition: border-color 0.15s;
+}
+.search-bar input:focus { outline: none; border-color: #FF6B00; }
+.search-bar input::placeholder { color: #666; }
+.search-icon {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  font-size: 18px; color: #666; pointer-events: none; line-height: 1;
+}
+.search-divider {
+  font-size: 12px; font-weight: 700; color: #555; text-transform: uppercase;
+  letter-spacing: 0.5px; padding: 12px 0 6px; margin-top: 4px;
+}
+.search-hint {
+  text-align: center; padding: 40px 20px; color: #444; font-size: 15px;
+}
+
+/* ── Dashboard ── */
+.dash-card {
+  background: #333; border-radius: 14px; padding: 16px; margin-bottom: 12px;
+}
+.dash-card-title {
+  font-size: 13px; font-weight: 700; color: #999;
+  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;
+}
+.dash-big-number {
+  font-size: 42px; font-weight: 800; color: #FF6B00; line-height: 1;
+}
+.dash-big-label { font-size: 13px; color: #777; margin-top: 4px; }
+.dash-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 0; border-bottom: 1px solid #3a3a3a;
+}
+.dash-row:last-child { border-bottom: none; }
+.dash-row-label { font-size: 14px; color: #aaa; display: flex; align-items: center; gap: 8px; }
+.dash-row-value { font-size: 16px; font-weight: 700; }
+.dash-bar-track {
+  flex: 1; height: 8px; background: #2b2b2b; border-radius: 4px;
+  margin: 0 12px; overflow: hidden;
+}
+.dash-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+.dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dash-stat {
+  background: #3a3a3a; border-radius: 12px; padding: 14px; text-align: center;
+}
+.dash-stat-num { font-size: 28px; font-weight: 800; line-height: 1; }
+.dash-stat-label { font-size: 11px; color: #777; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.dash-activity {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 0; border-bottom: 1px solid #3a3a3a;
+  font-size: 13px; color: #aaa;
+}
+.dash-activity:last-child { border-bottom: none; }
+.dash-activity-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+
+/* ── Address autocomplete ── */
+.addr-suggest {
+  background: #333; border-radius: 0 0 12px 12px; margin-top: -10px;
+  overflow: hidden; border: 2px solid #444; border-top: none;
+}
+.addr-suggest-item {
+  padding: 12px 14px; cursor: pointer; font-size: 14px;
+  border-bottom: 1px solid #3a3a3a; min-height: 44px;
+  display: flex; align-items: center; transition: background 0.1s;
+}
+.addr-suggest-item:active, .addr-suggest-item:last-child { border-bottom: none; }
+.addr-suggest-item:active { background: rgba(255,107,0,0.15); }
+.addr-suggest-new { color: #FF6B00; font-weight: 600; }
+.prop-field { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #3a3a3a; }
+.prop-field:last-child { border-bottom: none; }
+.prop-label { font-size: 13px; color: #888; min-width: 90px; }
+.prop-input {
+  background: none; border: none; color: #fff; font-size: 14px;
+  text-align: right; font-family: inherit; padding: 4px 0; flex: 1;
+  min-height: 32px;
+}
+.prop-input:focus { outline: none; color: #FF6B00; }
+
+/* ── Navigate button ── */
+.btn-navigate {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 10px;
+  border: 2px solid #4A9DFF; background: rgba(74,157,255,0.1);
+  color: #4A9DFF; font-size: 13px; font-weight: 700;
+  cursor: pointer; min-height: 36px; margin-top: 6px;
+  transition: background 0.15s;
+}
+.btn-navigate:active { background: rgba(74,157,255,0.25); }
+
+/* ── Hidden file input ── */
+.hidden-input { display: none; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════ SCREEN: JOB LIST ══════════════ -->
+<div id="screen-jobs" class="screen active">
+  <div class="nav">
+    <div class="nav-logo">ASTRA</div>
+    <div class="nav-icons">
+      <button class="nav-btn" onclick="goTo('screen-search')" aria-label="Search">🔍</button>
+      <button class="nav-btn" onclick="goTo('screen-addresses')" aria-label="Properties" style="font-size:19px;">🏠</button>
+      <button class="nav-btn" onclick="goTo('screen-archive')" aria-label="Archive" style="font-size:19px;">📦</button>
+      <button class="nav-btn" onclick="goTo('screen-dashboard')" aria-label="Dashboard" style="font-size:19px;">📊</button>
+      <button class="nav-btn" onclick="goTo('screen-settings')" aria-label="Settings">⚙</button>
+    </div>
+  </div>
+  <div class="screen-body" id="jobs-body">
+    <!-- rendered by JS -->
+  </div>
+  <button class="fab" onclick="goTo('screen-create')" aria-label="Create ticket">+</button>
+</div>
+
+<!-- ══════════════ SCREEN: SEARCH ══════════════ -->
+<div id="screen-search" class="screen">
+  <div class="nav">
+    <button class="nav-btn back-btn" onclick="goTo('screen-jobs')" aria-label="Back">←</button>
+    <div style="font-weight:600;font-size:16px;">Search</div>
+    <div style="width:48px;"></div>
+  </div>
+  <div class="screen-body">
+    <div class="search-bar">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="search-input" placeholder="Address, tech, job type, notes…" oninput="runSearch(this.value)">
+    </div>
+    <div id="search-results">
+      <div class="search-hint">Search across all tickets — active and archived.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ SCREEN: TICKET DETAIL ══════════════ -->
+<div id="screen-detail" class="screen">
+  <div class="nav">
+    <button class="nav-btn back-btn" onclick="goBackFromDetail()" aria-label="Back">←</button>
+    <div style="font-weight:600;font-size:16px;">Ticket</div>
+    <div style="width:48px;"></div>
+  </div>
+  <div class="screen-body" id="detail-body"></div>
+</div>
+
+<!-- ══════════════ SCREEN: CREATE TICKET ══════════════ -->
+<div id="screen-create" class="screen">
+  <div class="nav">
+    <button class="nav-btn back-btn" onclick="goTo('screen-jobs')" aria-label="Back">←</button>
+    <div style="font-weight:600;font-size:16px;">New Ticket</div>
+    <div style="width:48px;"></div>
+  </div>
+  <div class="screen-body" id="create-body">
+    <div class="field">
+      <label>Address</label>
+      <input type="text" id="c-address" placeholder="Enter address…" autocomplete="off" oninput="addrAutocomplete(this.value)">
+      <div id="c-addr-suggest" class="addr-suggest" style="display:none;"></div>
+    </div>
+    <div class="field">
+      <label>Job Type</label>
+      <div class="chip-group" id="c-types">
+        <button class="chip" onclick="toggleChip(this)">Panel Upgrade</button>
+        <button class="chip" onclick="toggleChip(this)">EV Charger</button>
+        <button class="chip" onclick="toggleChip(this)">Service Call</button>
+        <button class="chip" onclick="toggleChip(this)">Rough-In</button>
+        <button class="chip" onclick="toggleChip(this)">Fixture Install</button>
+        <button class="chip" onclick="toggleChip(this)">Trenching</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Status</label>
+      <select id="c-status">
+        <option>Not Started</option>
+        <option>In Progress</option>
+        <option>Complete</option>
+        <option>Needs Callback</option>
+        <option>Waiting on Materials</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Assigned Tech</label>
+      <select id="c-tech"></select>
+    </div>
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="c-date">
+    </div>
+    <div class="field">
+      <label>Notes</label>
+      <textarea id="c-notes" placeholder="Job notes…"></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="saveNewTicket()">Save Ticket</button>
+    <div style="height:24px;"></div>
+  </div>
+</div>
+
+<!-- ══════════════ SCREEN: ARCHIVE ══════════════ -->
+<div id="screen-archive" class="screen">
+  <div class="nav">
+    <button class="nav-btn back-btn" onclick="goTo('screen-jobs')" aria-label="Back">←</button>
+    <div style="font-weight:600;font-size:16px;">Archived</div>
+    <div style="width:48px;"></div>
+  </div>
+  <div class="screen-body" id="archive-body"></div>
+</div>
+
+<!-- ══════════════ SCREEN: ADDRESSES ══════════════ -->
+<div id="screen-addresses" class="screen">
+  <div class="nav">
+    <button class="nav-btn back-btn" onclick="goTo('screen-jobs')" aria-label="Back">←</button>
+    <div style="font-weight:600;font-size:16px;">Properties</div>
+    <div style="width:48px;"></div>
+  </div>
+  <div style="position:sticky;top:0;z-index:10;padding:16px 16px 0;background:#2b2b2b;">
+    <div class="search-bar">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="addr-search" placeholder="Search properties…" oninput="renderAddressList(this.value)">
+    </div>
+  </div>
+  <div class="screen-body">
+    <div id="addr-list"></div>
+  </div>
+</div>
+
+<!-- ══════════════ SCREEN: ADDRESS DETAIL ══════════════ -->
+<div id="screen-addr-detail" class="screen">
+  <div class="nav">
+    <button class="nav-btn back-btn" onclick="goTo('screen-addresses')" aria-label="Back">←</button>
+    <div style="font-weight:600;font-size:16px;">Property</div>
+    <div style="width:48px;"></div>
+  </div>
+  <div class="screen-body" id="addr-detail-body"></div>
+</div>
+
+<!-- ══════════════ SCREEN: DASHBOARD ══════════════ -->
+<div id="screen-dashboard" class="screen">
+  <div class="nav">
+    <button class="nav-btn back-btn" onclick="goTo('screen-jobs')" aria-label="Back">←</button>
+    <div style="font-weight:600;font-size:16px;">Dashboard</div>
+    <div style="width:48px;"></div>
+  </div>
+  <div class="screen-body" id="dashboard-body"></div>
+</div>
+
+<!-- ══════════════ SCREEN: SETTINGS ══════════════ -->
+<div id="screen-settings" class="screen">
+  <div class="nav">
+    <button class="nav-btn back-btn" onclick="goTo('screen-jobs')" aria-label="Back">←</button>
+    <div style="font-weight:600;font-size:16px;">Settings</div>
+    <div style="width:48px;"></div>
+  </div>
+  <div class="screen-body" id="settings-body">
+    <div class="section-title">Data Overview</div>
+    <div id="settings-stats" class="dash-card" style="margin-bottom:16px;"></div>
+
+    <div class="section-title">Backup &amp; Restore</div>
+    <button class="btn btn-primary" style="margin-bottom:10px;" onclick="exportData()">Export All Data (JSON)</button>
+    <button class="btn btn-secondary" style="margin-bottom:16px;" onclick="document.getElementById('import-input').click()">Import Data from Backup</button>
+    <input type="file" class="hidden-input" id="import-input" accept=".json" onchange="importData(this)">
+
+    <div class="section-title">Storage</div>
+    <div id="storage-info" class="dash-card" style="margin-bottom:16px;"></div>
+
+    <div style="color:#555;font-size:13px;text-align:center;margin-top:24px;">
+      Astra v0.4 — IndexedDB + Video
+    </div>
+    <div style="height:24px;"></div>
+  </div>
+</div>
+
+<!-- ══════════════ OVERLAY: FULLSCREEN IMAGE ══════════════ -->
+<div id="media-overlay" class="overlay">
+  <div class="overlay-top">
+    <div class="overlay-title" id="overlay-title">Image</div>
+    <button class="overlay-close" onclick="closeOverlay()" aria-label="Close">✕</button>
+  </div>
+  <div class="overlay-body" id="overlay-body"></div>
+</div>
+
+<!-- ══════════════ STATUS PICKER ══════════════ -->
+<div class="status-picker-backdrop" id="sp-backdrop" onclick="closeStatusPicker()"></div>
+<div class="status-picker" id="sp-picker">
+  <div style="text-align:center;margin-bottom:12px;font-size:13px;color:#666;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Update Status</div>
+  <button class="status-option" onclick="pickStatus('Not Started')"><span class="badge badge-not-started">Not Started</span></button>
+  <button class="status-option" onclick="pickStatus('In Progress')"><span class="badge badge-in-progress">In Progress</span></button>
+  <button class="status-option" onclick="pickStatus('Complete')"><span class="badge badge-complete">Complete</span></button>
+  <button class="status-option" onclick="pickStatus('Needs Callback')"><span class="badge badge-needs-callback">Needs Callback</span></button>
+  <button class="status-option" onclick="pickStatus('Waiting on Materials')"><span class="badge badge-waiting-materials">Waiting on Materials</span></button>
+</div>
+
+<!-- Hidden file inputs -->
+<input type="file" class="hidden-input" id="photo-input" accept="image/*" multiple>
+<input type="file" class="hidden-input" id="drawing-input" accept="image/*,.pdf">
+<input type="file" class="hidden-input" id="video-input" accept="video/*" multiple>
+
+<script src="app.js"></script>
+</body>
+</html>
