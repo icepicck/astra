@@ -1,4 +1,4 @@
-const CACHE_NAME = 'astra-v2';
+const CACHE_NAME = 'astra-v3';
 const ASSETS = ['index.html', 'app.js'];
 
 self.addEventListener('install', e => {
