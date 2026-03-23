@@ -1,5 +1,5 @@
-const CACHE_NAME = 'astra-v3';
-const ASSETS = ['index.html', 'app.js'];
+const CACHE_NAME = 'astra-v4';
+const ASSETS = ['index.html', 'app.js', 'manifest.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
@@ -10,7 +10,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k !== CACHE_NAME && k !== 'astra-icons').map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });

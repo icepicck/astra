@@ -1081,7 +1081,7 @@ async function importData(input) {
 // ═══════════════════════════════════════════
 // renderJobList() is called after IndexedDB init + migration (see DATA LAYER)
 
-// Generate PWA icons via canvas and create dynamic manifest
+// Generate PWA icons via canvas and cache them for the service worker
 (function() {
   function generateIcon(size) {
     const c = document.createElement('canvas');
@@ -1097,41 +1097,34 @@ async function importData(input) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('A', size / 2, size / 2 + size * 0.04);
-    return c.toDataURL('image/png');
+    return new Promise(resolve => c.toBlob(resolve, 'image/png'));
   }
 
-  const icon192 = generateIcon(192);
-  const icon512 = generateIcon(512);
+  async function cacheIcons() {
+    const cache = await caches.open('astra-icons');
+    const icon192 = await generateIcon(192);
+    const icon512 = await generateIcon(512);
+    await cache.put(new Request('icon-192.png'), new Response(icon192, { headers: { 'Content-Type': 'image/png' } }));
+    await cache.put(new Request('icon-512.png'), new Response(icon512, { headers: { 'Content-Type': 'image/png' } }));
+  }
+  cacheIcons();
 
-  const manifest = {
-    name: 'Astra Field Service',
-    short_name: 'Astra',
-    start_url: './index.html',
-    scope: './',
-    display: 'standalone',
-    background_color: '#2b2b2b',
-    theme_color: '#FF6B00',
-    icons: [
-      { src: icon192, sizes: '192x192', type: 'image/png' },
-      { src: icon512, sizes: '512x512', type: 'image/png' }
-    ]
-  };
-
-  const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-
-  // Replace existing manifest link
-  const existing = document.querySelector('link[rel="manifest"]');
-  if (existing) existing.remove();
-  const link = document.createElement('link');
-  link.rel = 'manifest';
-  link.href = url;
-  document.head.appendChild(link);
-
-  // Also set apple-touch-icon for iOS
+  // Apple touch icon via data URL
+  const c = document.createElement('canvas');
+  c.width = 180; c.height = 180;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#2b2b2b';
+  ctx.beginPath();
+  ctx.roundRect(0, 0, 180, 180, 36);
+  ctx.fill();
+  ctx.fillStyle = '#FF6B00';
+  ctx.font = 'bold 99px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('A', 90, 97);
   const appleIcon = document.createElement('link');
   appleIcon.rel = 'apple-touch-icon';
-  appleIcon.href = icon192;
+  appleIcon.href = c.toDataURL('image/png');
   document.head.appendChild(appleIcon);
 })();
 
