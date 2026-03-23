@@ -620,19 +620,18 @@ const ADDR_FIELDS = [
   { key: 'builder', label: 'Builder' },
   { key: 'subdivision', label: 'Subdivision' },
   { key: 'panelType', label: 'Panel Type' },
-  { key: 'panelBrand', label: 'Panel Brand' },
-  { key: 'ampRating', label: 'Amp Rating' },
-  { key: 'breakerType', label: 'Breaker Type' },
-  { key: 'serviceType', label: 'Service Type' },
-  { key: 'panelLocation', label: 'Panel Location' },
-  { key: 'notes', label: 'Property Notes' }
+  { key: 'ampRating', label: 'Amp Rating', options: ['100A', '150A', '200A', '250A', '300A', '400A', '600A'] },
+  { key: 'breakerType', label: 'Breaker Type', options: ['SQD', 'CH', 'BR', 'SIEM'] },
+  { key: 'serviceType', label: 'Service Type', options: ['Underground', 'Overhead'] },
+  { key: 'panelLocation', label: 'Panel Location', options: ['Indoor', 'Outdoor'] },
+  { key: 'notes', label: 'Property Notes', textarea: true }
 ];
 
 function renderAddressList(query) {
   const addrs = loadAddresses();
   const q = (query || '').trim().toLowerCase();
   const filtered = q ? addrs.filter(a => {
-    const hay = [a.address, a.builder, a.subdivision, a.panelBrand, a.panelType, a.ampRating, a.notes].join(' ').toLowerCase();
+    const hay = [a.address, a.builder, a.subdivision, a.panelType, a.ampRating, a.breakerType, a.notes].join(' ').toLowerCase();
     return q.split(/\s+/).every(w => hay.includes(w));
   }) : addrs;
 
@@ -647,7 +646,7 @@ function renderAddressList(query) {
   el.innerHTML = filtered.map(a => {
     const jobs = allJobs.filter(j => j.addressId === a.id);
     const subtitle = [a.builder, a.subdivision].filter(Boolean).join(' · ');
-    const panelChip = [a.ampRating ? a.ampRating + 'A' : '', a.panelBrand].filter(Boolean).join(' · ');
+    const panelChip = [a.ampRating, a.breakerType, a.panelType].filter(Boolean).join(' · ');
     const lastJob = jobs.filter(j => j.date).sort((x, y) => y.date.localeCompare(x.date))[0];
     const lastDate = lastJob ? new Date(lastJob.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
     return `<div class="card" onclick="goTo('screen-addr-detail','${a.id}')">
@@ -669,11 +668,31 @@ function renderAddrDetail(addrId) {
   currentAddrId = addrId;
   const jobs = loadJobs().filter(j => j.addressId === addrId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-  const fields = ADDR_FIELDS.map(f => `<div class="prop-field">
-    <span class="prop-label">${f.label}</span>
-    <input class="prop-input" value="${esc(a[f.key] || '')}" placeholder="—"
-      onblur="updateAddress('${addrId}',{${f.key}:this.value})">
-  </div>`).join('');
+  const fields = ADDR_FIELDS.map(f => {
+    const val = a[f.key] || '';
+    if (f.textarea) {
+      return `<div class="prop-field" style="flex-direction:column;align-items:stretch;">
+        <span class="prop-label" style="margin-bottom:6px;">${f.label}</span>
+        <textarea class="prop-input" style="text-align:left;min-height:100px;resize:vertical;padding:10px;background:#2b2b2b;border-radius:8px;border:1px solid #444;line-height:1.5;" placeholder="Add notes…"
+          onblur="updateAddress('${addrId}',{${f.key}:this.value})">${esc(val)}</textarea>
+      </div>`;
+    }
+    if (f.options) {
+      const opts = f.options.map(o => `<option value="${o}"${val === o ? ' selected' : ''}>${o}</option>`).join('');
+      return `<div class="prop-field">
+        <span class="prop-label">${f.label}</span>
+        <select class="prop-input" style="appearance:none;cursor:pointer;background:none;border:none;"
+          onchange="updateAddress('${addrId}',{${f.key}:this.value})">
+          <option value=""${!val ? ' selected' : ''}>—</option>${opts}
+        </select>
+      </div>`;
+    }
+    return `<div class="prop-field">
+      <span class="prop-label">${f.label}</span>
+      <input class="prop-input" value="${esc(val)}" placeholder="—"
+        onblur="updateAddress('${addrId}',{${f.key}:this.value})">
+    </div>`;
+  }).join('');
 
   const ticketList = jobs.length ? jobs.map(j => {
     const dateStr = j.date ? new Date(j.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '';
