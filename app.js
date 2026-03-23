@@ -399,9 +399,12 @@ async function renderDetail(jobId) {
       </div>
     </div>
 
-    <div class="section-title">Notes</div>
+    <div class="section-title">Job Notes</div>
+    <div style="background:#333;border-radius:12px;padding:14px;font-size:14px;color:#aaa;line-height:1.5;min-height:48px;white-space:pre-wrap;">${esc(j.notes) || '<span style="color:#555;">No job notes.</span>'}</div>
+
+    <div class="section-title">Tech Notes</div>
     <div class="field" style="margin-bottom:0;">
-      <textarea id="detail-notes" style="min-height:90px;" onblur="updateJob('${jobId}',{notes:this.value})">${esc(j.notes)}</textarea>
+      <textarea id="detail-tech-notes" style="min-height:90px;" placeholder="Add notes from the job…" onblur="updateJob('${jobId}',{techNotes:this.value})">${esc(j.techNotes || '')}</textarea>
     </div>
 
     <div class="section-title">Photos${j.photos.length ? ' ('+j.photos.length+')' : ''}</div>
