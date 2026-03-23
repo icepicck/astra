@@ -233,8 +233,23 @@ function renderArchiveList() {
 // ═══════════════════════════════════════════
 // CREATE TICKET
 // ═══════════════════════════════════════════
+function buildFullAddress() {
+  const street = document.getElementById('c-street').value.trim();
+  const suite = document.getElementById('c-suite').value.trim();
+  const city = document.getElementById('c-city').value.trim();
+  const state = document.getElementById('c-state').value;
+  const zip = document.getElementById('c-zip').value.trim();
+  const line1 = suite ? street + ', ' + suite : street;
+  const parts = [line1, city, state].filter(Boolean);
+  return zip ? parts.join(', ') + ' ' + zip : parts.join(', ');
+}
+
 function resetCreateForm() {
-  document.getElementById('c-address').value = '';
+  document.getElementById('c-street').value = '';
+  document.getElementById('c-suite').value = '';
+  document.getElementById('c-city').value = '';
+  document.getElementById('c-state').value = 'TX';
+  document.getElementById('c-zip').value = '';
   document.querySelectorAll('#c-types .chip').forEach(c => c.classList.remove('selected'));
   document.getElementById('c-status').value = 'Not Started';
   document.getElementById('c-date').value = new Date().toISOString().split('T')[0];
@@ -259,13 +274,28 @@ function addrAutocomplete(val) {
 }
 function pickAddr(addrId) {
   const a = getAddress(addrId);
-  if (a) document.getElementById('c-address').value = a.address;
+  if (!a) return;
+  // Parse address components back into fields
+  document.getElementById('c-street').value = a.street || a.address || '';
+  document.getElementById('c-suite').value = a.suite || '';
+  document.getElementById('c-city').value = a.city || '';
+  document.getElementById('c-state').value = a.state || 'TX';
+  document.getElementById('c-zip').value = a.zip || '';
   document.getElementById('c-addr-suggest').style.display = 'none';
 }
 
 function saveNewTicket() {
-  const address = document.getElementById('c-address').value.trim();
-  if (!address) { document.getElementById('c-address').focus(); return; }
+  const street = document.getElementById('c-street').value.trim();
+  if (!street) { document.getElementById('c-street').focus(); return; }
+
+  const address = buildFullAddress();
+  const addrComponents = {
+    street: street,
+    suite: document.getElementById('c-suite').value.trim(),
+    city: document.getElementById('c-city').value.trim(),
+    state: document.getElementById('c-state').value,
+    zip: document.getElementById('c-zip').value.trim()
+  };
 
   const types = [];
   document.querySelectorAll('#c-types .chip.selected').forEach(c => types.push(c.textContent));
@@ -274,7 +304,7 @@ function saveNewTicket() {
   const techId = techSel.value;
   const techName = techSel.options[techSel.selectedIndex]?.text || '';
 
-  const addressId = findOrCreateAddress(address);
+  const addressId = findOrCreateAddress(address, addrComponents);
 
   const job = {
     id: crypto.randomUUID(),
@@ -722,12 +752,19 @@ function renderAddrDetail(addrId) {
   `;
 }
 
-function findOrCreateAddress(addressText) {
+function findOrCreateAddress(addressText, components) {
   const addrs = loadAddresses();
   const existing = addrs.find(a => a.address.toLowerCase() === addressText.toLowerCase());
   if (existing) return existing.id;
   const newAddr = { id: crypto.randomUUID(), address: addressText };
-  ADDR_FIELDS.forEach(f => { newAddr[f.key] = ''; });
+  if (components) {
+    newAddr.street = components.street || '';
+    newAddr.suite = components.suite || '';
+    newAddr.city = components.city || '';
+    newAddr.state = components.state || '';
+    newAddr.zip = components.zip || '';
+  }
+  ADDR_FIELDS.forEach(f => { if (!(f.key in newAddr)) newAddr[f.key] = ''; });
   addrs.push(newAddr);
   saveAddresses(addrs);
   return newAddr.id;
@@ -1034,13 +1071,20 @@ async function renderMap() {
     astraMap = L.map('map-container', {
       zoomControl: false,
       attributionControl: false
-    }).setView([32.7, -97.3], 10); // Default to DFW area
+    }).setView([29.76, -95.37], 11); // Default to Houston
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19
     }).addTo(astraMap);
 
     L.control.zoom({ position: 'bottomright' }).addTo(astraMap);
+
+    // Center on user's actual location
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        astraMap.setView([pos.coords.latitude, pos.coords.longitude], 11);
+      }, function() {}, { timeout: 5000 });
+    }
   }
 
   // Clear existing markers and route
