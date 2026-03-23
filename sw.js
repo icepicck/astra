@@ -1,5 +1,5 @@
 const CACHE_NAME = 'astra-v2';
-const ASSETS = ['/', '/index.html', '/app.js'];
+const ASSETS = ['index.html', 'app.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
