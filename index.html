@@ -195,6 +195,27 @@ body {
 .field input:focus, .field textarea:focus, .field select:focus {
   outline: none; border-color: #FF6B00;
 }
+/* Purge browser autofill white heresy */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px #1a1a1a inset !important;
+  -webkit-text-fill-color: #e0e0e0 !important;
+  border-color: #333 !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+/* Purge Google Places dropdown heresy */
+.pac-container {
+  background: #222 !important; border: 1px solid #333 !important;
+  border-radius: 0 0 10px 10px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+}
+.pac-item { background: #222 !important; color: #e0e0e0 !important; border-top: 1px solid #2a2a2a !important; padding: 10px 14px !important; cursor: pointer !important; }
+.pac-item:hover { background: #2a2a2a !important; }
+.pac-item-query { color: #e0e0e0 !important; }
+.pac-matched { color: #FF6B00 !important; }
+.pac-icon { display: none !important; }
 .field textarea { resize: vertical; min-height: 100px; }
 .field select { appearance: none; cursor: pointer; }
 .field-error { color: #c0392b; font-size: 12px; font-weight: 700; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; display: none; }
