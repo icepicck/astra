@@ -1,5 +1,6 @@
-const CACHE_NAME = 'astra-v8';
-const ASSETS = ['index.html', 'app.js', 'manifest.json'];
+const CACHE_NAME = 'astra-v9';
+const ASSETS = ['index.html', 'app.js', 'manifest.json', 'rough_materials.json'];
+const TIMEOUT_MS = 3000;
 
 self.addEventListener('install', e => {
   e.waitUntil(
@@ -15,8 +16,43 @@ self.addEventListener('activate', e => {
   );
 });
 
+function timeoutFetch(request, ms) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    fetch(request).then(response => {
+      clearTimeout(timer);
+      resolve(response);
+    }).catch(err => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
 self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
+
+  // App shell (same-origin assets) — cache-first
+  if (url.origin === self.location.origin) {
+    e.respondWith(
+      caches.match(e.request).then(cached => {
+        if (cached) return cached;
+        return timeoutFetch(e.request, TIMEOUT_MS).then(response => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+          return response;
+        });
+      }).catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // External requests (Google Maps, etc.) — network-first with timeout, cache fallback
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
+    timeoutFetch(e.request, TIMEOUT_MS).then(response => {
+      const clone = response.clone();
+      caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+      return response;
+    }).catch(() => caches.match(e.request).then(cached => cached || new Response('OFFLINE', { status: 503 })))
   );
 });

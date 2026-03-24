@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#FF6B00">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -535,21 +535,50 @@ textarea.prop-input { resize: vertical; }
 }
 
 /* ── Print Stylesheet ── */
+@page { size: letter; margin: 0.5in; }
 @media print {
-  body { background: #fff !important; color: #000 !important; font-size: 14pt !important; }
+  * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  html, body { height: auto !important; overflow: visible !important; }
+  body { background: #fff !important; color: #000 !important; font-size: 14pt !important; line-height: 1.4 !important; }
   #global-nav, .sidebar, .sidebar-backdrop, .fab, .overlay,
-  .status-picker, .status-picker-backdrop, .btn, .upload-btn,
-  .media-grid, .btn-navigate, .btn-vector, .map-controls, .map-status { display: none !important; }
-  .screen { position: static !important; opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; height: auto !important; }
+  .status-picker, .status-picker-backdrop, .upload-btn,
+  .media-grid, .btn-navigate, .btn-vector, .map-controls, .map-status,
+  .btn-danger, .btn-restore, #mat-picker-overlay, .search-bar,
+  #map-container { display: none !important; }
+  .screen { position: static !important; opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; height: auto !important; display: block !important; }
   .screen:not(.active) { display: none !important; }
-  .screen-body { overflow: visible !important; padding: 0 !important; }
-  .card { background: none !important; border: 1px solid #ccc !important; color: #000 !important; }
+  .screen-body { overflow: visible !important; padding: 0 !important; max-height: none !important; }
+  .card { background: none !important; border: 1px solid #ccc !important; color: #000 !important; break-inside: avoid; }
   .badge { border: 1px solid #999 !important; background: #eee !important; color: #000 !important; }
-  .detail-header { background: none !important; border: 1px solid #ccc !important; }
-  .dash-card { background: none !important; border: 1px solid #ccc !important; }
-  .section-title { color: #000 !important; font-size: 14pt !important; font-weight: bold !important; }
+  .badge-status { font-size: 11pt !important; padding: 4px 12px !important; }
+  .detail-header { background: none !important; border: 1px solid #ccc !important; color: #000 !important; }
+  .detail-address { color: #000 !important; font-size: 16pt !important; }
+  .detail-row { color: #000 !important; border-color: #ccc !important; }
+  .detail-row span { color: #000 !important; }
+  .dash-card { background: none !important; border: 1px solid #ccc !important; color: #000 !important; }
+  .section-title { color: #000 !important; font-size: 14pt !important; font-weight: bold !important; border-color: #000 !important; }
   .week-header { color: #000 !important; border-bottom: 2px solid #000 !important; }
+  textarea, select { border: 1px solid #ccc !important; background: #fff !important; color: #000 !important; }
+  .mat-row { color: #000 !important; border-color: #ccc !important; break-inside: avoid; }
+  /* Print header + footer */
+  .screen-detail .screen-body::before {
+    content: 'ASTRA — WORK ORDER'; display: block; text-align: center;
+    font-size: 18pt; font-weight: 900; letter-spacing: 2px; padding-bottom: 8pt;
+    border-bottom: 3pt solid #000; margin-bottom: 12pt;
+  }
+  .screen-detail .screen-body::after {
+    content: ''; display: block; margin-top: 40pt; padding-top: 12pt;
+    border-top: 1px solid #000;
+  }
 }
+
+/* ── Toast notifications ── */
+#toast-container { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 10000; display: flex; flex-direction: column; gap: 8px; pointer-events: none; width: 90%; max-width: 400px; }
+.toast { background: #222; color: #e0e0e0; padding: 12px 18px; border-radius: 10px; font-size: 13px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; border-left: 4px solid #FF6B00; box-shadow: 0 4px 20px rgba(0,0,0,0.5); opacity: 0; transform: translateY(-10px); animation: toast-in 0.3s forwards; pointer-events: auto; }
+.toast.toast-error { border-left-color: #EF4444; }
+.toast.toast-success { border-left-color: #2d8a4e; }
+@keyframes toast-in { to { opacity: 1; transform: translateY(0); } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(-10px); } }
 
 /* Dark scrollbars */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -618,7 +647,7 @@ textarea.prop-input { resize: vertical; }
   <div class="screen-body">
     <div class="search-bar">
       <span class="search-icon">⌕</span>
-      <input type="text" id="search-input" name="astra-xsearch" autocomplete="nope" placeholder="ADDRESS, TECH, TYPE, NOTES..." oninput="runSearch(this.value)">
+      <input type="text" id="search-input" name="astra-xsearch" autocomplete="nope" placeholder="ADDRESS, TECH, TYPE, NOTES..." oninput="debouncedSearch(this.value)">
     </div>
     <div id="search-results">
       <div class="search-hint">SEARCH ALL TICKETS</div>
@@ -838,6 +867,9 @@ textarea.prop-input { resize: vertical; }
 <input type="file" class="hidden-input" id="photo-input" accept="image/*" multiple>
 <input type="file" class="hidden-input" id="drawing-input" accept="image/*,.pdf">
 <input type="file" class="hidden-input" id="video-input" accept="video/*" multiple>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
 
 <script src="app.js"></script>
 </body>

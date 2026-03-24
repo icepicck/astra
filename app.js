@@ -1,8 +1,33 @@
 // ═══════════════════════════════════════════
-// ASTRA v0.5 — FIELD SERVICE
+// ASTRA v0.6 — FIELD SERVICE
 // ═══════════════════════════════════════════
 
-// ── DATA LAYER ──
+// ── TOAST NOTIFICATIONS ──
+function showToast(msg, type) {
+  type = type || 'info';
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const el = document.createElement('div');
+  el.className = 'toast' + (type !== 'info' ? ' toast-' + type : '');
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(() => {
+    el.style.animation = 'toast-out 0.3s forwards';
+    setTimeout(() => el.remove(), 300);
+  }, 3000);
+}
+
+// ── GLOBAL ERROR HANDLING ──
+window.onerror = function(msg, src, line) {
+  console.error('Global error:', msg, src, line);
+  showToast('ERROR: ' + msg, 'error');
+};
+window.addEventListener('unhandledrejection', function(e) {
+  console.error('Unhandled promise rejection:', e.reason);
+  showToast('ERROR: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason)), 'error');
+});
+
+// ── DATA LAYER (IndexedDB + In-Memory Cache) ──
 const JOBS_KEY = 'astra_jobs';
 const TECHS_KEY = 'astra_techs';
 const ADDRS_KEY = 'astra_addresses';
@@ -11,57 +36,81 @@ const HOME_BASE_KEY = 'astra_home_base';
 const GMAPS_KEY_STORAGE = 'astra_gmaps_key';
 const STATUSES = ['Not Started','In Progress','Complete','Needs Callback','Waiting on Materials'];
 
-function loadJobs() {
-  try { return JSON.parse(localStorage.getItem(JOBS_KEY)) || []; }
-  catch { return []; }
-}
-function saveJobs(jobs) {
-  const clean = jobs.map(j => ({
-    ...j,
-    photos: (j.photos || []).map(p => ({ id: p.id, name: p.name, type: p.type || 'image', addedAt: p.addedAt })),
-    drawings: (j.drawings || []).map(d => ({ id: d.id, name: d.name, type: d.type || 'image', addedAt: d.addedAt })),
-    videos: (j.videos || []).map(v => ({ id: v.id, name: v.name, type: 'video', addedAt: v.addedAt }))
-  }));
-  localStorage.setItem(JOBS_KEY, JSON.stringify(clean));
-}
-function loadTechs() {
-  try { return JSON.parse(localStorage.getItem(TECHS_KEY)) || []; }
-  catch { return []; }
-}
-function saveTechs(techs) { localStorage.setItem(TECHS_KEY, JSON.stringify(techs)); }
-function loadAddresses() {
-  try { return JSON.parse(localStorage.getItem(ADDRS_KEY)) || []; }
-  catch { return []; }
-}
-function saveAddresses(addrs) { localStorage.setItem(ADDRS_KEY, JSON.stringify(addrs)); }
-function getAddress(id) { return loadAddresses().find(a => a.id === id); }
-function updateAddress(id, updates) {
-  const addrs = loadAddresses();
-  const idx = addrs.findIndex(a => a.id === id);
-  if (idx === -1) return;
-  Object.assign(addrs[idx], updates);
-  saveAddresses(addrs);
-}
-function statusClass(s) { return 'badge-' + s.toLowerCase().replace(/\s+/g, '-'); }
-function getJob(id) { return loadJobs().find(j => j.id === id); }
-function updateJob(id, updates) {
-  const jobs = loadJobs();
-  const idx = jobs.findIndex(j => j.id === id);
-  if (idx === -1) return;
-  Object.assign(jobs[idx], updates, { updatedAt: new Date().toISOString() });
-  saveJobs(jobs);
+// In-memory cache — all reads are synchronous from here
+const _cache = { jobs: [], techs: [], addresses: [] };
+let _astraDB = null;
+
+function _openAstraDB() {
+  return new Promise((resolve, reject) => {
+    if (_astraDB) { resolve(_astraDB); return; }
+    const req = indexedDB.open('astra_db', 1);
+    req.onupgradeneeded = function(e) {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('jobs')) db.createObjectStore('jobs', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('techs')) db.createObjectStore('techs', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('addresses')) db.createObjectStore('addresses', { keyPath: 'id' });
+    };
+    req.onsuccess = function(e) { _astraDB = e.target.result; resolve(_astraDB); };
+    req.onerror = function() { reject(req.error); };
+  });
 }
 
-// Seed default tech
-if (loadTechs().length === 0) {
-  saveTechs([{ id: crypto.randomUUID(), name: 'Mike Torres' }]);
+function _idbPutAll(storeName, items) {
+  if (!_astraDB) return;
+  try {
+    const tx = _astraDB.transaction(storeName, 'readwrite');
+    const store = tx.objectStore(storeName);
+    store.clear();
+    items.forEach(item => store.put(item));
+  } catch (e) { console.error('IDB write error (' + storeName + '):', e); }
 }
 
-// Migrate existing tickets: ensure all have a date field
-(function migrateDates() {
-  const jobs = loadJobs();
+function _idbGetAll(storeName) {
+  return new Promise((resolve, reject) => {
+    if (!_astraDB) { resolve([]); return; }
+    const tx = _astraDB.transaction(storeName, 'readonly');
+    const req = tx.objectStore(storeName).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function initDataLayer() {
+  await _openAstraDB();
+
+  // Try loading from IDB first
+  const [idbJobs, idbTechs, idbAddrs] = await Promise.all([
+    _idbGetAll('jobs'), _idbGetAll('techs'), _idbGetAll('addresses')
+  ]);
+
+  if (idbJobs.length > 0 || idbTechs.length > 0 || idbAddrs.length > 0) {
+    _cache.jobs = idbJobs;
+    _cache.techs = idbTechs;
+    _cache.addresses = idbAddrs;
+  } else {
+    // Migrate from localStorage on first run
+    try { _cache.jobs = JSON.parse(localStorage.getItem(JOBS_KEY)) || []; } catch { _cache.jobs = []; }
+    try { _cache.techs = JSON.parse(localStorage.getItem(TECHS_KEY)) || []; } catch { _cache.techs = []; }
+    try { _cache.addresses = JSON.parse(localStorage.getItem(ADDRS_KEY)) || []; } catch { _cache.addresses = []; }
+    // Persist to IDB
+    _idbPutAll('jobs', _cache.jobs);
+    _idbPutAll('techs', _cache.techs);
+    _idbPutAll('addresses', _cache.addresses);
+    // Clean up localStorage business data (keep settings)
+    localStorage.removeItem(JOBS_KEY);
+    localStorage.removeItem(TECHS_KEY);
+    localStorage.removeItem(ADDRS_KEY);
+  }
+
+  // Seed default tech
+  if (_cache.techs.length === 0) {
+    _cache.techs = [{ id: crypto.randomUUID(), name: 'Mike Torres' }];
+    _idbPutAll('techs', _cache.techs);
+  }
+
+  // Migrate dates + ensure fields exist
   let changed = false;
-  jobs.forEach(j => {
+  _cache.jobs.forEach(j => {
     if (!j.date) {
       j.date = j.createdAt ? j.createdAt.split('T')[0] : new Date().toISOString().split('T')[0];
       changed = true;
@@ -70,8 +119,39 @@ if (loadTechs().length === 0) {
     if (j.techNotes === undefined) { j.techNotes = ''; changed = true; }
     if (j.manually_added_to_vector === undefined) { j.manually_added_to_vector = false; changed = true; }
   });
-  if (changed) saveJobs(jobs);
-})();
+  if (changed) _idbPutAll('jobs', _cache.jobs);
+}
+
+// Synchronous read/write API — same signatures as before
+function loadJobs() { return _cache.jobs; }
+function saveJobs(jobs) {
+  _cache.jobs = jobs.map(j => ({
+    ...j,
+    photos: (j.photos || []).map(p => ({ id: p.id, name: p.name, type: p.type || 'image', addedAt: p.addedAt })),
+    drawings: (j.drawings || []).map(d => ({ id: d.id, name: d.name, type: d.type || 'image', addedAt: d.addedAt })),
+    videos: (j.videos || []).map(v => ({ id: v.id, name: v.name, type: 'video', mimeType: v.mimeType, addedAt: v.addedAt }))
+  }));
+  _idbPutAll('jobs', _cache.jobs);
+}
+function loadTechs() { return _cache.techs; }
+function saveTechs(techs) { _cache.techs = techs; _idbPutAll('techs', techs); }
+function loadAddresses() { return _cache.addresses; }
+function saveAddresses(addrs) { _cache.addresses = addrs; _idbPutAll('addresses', addrs); }
+function getAddress(id) { return _cache.addresses.find(a => a.id === id); }
+function updateAddress(id, updates) {
+  const idx = _cache.addresses.findIndex(a => a.id === id);
+  if (idx === -1) return;
+  Object.assign(_cache.addresses[idx], updates);
+  _idbPutAll('addresses', _cache.addresses);
+}
+function statusClass(s) { return 'badge-' + s.toLowerCase().replace(/\s+/g, '-'); }
+function getJob(id) { return _cache.jobs.find(j => j.id === id); }
+function updateJob(id, updates) {
+  const idx = _cache.jobs.findIndex(j => j.id === id);
+  if (idx === -1) return;
+  Object.assign(_cache.jobs[idx], updates, { updatedAt: new Date().toISOString() });
+  saveJobs(_cache.jobs);
+}
 
 // ── INDEXEDDB MEDIA STORE ──
 let mediaDB = null;
@@ -142,18 +222,39 @@ async function clearAllMediaBlobs() {
 async function getMediaDBSize() {
   const blobs = await getAllMediaBlobs();
   let total = 0;
-  blobs.forEach(b => { total += (b.data || '').length; });
+  blobs.forEach(b => {
+    if (b.data instanceof Blob) total += b.data.size;
+    else if (typeof b.data === 'string') total += b.data.length;
+  });
   return total;
 }
 
+async function cleanOrphanedMedia() {
+  const allBlobs = await getAllMediaBlobs();
+  const jobs = loadJobs();
+  const usedIds = new Set();
+  jobs.forEach(j => {
+    (j.photos || []).forEach(p => usedIds.add(p.id));
+    (j.drawings || []).forEach(d => usedIds.add(d.id));
+    (j.videos || []).forEach(v => usedIds.add(v.id));
+  });
+  let cleaned = 0;
+  for (const blob of allBlobs) {
+    if (!usedIds.has(blob.id)) {
+      await deleteMediaBlob(blob.id);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) console.log('Cleaned ' + cleaned + ' orphaned media blobs.');
+}
+
 async function migrateLegacyMedia() {
-  const jobs = JSON.parse(localStorage.getItem(JOBS_KEY) || '[]');
   let migrated = false;
-  for (const j of jobs) {
+  for (const j of _cache.jobs) {
     for (const type of ['photos', 'drawings']) {
       if (!j[type]) continue;
       for (const item of j[type]) {
-        if (item.data && item.data.startsWith('data:')) {
+        if (item.data && typeof item.data === 'string' && item.data.startsWith('data:')) {
           if (!item.id) item.id = crypto.randomUUID();
           await saveMediaBlob(item.id, item.data);
           delete item.data;
@@ -163,11 +264,22 @@ async function migrateLegacyMedia() {
     }
     if (!j.videos) j.videos = [];
   }
-  if (migrated) localStorage.setItem(JOBS_KEY, JSON.stringify(jobs));
+  if (migrated) saveJobs(_cache.jobs);
 }
 
-// Init
-openMediaDB().then(() => migrateLegacyMedia()).then(() => renderJobList());
+// ── REQUEST PERSISTENT STORAGE ──
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage.persist().then(granted => {
+    if (!granted) console.warn('Persistent storage denied — data may be evicted by browser.');
+  });
+}
+
+// Init — data layer must be ready before any rendering
+initDataLayer()
+  .then(() => openMediaDB())
+  .then(() => migrateLegacyMedia())
+  .then(() => { renderJobList(); cleanOrphanedMedia(); })
+  .catch(e => console.error('Init failed:', e));
 
 // ═══════════════════════════════════════════
 // NAVIGATION + SIDEBAR
@@ -652,15 +764,22 @@ async function renderDetail(jobId) {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const data = await getMediaBlob(item.id);
-      if (item.type === 'video') {
+      const src = (data instanceof Blob) ? URL.createObjectURL(data) : (data || '');
+      if (item.type === 'pdf') {
+        parts.push(`<div class="media-thumb" onclick="openMedia('${jobId}','${type}',${i})" style="display:flex;align-items:center;justify-content:center;background:#2a2a2a;">
+          <div style="text-align:center;"><div style="font-size:28px;">📄</div><div style="font-size:10px;color:#888;margin-top:4px;">PDF</div></div>
+          <button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}',${i})">✕</button>
+          <div class="media-thumb-label">${esc(item.name)}</div>
+        </div>`);
+      } else if (item.type === 'video') {
         parts.push(`<div class="media-thumb" onclick="openMedia('${jobId}','${type}',${i})">
-          <video src="${data || ''}" muted preload="metadata"></video>
+          <video src="${src}" muted preload="metadata"></video>
           <div class="video-badge">▶</div>
           <button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}',${i})">✕</button>
         </div>`);
       } else {
         parts.push(`<div class="media-thumb" onclick="openMedia('${jobId}','${type}',${i})">
-          <img src="${data || ''}" alt="${esc(item.name)}">
+          <img src="${src}" alt="${esc(item.name)}">
           <button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}',${i})">✕</button>
           ${type === 'drawings' ? '<div class="media-thumb-label">' + esc(item.name) + '</div>' : ''}
         </div>`);
@@ -741,6 +860,11 @@ function toggleVector(jobId) {
 // ═══════════════════════════════════════════
 // SEARCH
 // ═══════════════════════════════════════════
+let _searchTimer = null;
+function debouncedSearch(query) {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(() => runSearch(query), 200);
+}
 function runSearch(query) {
   const el = document.getElementById('search-results');
   const q = query.trim().toLowerCase();
@@ -899,6 +1023,7 @@ function findOrCreateAddress(addressText, components) {
 // ARCHIVE / STATUS
 // ═══════════════════════════════════════════
 function archiveJob(id) {
+  if (!confirm('ARCHIVE THIS TICKET?')) return;
   updateJob(id, { archived: true });
   goTo('screen-jobs');
 }
@@ -1088,14 +1213,22 @@ document.getElementById('drawing-input').addEventListener('change', async functi
   if (!j) return;
   for (const f of this.files) {
     const id = crypto.randomUUID();
-    const data = await compressImage(f, 1600, 0.8);
-    await saveMediaBlob(id, data);
-    j.drawings.push({ id, name: f.name, type: 'image', addedAt: new Date().toISOString() });
+    const isPDF = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+    if (isPDF) {
+      await saveMediaBlob(id, f.slice(0, f.size, f.type));
+      j.drawings.push({ id, name: f.name, type: 'pdf', mimeType: f.type, addedAt: new Date().toISOString() });
+    } else {
+      const data = await compressImage(f, 1600, 0.8);
+      await saveMediaBlob(id, data);
+      j.drawings.push({ id, name: f.name, type: 'image', addedAt: new Date().toISOString() });
+    }
   }
   updateJob(currentJobId, { drawings: j.drawings });
   renderDetail(currentJobId);
   this.value = '';
 });
+
+const VIDEO_MAX_BYTES = 50 * 1024 * 1024; // 50 MB cap
 
 document.getElementById('video-input').addEventListener('change', async function() {
   if (!currentJobId || !this.files.length) return;
@@ -1103,10 +1236,14 @@ document.getElementById('video-input').addEventListener('change', async function
   if (!j) return;
   if (!j.videos) j.videos = [];
   for (const f of this.files) {
+    if (f.size > VIDEO_MAX_BYTES) {
+      alert('VIDEO TOO LARGE: ' + f.name + ' (' + (f.size / (1024*1024)).toFixed(0) + ' MB). MAX 50 MB.');
+      continue;
+    }
     const id = crypto.randomUUID();
-    const data = await fileToDataURL(f);
-    await saveMediaBlob(id, data);
-    j.videos.push({ id, name: f.name, type: 'video', addedAt: new Date().toISOString() });
+    const blob = f.slice(0, f.size, f.type);
+    await saveMediaBlob(id, blob);
+    j.videos.push({ id, name: f.name, type: 'video', mimeType: f.type, addedAt: new Date().toISOString() });
   }
   updateJob(currentJobId, { videos: j.videos });
   renderDetail(currentJobId);
@@ -1114,6 +1251,7 @@ document.getElementById('video-input').addEventListener('change', async function
 });
 
 async function deleteMedia(jobId, type, idx) {
+  if (!confirm('DELETE THIS FILE?')) return;
   const j = getJob(jobId);
   if (!j) return;
   const item = j[type][idx];
@@ -1140,10 +1278,15 @@ async function openMedia(jobId, type, idx) {
   document.getElementById('overlay-title').textContent = item.name.toUpperCase();
   const body = document.getElementById('overlay-body');
   const data = await getMediaBlob(item.id);
+  const mediaUrl = (data instanceof Blob) ? URL.createObjectURL(data) : (data || '');
+  if (item.type === 'pdf') {
+    window.open(mediaUrl, '_blank');
+    return;
+  }
   if (item.type === 'video') {
-    body.innerHTML = `<video src="${data || ''}" controls autoplay style="max-width:100%;max-height:100%;" id="zoom-vid"></video>`;
+    body.innerHTML = `<video src="${mediaUrl}" controls autoplay style="max-width:100%;max-height:100%;" id="zoom-vid"></video>`;
   } else {
-    body.innerHTML = `<img src="${data || ''}" alt="${esc(item.name)}" id="zoom-img" draggable="false">`;
+    body.innerHTML = `<img src="${mediaUrl}" alt="${esc(item.name)}" id="zoom-img" draggable="false">`;
     setupPinchZoom(body, document.getElementById('zoom-img'));
   }
   document.getElementById('media-overlay').classList.add('active');
@@ -1207,6 +1350,10 @@ function closeOverlay() { document.getElementById('media-overlay').classList.rem
 // GOOGLE MAPS — VECTOR ROUTE
 // ═══════════════════════════════════════════
 let gmapsLoaded = false, gMap = null, gMarkers = [], gDirectionsRenderer = null, gMapJobs = [];
+const MAP_STATUS_COLORS = {
+  'Not Started': '#FF6B00', 'In Progress': '#FBBF24',
+  'Needs Callback': '#EF4444', 'Waiting on Materials': '#3B82F6'
+};
 
 function getGmapsKey() { return localStorage.getItem(GMAPS_KEY_STORAGE) || ''; }
 function saveGmapsKey(key) { localStorage.setItem(GMAPS_KEY_STORAGE, key.trim()); gmapsLoaded = false; gMap = null; }
@@ -1299,14 +1446,9 @@ async function renderMap() {
   const bounds = new google.maps.LatLngBounds();
   let geocoded = 0;
 
-  const statusColors = {
-    'Not Started': '#FF6B00', 'In Progress': '#FBBF24',
-    'Needs Callback': '#EF4444', 'Waiting on Materials': '#3B82F6'
-  };
-
+  const addrs = loadAddresses();
   for (const job of jobs) {
     try {
-      const addrs = loadAddresses();
       const addrRec = addrs.find(a => a.address.toLowerCase() === job.address.toLowerCase());
       let coords;
       if (addrRec && addrRec.lat && addrRec.lng) {
@@ -1315,7 +1457,7 @@ async function renderMap() {
         coords = await gmapGeocode(job.address);
         if (addrRec) updateAddress(addrRec.id, { lat: coords.lat, lng: coords.lng });
       }
-      const color = statusColors[job.status] || '#FF6B00';
+      const color = MAP_STATUS_COLORS[job.status] || '#FF6B00';
       const marker = new google.maps.Marker({
         position: coords, map: gMap, title: job.address,
         icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 10 }
@@ -1459,12 +1601,8 @@ function reroute() {
 function clearRoute() {
   if (gDirectionsRenderer) { gDirectionsRenderer.setMap(null); gDirectionsRenderer = null; }
   gMarkers.forEach(m => m.setMap(null)); gMarkers = [];
-  const statusColors = {
-    'Not Started': '#FF6B00', 'In Progress': '#FBBF24',
-    'Needs Callback': '#EF4444', 'Waiting on Materials': '#3B82F6'
-  };
   gMapJobs.forEach(d => {
-    const color = statusColors[d.job.status] || '#FF6B00';
+    const color = MAP_STATUS_COLORS[d.job.status] || '#FF6B00';
     const marker = new google.maps.Marker({
       position: d.coords, map: gMap, title: d.job.address,
       icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 10 }
@@ -1617,6 +1755,7 @@ function adjustMatQty(jobId, itemId, delta) {
 }
 
 function removeMatFromJob(jobId, itemId) {
+  if (!confirm('REMOVE THIS MATERIAL?')) return;
   const mats = getJobMaterials(jobId).filter(x => x.itemId !== itemId);
   setJobMaterials(jobId, mats);
   renderJobMaterials(jobId);
@@ -1791,13 +1930,12 @@ async function exportData() {
   const data = {
     version: '0.5',
     exportedAt: new Date().toISOString(),
-    jobs: JSON.parse(localStorage.getItem(JOBS_KEY) || '[]'),
+    jobs: loadJobs(),
     techs: loadTechs(),
     addresses: loadAddresses(),
     materialLibrary: loadMaterialLibrary(),
     navFrequency: JSON.parse(localStorage.getItem(NAV_FREQ_KEY) || '{}'),
     homeBase: getHomeBase(),
-    gmapsKey: getGmapsKey(),
     media: mediaBlobs
   };
   const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
@@ -1815,9 +1953,25 @@ async function importData(input) {
   reader.onload = async function() {
     try {
       const data = JSON.parse(reader.result);
-      if (!data.jobs || !Array.isArray(data.jobs)) { alert('INVALID BACKUP.'); return; }
-      if (!confirm('REPLACE ALL DATA WITH BACKUP?')) return;
-      localStorage.setItem(JOBS_KEY, JSON.stringify(data.jobs));
+      if (!data.jobs || !Array.isArray(data.jobs)) { alert('INVALID BACKUP: NO JOBS ARRAY.'); return; }
+      // Validate each job has minimum required fields
+      const invalid = data.jobs.filter(j => !j.id || !j.address);
+      if (invalid.length > 0) { alert('INVALID BACKUP: ' + invalid.length + ' JOBS MISSING ID OR ADDRESS.'); return; }
+      if (data.techs && !Array.isArray(data.techs)) { alert('INVALID BACKUP: TECHS NOT AN ARRAY.'); return; }
+      if (data.addresses && !Array.isArray(data.addresses)) { alert('INVALID BACKUP: ADDRESSES NOT AN ARRAY.'); return; }
+      if (!confirm('REPLACE ALL DATA WITH BACKUP? (' + data.jobs.length + ' TICKETS)')) return;
+      // Ensure all jobs have required fields with defaults
+      data.jobs.forEach(j => {
+        if (!j.photos) j.photos = [];
+        if (!j.drawings) j.drawings = [];
+        if (!j.videos) j.videos = [];
+        if (!j.status) j.status = 'Not Started';
+        if (!j.types) j.types = ['GENERAL'];
+        if (!j.date) j.date = j.createdAt ? j.createdAt.split('T')[0] : new Date().toISOString().split('T')[0];
+        if (j.techNotes === undefined) j.techNotes = '';
+        if (j.manually_added_to_vector === undefined) j.manually_added_to_vector = false;
+      });
+      saveJobs(data.jobs);
       if (data.techs) saveTechs(data.techs);
       if (data.addresses) saveAddresses(data.addresses);
       if (data.materialLibrary) localStorage.setItem(MAT_LIB_KEY, JSON.stringify(data.materialLibrary));
@@ -1826,7 +1980,9 @@ async function importData(input) {
       if (data.gmapsKey) saveGmapsKey(data.gmapsKey);
       if (data.media && Array.isArray(data.media)) {
         await clearAllMediaBlobs();
-        for (const blob of data.media) await saveMediaBlob(blob.id, blob.data);
+        for (const blob of data.media) {
+          if (blob && blob.id && blob.data) await saveMediaBlob(blob.id, blob.data);
+        }
       }
       renderSettings();
       alert(data.jobs.length + ' TICKETS RESTORED.');
