@@ -269,6 +269,7 @@ function initScreen(screenId, jobId) {
   if (screenId === 'screen-dashboard') renderDashboard();
   if (screenId === 'screen-addresses') { renderAddressList(''); const s = document.getElementById('addr-search'); if(s) s.value = ''; }
   if (screenId === 'screen-addr-detail' && jobId !== undefined) renderAddrDetail(jobId);
+  if (screenId === 'screen-materials') renderMaterials();
   if (screenId === 'screen-vector') renderMap();
   if (screenId === 'screen-settings') renderSettings();
   if (screenId === 'screen-search') {
@@ -705,6 +706,10 @@ async function renderDetail(jobId) {
       <textarea id="detail-tech-notes" style="min-height:90px;" placeholder="NOTES FROM THE JOB..." onblur="updateJob('${jobId}',{techNotes:this.value})">${esc(j.techNotes || '')}</textarea>
     </div>
 
+    <div class="section-title">MATERIALS${(j.materials||[]).length ? ' (' + (j.materials||[]).length + ')' : ''}</div>
+    <button class="upload-btn" onclick="openMatPicker('${jobId}')">ADD MATERIALS</button>
+    <div id="job-materials-list"></div>
+
     <div class="section-title">PHOTOS${j.photos.length ? ' (' + j.photos.length + ')' : ''}</div>
     <button class="upload-btn" onclick="document.getElementById('photo-input').click()">ADD PHOTOS</button>
     ${j.photos.length ? '<div class="media-grid">' + photoThumbs + '</div>' : ''}
@@ -723,6 +728,7 @@ async function renderDetail(jobId) {
     }
     <div style="height:24px;"></div>
   `;
+  renderJobMaterials(jobId);
 }
 
 function toggleVector(jobId) {
@@ -863,6 +869,7 @@ function renderAddrDetail(addrId) {
     </div>
     <div class="section-title">PROPERTY INFO</div>
     <div class="dash-card" style="padding:8px 14px;">${fields}</div>
+    ${renderAddrMaterialRollup(addrId)}
     <div class="section-title">WORK HISTORY (${jobs.length})</div>
     ${ticketList}
     <div style="height:24px;"></div>
@@ -1471,27 +1478,255 @@ function clearRoute() {
 }
 
 // ═══════════════════════════════════════════
-// MATERIALS PLACEHOLDER
 // ═══════════════════════════════════════════
+// MATERIALS
+// ═══════════════════════════════════════════
+const MAT_LIB_KEY = 'astra_material_library_rough';
+
+function loadMaterialLibrary() {
+  try { return JSON.parse(localStorage.getItem(MAT_LIB_KEY)) || null; }
+  catch { return null; }
+}
+
 function importMaterialLibrary(input) {
   if (!input.files.length) return;
   const reader = new FileReader();
   reader.onload = function() {
     try {
       const data = JSON.parse(reader.result);
-      if (!data.material_type || !data.categories) {
+      if (!data.categories || !Array.isArray(data.categories)) {
         alert('INVALID MATERIAL JSON.');
         return;
       }
-      const key = 'astra_material_library_' + data.material_type.toLowerCase();
-      localStorage.setItem(key, JSON.stringify(data));
-      alert('IMPORTED: ' + data.material_type.toUpperCase() + ' (' + data.categories.length + ' CATEGORIES)');
+      localStorage.setItem(MAT_LIB_KEY, JSON.stringify(data));
+      alert('IMPORTED: ROUGH (' + data.categories.length + ' CATEGORIES, ' + data.categories.reduce((s,c) => s + c.items.length, 0) + ' ITEMS)');
+      renderMaterials();
     } catch (e) {
       alert('IMPORT FAILED: ' + e.message);
     }
     input.value = '';
   };
   reader.readAsText(input.files[0]);
+}
+
+function renderMaterials() {
+  const body = document.getElementById('materials-body');
+  const lib = loadMaterialLibrary();
+  if (!lib) {
+    body.innerHTML = `
+      <div class="empty-state">
+        <div>☰</div>
+        <div>NO MATERIAL LIBRARY LOADED</div>
+        <button class="btn" style="margin-top:16px;" onclick="document.getElementById('mat-import-input').click()">IMPORT ROUGH JSON</button>
+        <input type="file" id="mat-import-input" accept=".json" style="display:none" onchange="importMaterialLibrary(this)">
+      </div>`;
+    return;
+  }
+  const allItems = lib.categories.flatMap(c => c.items.map(i => ({ ...i, catLabel: c.label, catId: c.id })));
+  body.innerHTML = `
+    <div class="search-bar" style="margin-bottom:12px;">
+      <span class="search-icon">⌕</span>
+      <input type="text" id="mat-search" name="astra-xmatsearch" autocomplete="nope" placeholder="SEARCH ${allItems.length} ITEMS..." oninput="filterMaterials(this.value)">
+    </div>
+    <div id="mat-list"></div>
+    <div style="padding:12px;text-align:center;">
+      <button class="btn" style="background:none;border:1px solid #333;color:#555;font-size:11px;" onclick="document.getElementById('mat-reimport-input').click()">RE-IMPORT LIBRARY</button>
+      <input type="file" id="mat-reimport-input" accept=".json" style="display:none" onchange="importMaterialLibrary(this)">
+    </div>
+    <div style="height:24px;"></div>`;
+  filterMaterials('');
+}
+
+function filterMaterials(query) {
+  const lib = loadMaterialLibrary();
+  if (!lib) return;
+  const el = document.getElementById('mat-list');
+  const q = query.trim().toLowerCase();
+  let html = '';
+  for (const cat of lib.categories) {
+    const items = q ? cat.items.filter(i => i.name.toLowerCase().includes(q)) : cat.items;
+    if (!items.length) continue;
+    html += `<div class="section-title" style="margin-top:12px;">${esc(cat.label)} (${items.length})</div>`;
+    html += `<div class="dash-card" style="padding:4px 14px;">`;
+    for (const item of items) {
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #2a2a2a;">
+        <span style="font-size:13px;font-weight:600;flex:1;">${esc(item.name)}</span>
+        <span style="font-size:11px;color:#555;min-width:30px;text-align:right;">${esc(item.unit)}</span>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  if (!html) html = '<div class="search-hint">NO ITEMS MATCH "' + esc(query).toUpperCase() + '"</div>';
+  el.innerHTML = html;
+}
+
+// ── Ticket-level materials ──
+function getJobMaterials(jobId) {
+  const j = getJob(jobId);
+  return (j && j.materials) ? j.materials : [];
+}
+
+function setJobMaterials(jobId, materials) {
+  updateJob(jobId, { materials });
+}
+
+function renderJobMaterials(jobId) {
+  const el = document.getElementById('job-materials-list');
+  if (!el) return;
+  const mats = getJobMaterials(jobId);
+  if (!mats.length) {
+    el.innerHTML = '<div style="color:#333;font-size:12px;padding:8px 0;text-transform:uppercase;">NO MATERIALS ADDED.</div>';
+    return;
+  }
+  // Group by category
+  const lib = loadMaterialLibrary();
+  const catMap = {};
+  if (lib) lib.categories.forEach(c => c.items.forEach(i => { catMap[i.id] = c.label; }));
+  const grouped = {};
+  for (const m of mats) {
+    const cat = catMap[m.itemId] || 'OTHER';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(m);
+  }
+  let html = '';
+  for (const [cat, items] of Object.entries(grouped)) {
+    html += `<div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;margin-top:8px;margin-bottom:4px;">${esc(cat)}</div>`;
+    for (const m of items) {
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #2a2a2a;">
+        <span style="font-size:13px;flex:1;">${esc(m.name)}</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button onclick="adjustMatQty('${jobId}','${m.itemId}',-1)" style="background:none;border:1px solid #333;color:#e0e0e0;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;">−</button>
+          <span style="font-size:14px;font-weight:800;min-width:24px;text-align:center;">${m.qty}</span>
+          <button onclick="adjustMatQty('${jobId}','${m.itemId}',1)" style="background:none;border:1px solid #333;color:#e0e0e0;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;">+</button>
+          <span style="font-size:10px;color:#555;min-width:24px;">${esc(m.unit)}</span>
+          <button onclick="removeMatFromJob('${jobId}','${m.itemId}')" style="background:none;border:none;color:#c0392b;cursor:pointer;font-size:14px;padding:0 4px;">✕</button>
+        </div>
+      </div>`;
+    }
+  }
+  el.innerHTML = html;
+}
+
+function adjustMatQty(jobId, itemId, delta) {
+  const mats = getJobMaterials(jobId);
+  const m = mats.find(x => x.itemId === itemId);
+  if (!m) return;
+  m.qty = Math.max(1, m.qty + delta);
+  setJobMaterials(jobId, mats);
+  renderJobMaterials(jobId);
+}
+
+function removeMatFromJob(jobId, itemId) {
+  const mats = getJobMaterials(jobId).filter(x => x.itemId !== itemId);
+  setJobMaterials(jobId, mats);
+  renderJobMaterials(jobId);
+}
+
+function openMatPicker(jobId) {
+  const lib = loadMaterialLibrary();
+  if (!lib) { alert('NO MATERIAL LIBRARY. IMPORT IN MATERIALS SCREEN.'); return; }
+  const existing = getJobMaterials(jobId).map(m => m.itemId);
+  let overlay = document.getElementById('mat-picker-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'mat-picker-overlay';
+    document.body.appendChild(overlay);
+  }
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;flex-direction:column;padding:16px;';
+  overlay.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <span style="font-weight:800;font-size:14px;text-transform:uppercase;letter-spacing:1px;">ADD MATERIALS</span>
+      <button onclick="closeMatPicker()" style="background:none;border:none;color:#e0e0e0;font-size:24px;cursor:pointer;padding:4px 8px;">✕</button>
+    </div>
+    <div class="search-bar" style="margin-bottom:12px;">
+      <span class="search-icon">⌕</span>
+      <input type="text" id="mat-picker-search" name="astra-xmatpick" autocomplete="nope" placeholder="SEARCH MATERIALS..." oninput="filterMatPicker('${jobId}',this.value)" autofocus>
+    </div>
+    <div id="mat-picker-list" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>`;
+  filterMatPicker(jobId, '');
+}
+
+function closeMatPicker() {
+  const overlay = document.getElementById('mat-picker-overlay');
+  if (overlay) overlay.remove();
+}
+
+function filterMatPicker(jobId, query) {
+  const lib = loadMaterialLibrary();
+  if (!lib) return;
+  const el = document.getElementById('mat-picker-list');
+  const q = query.trim().toLowerCase();
+  const existing = getJobMaterials(jobId).map(m => m.itemId);
+  let html = '';
+  for (const cat of lib.categories) {
+    const items = q ? cat.items.filter(i => i.name.toLowerCase().includes(q)) : cat.items;
+    if (!items.length) continue;
+    html += `<div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;margin:12px 0 6px;">${esc(cat.label)}</div>`;
+    for (const item of items) {
+      const added = existing.includes(item.id);
+      html += `<div onclick="${added ? '' : "addMatToJob('" + jobId + "','" + item.id + "','" + esc(item.name).replace(/'/g, "\\'") + "','" + item.unit + "')"}"
+        style="display:flex;justify-content:space-between;align-items:center;padding:12px 8px;border-bottom:1px solid #2a2a2a;cursor:${added ? 'default' : 'pointer'};min-height:44px;${added ? 'opacity:0.4;' : ''}">
+        <span style="font-size:13px;font-weight:600;">${esc(item.name)}</span>
+        <span style="font-size:11px;color:${added ? '#FF6B00' : '#555'};">${added ? '✓ ADDED' : item.unit}</span>
+      </div>`;
+    }
+  }
+  if (!html) html = '<div style="color:#555;text-align:center;padding:24px;font-size:12px;">NO ITEMS MATCH</div>';
+  el.innerHTML = html;
+}
+
+function addMatToJob(jobId, itemId, name, unit) {
+  const mats = getJobMaterials(jobId);
+  if (mats.find(m => m.itemId === itemId)) return;
+  mats.push({ itemId, name, qty: 1, unit });
+  setJobMaterials(jobId, mats);
+  // Re-render picker to show checkmark
+  const search = document.getElementById('mat-picker-search');
+  filterMatPicker(jobId, search ? search.value : '');
+  renderJobMaterials(jobId);
+}
+
+// ── Address-level material rollup ──
+function getAddrMaterialRollup(addrId) {
+  const jobs = loadJobs().filter(j => j.addressId === addrId && !j.archived);
+  const rollup = {};
+  for (const j of jobs) {
+    if (!j.materials) continue;
+    for (const m of j.materials) {
+      if (rollup[m.itemId]) {
+        rollup[m.itemId].qty += m.qty;
+      } else {
+        rollup[m.itemId] = { ...m };
+      }
+    }
+  }
+  return Object.values(rollup).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function renderAddrMaterialRollup(addrId) {
+  const rollup = getAddrMaterialRollup(addrId);
+  if (!rollup.length) return '';
+  const lib = loadMaterialLibrary();
+  const catMap = {};
+  if (lib) lib.categories.forEach(c => c.items.forEach(i => { catMap[i.id] = c.label; }));
+  const grouped = {};
+  for (const m of rollup) {
+    const cat = catMap[m.itemId] || 'OTHER';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(m);
+  }
+  let html = `<div class="section-title">MATERIALS TOTAL (${rollup.length})</div><div class="dash-card" style="padding:8px 14px;">`;
+  for (const [cat, items] of Object.entries(grouped)) {
+    html += `<div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;margin-top:8px;margin-bottom:4px;">${esc(cat)}</div>`;
+    for (const m of items) {
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #2a2a2a;">
+        <span style="font-size:13px;">${esc(m.name)}</span>
+        <span style="font-size:13px;font-weight:800;color:#FF6B00;">${m.qty} ${esc(m.unit)}</span>
+      </div>`;
+    }
+  }
+  html += '</div>';
+  return html;
 }
 
 // ═══════════════════════════════════════════
