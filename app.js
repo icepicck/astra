@@ -1794,6 +1794,10 @@ async function exportData() {
     jobs: JSON.parse(localStorage.getItem(JOBS_KEY) || '[]'),
     techs: loadTechs(),
     addresses: loadAddresses(),
+    materialLibrary: loadMaterialLibrary(),
+    navFrequency: JSON.parse(localStorage.getItem(NAV_FREQ_KEY) || '{}'),
+    homeBase: getHomeBase(),
+    gmapsKey: getGmapsKey(),
     media: mediaBlobs
   };
   const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
@@ -1816,6 +1820,10 @@ async function importData(input) {
       localStorage.setItem(JOBS_KEY, JSON.stringify(data.jobs));
       if (data.techs) saveTechs(data.techs);
       if (data.addresses) saveAddresses(data.addresses);
+      if (data.materialLibrary) localStorage.setItem(MAT_LIB_KEY, JSON.stringify(data.materialLibrary));
+      if (data.navFrequency) localStorage.setItem(NAV_FREQ_KEY, JSON.stringify(data.navFrequency));
+      if (data.homeBase) saveHomeBase(data.homeBase);
+      if (data.gmapsKey) saveGmapsKey(data.gmapsKey);
       if (data.media && Array.isArray(data.media)) {
         await clearAllMediaBlobs();
         for (const blob of data.media) await saveMediaBlob(blob.id, blob.data);
