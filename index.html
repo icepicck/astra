@@ -618,7 +618,7 @@ textarea.prop-input { resize: vertical; }
   <div class="screen-body">
     <div class="search-bar">
       <span class="search-icon">⌕</span>
-      <input type="text" id="search-input" placeholder="ADDRESS, TECH, TYPE, NOTES..." oninput="runSearch(this.value)">
+      <input type="text" id="search-input" name="astra-xsearch" autocomplete="nope" placeholder="ADDRESS, TECH, TYPE, NOTES..." oninput="runSearch(this.value)">
     </div>
     <div id="search-results">
       <div class="search-hint">SEARCH ALL TICKETS</div>
@@ -636,17 +636,17 @@ textarea.prop-input { resize: vertical; }
   <div class="screen-body" id="create-body">
     <div class="field">
       <label>STREET ADDRESS</label>
-      <input type="text" id="c-street" placeholder="START TYPING AN ADDRESS..." oninput="addrAutocomplete(this.value)">
+      <input type="text" id="c-street" name="astra-xstreet" autocomplete="nope" placeholder="START TYPING AN ADDRESS..." oninput="addrAutocomplete(this.value)">
       <div id="c-addr-suggest" class="addr-suggest" style="display:none;"></div>
     </div>
     <div class="field">
       <label>SUITE / UNIT</label>
-      <input type="text" id="c-suite" placeholder="APT, SUITE, UNIT">
+      <input type="text" id="c-suite" name="astra-xsuite" autocomplete="nope" placeholder="APT, SUITE, UNIT">
     </div>
     <div style="display:grid;grid-template-columns:1fr 80px 100px;gap:10px;">
       <div class="field">
         <label>CITY</label>
-        <input type="text" id="c-city" placeholder="HOUSTON">
+        <input type="text" id="c-city" name="astra-xcity" autocomplete="nope" placeholder="HOUSTON">
       </div>
       <div class="field">
         <label>STATE</label>
@@ -673,7 +673,7 @@ textarea.prop-input { resize: vertical; }
       </div>
       <div class="field">
         <label>ZIP</label>
-        <input type="text" id="c-zip" placeholder="77001" inputmode="numeric" maxlength="10">
+        <input type="text" id="c-zip" name="astra-xzip" autocomplete="nope" placeholder="77001" inputmode="numeric" maxlength="10">
       </div>
     </div>
     <div class="field">
@@ -732,7 +732,7 @@ textarea.prop-input { resize: vertical; }
   <div style="position:sticky;top:0;z-index:10;padding:16px 16px 0;background:#1a1a1a;">
     <div class="search-bar">
       <span class="search-icon">⌕</span>
-      <input type="text" id="addr-search" placeholder="SEARCH PROPERTIES..." oninput="renderAddressList(this.value)">
+      <input type="text" id="addr-search" name="astra-xaddrsearch" autocomplete="nope" placeholder="SEARCH PROPERTIES..." oninput="renderAddressList(this.value)">
     </div>
   </div>
   <div class="screen-body">
@@ -783,7 +783,7 @@ textarea.prop-input { resize: vertical; }
     <div class="dash-card" style="margin-bottom:16px;padding:14px;">
       <div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">ORIGIN FOR VECTOR ROUTE OPTIMIZATION</div>
       <div class="field" style="margin-bottom:0;">
-        <input type="text" id="home-base-input" placeholder="1234 MAIN ST, HOUSTON, TX 77001" style="font-size:14px;"
+        <input type="text" id="home-base-input" name="astra-xhomebase" autocomplete="nope" placeholder="1234 MAIN ST, HOUSTON, TX 77001" style="font-size:14px;"
           value="" onblur="saveHomeBase(this.value)">
       </div>
     </div>
@@ -797,7 +797,7 @@ textarea.prop-input { resize: vertical; }
     <div class="dash-card" style="margin-bottom:16px;padding:14px;">
       <div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">GEOCODING AND ROUTE MAP</div>
       <div class="field" style="margin-bottom:0;">
-        <input type="text" id="gmaps-key" placeholder="API KEY" style="font-size:14px;"
+        <input type="text" id="gmaps-key" name="astra-xapikey" autocomplete="nope" placeholder="API KEY" style="font-size:14px;"
           value="" onblur="saveGmapsKey(this.value)">
       </div>
     </div>
