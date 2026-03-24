@@ -7,48 +7,99 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.json">
-<title>Astra — Field Service</title>
+<title>ASTRA</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; overflow: hidden; }
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #2b2b2b; color: #fff; font-size: 16px;
+  background: #1a1a1a; color: #e0e0e0; font-size: 16px;
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── Global Top Nav ── */
+#global-nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 12px; background: #111; min-height: 56px;
+  border-bottom: 1px solid #2a2a2a;
+}
+.nav-logo {
+  font-size: 20px; font-weight: 900; color: #FF6B00; letter-spacing: 2px;
+  cursor: pointer; user-select: none; flex-shrink: 0;
+  min-width: 48px; min-height: 48px; display: flex; align-items: center;
+}
+.nav-shortcuts {
+  display: flex; gap: 4px; flex: 1; justify-content: center;
+}
+.nav-shortcut {
+  width: 48px; height: 48px; border: none; background: none;
+  color: #666; font-size: 18px; border-radius: 10px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+.nav-shortcut:active { background: rgba(255,107,0,0.15); color: #FF6B00; }
+.nav-shortcut.sc-active { color: #FF6B00; }
+.nav-hamburger {
+  width: 48px; height: 48px; border: none; background: none;
+  color: #e0e0e0; font-size: 24px; cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; transition: background 0.15s;
+}
+.nav-hamburger:active { background: rgba(255,107,0,0.15); }
+
+/* ── Sidebar ── */
+.sidebar-backdrop {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6); z-index: 200;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.sidebar-backdrop.open { opacity: 1; pointer-events: auto; }
+.sidebar {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: 75%; max-width: 320px; background: #111;
+  z-index: 201; transform: translateX(100%);
+  transition: transform 0.2s ease;
+  display: flex; flex-direction: column;
+  border-left: 1px solid #2a2a2a;
+}
+.sidebar.open { transform: translateX(0); }
+.sidebar-header {
+  padding: 20px 20px 12px; border-bottom: 1px solid #2a2a2a;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.sidebar-header span { font-size: 18px; font-weight: 800; color: #FF6B00; letter-spacing: 2px; }
+.sidebar-close {
+  width: 48px; height: 48px; border: none; background: none;
+  color: #666; font-size: 22px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.sidebar-item {
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 20px; min-height: 56px;
+  font-size: 15px; font-weight: 700; letter-spacing: 1.5px;
+  color: #888; cursor: pointer; border: none; background: none;
+  width: 100%; text-align: left;
+  transition: color 0.15s, background 0.15s;
+  text-transform: uppercase;
+}
+.sidebar-item:active { background: rgba(255,107,0,0.1); color: #FF6B00; }
+.sidebar-item.sb-active { color: #FF6B00; }
+.sidebar-icon { font-size: 18px; width: 24px; text-align: center; }
+
 /* ── Layout ── */
 .screen {
-  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  position: absolute; top: 56px; left: 0; width: 100%; height: calc(100% - 56px);
   display: flex; flex-direction: column;
   opacity: 0; pointer-events: none; visibility: hidden;
-  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s 0.25s;
-  transform: translateX(30px);
+  transition: opacity 0.18s ease, visibility 0s 0.18s;
   z-index: 1;
 }
 .screen.active {
   opacity: 1; pointer-events: auto; visibility: visible;
-  transform: translateX(0); z-index: 2;
-  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s;
+  z-index: 2; transition: opacity 0.18s ease, visibility 0s;
 }
-.screen.slide-out { opacity: 0; transform: translateX(-30px); }
-
-/* ── Top Nav ── */
-.nav {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; background: #333; min-height: 56px;
-  flex-shrink: 0; position: relative; z-index: 10;
-}
-.nav-logo { font-size: 22px; font-weight: 800; color: #FF6B00; letter-spacing: 1px; }
-.nav-icons { display: flex; gap: 2px; flex-shrink: 0; }
-.nav-btn {
-  width: 44px; height: 48px; border: none; background: none;
-  color: #fff; font-size: 20px; border-radius: 12px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: background 0.15s;
-}
-.nav-btn:active { background: rgba(255,107,0,0.2); }
-.back-btn { font-size: 24px; }
 
 /* ── Scrollable body ── */
 .screen-body {
@@ -58,54 +109,85 @@ body {
 
 /* ── Cards ── */
 .card {
-  background: #333; border-radius: 14px; padding: 16px;
-  margin-bottom: 12px; cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
+  background: #222; border-radius: 12px; padding: 14px 16px;
+  margin-bottom: 10px; cursor: pointer;
+  transition: background 0.1s;
+  border: 1px solid #2a2a2a;
 }
-.card:active { background: #3a3a3a; transform: scale(0.985); }
-.card-address { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
-.card-subtitle { font-size: 13px; color: #888; margin-bottom: 8px; }
+.card:active { background: #2a2a2a; }
+.card-address { font-size: 16px; font-weight: 700; margin-bottom: 4px; color: #e0e0e0; }
+.card-subtitle { font-size: 12px; color: #666; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
 .card-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.card-panel-chip { display: inline-block; font-size: 11px; font-weight: 600; color: #FF6B00; background: rgba(255,107,0,0.12); padding: 3px 8px; border-radius: 8px; }
-.card-last-visit { font-size: 11px; color: #666; margin-left: auto; }
+.card-panel-chip { display: inline-block; font-size: 11px; font-weight: 700; color: #FF6B00; background: rgba(255,107,0,0.1); padding: 3px 8px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.3px; }
+.card-last-visit { font-size: 11px; color: #555; margin-left: auto; text-transform: uppercase; }
+.card-due { font-size: 11px; color: #555; text-transform: uppercase; }
 
 /* ── Badges ── */
 .badge {
-  display: inline-block; padding: 4px 10px; border-radius: 8px;
-  font-size: 12px; font-weight: 700; text-transform: uppercase;
+  display: inline-block; padding: 4px 10px; border-radius: 6px;
+  font-size: 11px; font-weight: 800; text-transform: uppercase;
   letter-spacing: 0.5px; white-space: nowrap;
 }
-.badge-type { background: rgba(255,255,255,0.12); color: #ccc; }
-.badge-not-started { background: #666; color: #fff; }
+.badge-type { background: rgba(255,255,255,0.08); color: #888; }
+.badge-not-started { background: #444; color: #aaa; }
 .badge-in-progress { background: #c9a800; color: #1a1a1a; }
 .badge-complete { background: #2d8a4e; color: #fff; }
 .badge-needs-callback { background: #c0392b; color: #fff; }
-.badge-waiting-materials { background: #FF6B00; color: #fff; }
+.badge-waiting-on-materials { background: #FF6B00; color: #fff; }
 .badge-status { cursor: pointer; min-height: 32px; min-width: 48px; text-align: center; }
+.badge-archived { background: #333; color: #666; }
+
+/* ── Date Toggle ── */
+.date-toggle {
+  display: flex; background: #222; border-radius: 10px; padding: 3px;
+  margin-bottom: 14px; border: 1px solid #2a2a2a;
+}
+.date-toggle-btn {
+  flex: 1; padding: 10px; border: none; background: none;
+  color: #666; font-size: 13px; font-weight: 800; letter-spacing: 1.5px;
+  text-transform: uppercase; cursor: pointer; border-radius: 8px;
+  transition: all 0.15s; min-height: 48px;
+}
+.date-toggle-btn.active { background: #FF6B00; color: #fff; }
+
+/* ── Week Headers (collapsible) ── */
+.week-header {
+  font-size: 12px; font-weight: 800; color: #555; letter-spacing: 1.5px;
+  text-transform: uppercase; padding: 16px 0 8px;
+  border-bottom: 1px solid #2a2a2a; margin-bottom: 10px;
+  cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+  user-select: none; min-height: 44px;
+  transition: color 0.15s;
+}
+.week-header:active { color: #FF6B00; }
+.week-header:first-child { padding-top: 0; }
+.week-header .wh-arrow { transition: transform 0.2s; font-size: 10px; }
+.week-header.collapsed .wh-arrow { transform: rotate(-90deg); }
+.week-group.collapsed { display: none; }
 
 /* ── FAB ── */
 .fab {
   position: fixed; bottom: 24px; right: 20px;
-  width: 64px; height: 64px; border-radius: 20px;
+  width: 64px; height: 64px; border-radius: 18px;
   background: #FF6B00; border: none; color: #fff;
   font-size: 32px; font-weight: 300; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 16px rgba(255,107,0,0.4);
-  transition: transform 0.15s, box-shadow 0.15s;
+  box-shadow: 0 4px 20px rgba(255,107,0,0.35);
+  transition: transform 0.1s;
   z-index: 50;
 }
-.fab:active { transform: scale(0.92); box-shadow: 0 2px 8px rgba(255,107,0,0.3); }
+.fab:active { transform: scale(0.92); }
 
 /* ── Form elements ── */
 .field { margin-bottom: 16px; }
 .field label {
-  display: block; font-size: 13px; font-weight: 600;
-  color: #999; text-transform: uppercase; letter-spacing: 0.5px;
+  display: block; font-size: 12px; font-weight: 800;
+  color: #666; text-transform: uppercase; letter-spacing: 1.5px;
   margin-bottom: 6px;
 }
 .field input, .field textarea, .field select {
-  width: 100%; padding: 14px; border-radius: 12px;
-  border: 2px solid #444; background: #2b2b2b; color: #fff;
+  width: 100%; padding: 14px; border-radius: 10px;
+  border: 2px solid #333; background: #1a1a1a; color: #e0e0e0;
   font-size: 16px; font-family: inherit;
   transition: border-color 0.15s;
   min-height: 48px;
@@ -115,107 +197,75 @@ body {
 }
 .field textarea { resize: vertical; min-height: 100px; }
 .field select { appearance: none; cursor: pointer; }
+.field-error { color: #c0392b; font-size: 12px; font-weight: 700; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; display: none; }
+.field-error.visible { display: block; }
 
 /* ── Buttons ── */
 .btn {
   display: block; width: 100%; padding: 16px;
-  border: none; border-radius: 14px; font-size: 17px;
-  font-weight: 700; cursor: pointer; text-align: center;
-  transition: opacity 0.15s, transform 0.1s;
-  min-height: 52px;
+  border: none; border-radius: 12px; font-size: 15px;
+  font-weight: 800; cursor: pointer; text-align: center;
+  transition: opacity 0.1s; min-height: 52px;
+  text-transform: uppercase; letter-spacing: 1.5px;
 }
-.btn:active { opacity: 0.85; transform: scale(0.98); }
+.btn:active { opacity: 0.8; }
 .btn-primary { background: #FF6B00; color: #fff; }
-.btn-secondary { background: #444; color: #fff; }
+.btn-secondary { background: #333; color: #888; }
+.btn-danger { background: none; border: 2px solid #333; color: #555; margin-top: 24px; }
+.btn-danger:active { border-color: #c0392b; color: #c0392b; }
+.btn-restore { background: none; border: 2px solid #333; color: #FF6B00; margin-top: 8px; }
 
 /* ── Ticket Detail sections ── */
-.detail-header { background: #333; border-radius: 14px; padding: 16px; margin-bottom: 16px; }
-.detail-address { font-size: 20px; font-weight: 700; margin-bottom: 10px; }
+.detail-header { background: #222; border-radius: 12px; padding: 16px; margin-bottom: 16px; border: 1px solid #2a2a2a; }
+.detail-address { font-size: 18px; font-weight: 800; margin-bottom: 10px; }
 .detail-row {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 6px 0; font-size: 14px; color: #aaa;
-}
-.detail-row span:last-child { color: #fff; font-weight: 500; }
-
-.section-title {
-  font-size: 14px; font-weight: 700; color: #999;
+  padding: 6px 0; font-size: 13px; color: #666;
   text-transform: uppercase; letter-spacing: 0.5px;
+}
+.detail-row span:last-child { color: #e0e0e0; font-weight: 600; text-transform: none; letter-spacing: 0; }
+.section-title {
+  font-size: 12px; font-weight: 800; color: #555;
+  text-transform: uppercase; letter-spacing: 1.5px;
   margin: 20px 0 10px;
 }
 
 .upload-btn {
   display: flex; align-items: center; justify-content: center; gap: 8px;
-  width: 100%; padding: 14px; border-radius: 12px;
-  border: 2px dashed #555; background: none; color: #888;
-  font-size: 15px; cursor: pointer; min-height: 52px;
+  width: 100%; padding: 14px; border-radius: 10px;
+  border: 2px dashed #333; background: none; color: #555;
+  font-size: 14px; font-weight: 700; cursor: pointer; min-height: 52px;
   transition: border-color 0.15s, color 0.15s;
+  text-transform: uppercase; letter-spacing: 1px;
 }
 .upload-btn:active { border-color: #FF6B00; color: #FF6B00; }
 
-/* ── Media grid (photos + drawings) ── */
+/* ── Media grid ── */
 .media-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
   margin-top: 10px;
 }
 .media-thumb {
-  aspect-ratio: 4/3; background: #3a3a3a; border-radius: 12px;
+  aspect-ratio: 4/3; background: #2a2a2a; border-radius: 10px;
   cursor: pointer; transition: transform 0.1s;
   border: none; overflow: hidden; position: relative;
 }
 .media-thumb:active { transform: scale(0.96); }
-.media-thumb img {
-  width: 100%; height: 100%; object-fit: cover; border-radius: 12px;
-}
+.media-thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; }
 .media-delete {
   position: absolute; top: 4px; right: 4px;
   width: 28px; height: 28px; border-radius: 50%;
   background: rgba(0,0,0,0.7); border: none; color: #ff4444;
   font-size: 16px; cursor: pointer; z-index: 5;
   display: flex; align-items: center; justify-content: center;
-  transition: background 0.15s;
 }
-.media-delete:active { background: #c0392b; color: #fff; }
 .media-thumb-label {
   position: absolute; bottom: 0; left: 0; right: 0;
   padding: 4px 8px; background: rgba(0,0,0,0.6);
-  font-size: 11px; color: #ccc; text-align: center;
-  border-radius: 0 0 12px 12px;
+  font-size: 11px; color: #888; text-align: center;
+  border-radius: 0 0 10px 10px; text-transform: uppercase;
 }
-
-/* ── Fullscreen overlay ── */
-.overlay {
-  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-  background: #1a1a1a; z-index: 100;
-  display: flex; flex-direction: column;
-  opacity: 0; pointer-events: none;
-  transition: opacity 0.25s ease;
-}
-.overlay.active { opacity: 1; pointer-events: auto; }
-.overlay-top {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; flex-shrink: 0;
-}
-.overlay-title { font-size: 17px; font-weight: 600; }
-.overlay-close {
-  width: 48px; height: 48px; border: none; background: #333;
-  color: #fff; font-size: 24px; border-radius: 12px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: background 0.15s;
-}
-.overlay-close:active { background: #FF6B00; }
-.overlay-body {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  padding: 0; color: #666; font-size: 15px; overflow: hidden;
-  touch-action: none;
-}
-.overlay-body img, .overlay-body video {
-  max-width: 100%; max-height: 100%; object-fit: contain;
-  transform-origin: center center;
-  transition: transform 0.05s linear;
-}
-.media-thumb video {
-  width: 100%; height: 100%; object-fit: cover; border-radius: 12px;
-}
+.media-thumb video { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; }
 .media-thumb .video-badge {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
   width: 36px; height: 36px; border-radius: 50%;
@@ -224,277 +274,333 @@ body {
   pointer-events: none;
 }
 
-/* ── Multi-select chips ── */
+/* ── Fullscreen overlay ── */
+.overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: #0a0a0a; z-index: 300;
+  display: flex; flex-direction: column;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+.overlay.active { opacity: 1; pointer-events: auto; }
+.overlay-top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; flex-shrink: 0;
+}
+.overlay-title { font-size: 14px; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
+.overlay-close {
+  width: 48px; height: 48px; border: none; background: #222;
+  color: #e0e0e0; font-size: 24px; border-radius: 10px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.overlay-body {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 0; overflow: hidden; touch-action: none;
+}
+.overlay-body img, .overlay-body video {
+  max-width: 100%; max-height: 100%; object-fit: contain;
+  transform-origin: center center;
+  transition: transform 0.05s linear;
+}
+
+/* ── Chip selectors ── */
 .chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
-  padding: 10px 16px; border-radius: 10px; border: 2px solid #444;
-  background: none; color: #aaa; font-size: 14px; font-weight: 600;
+  padding: 10px 16px; border-radius: 8px; border: 2px solid #333;
+  background: none; color: #666; font-size: 13px; font-weight: 700;
   cursor: pointer; transition: all 0.15s; min-height: 48px;
   display: flex; align-items: center;
+  text-transform: uppercase; letter-spacing: 0.5px;
 }
-.chip.selected { border-color: #FF6B00; background: rgba(255,107,0,0.15); color: #FF6B00; }
-.chip:active { transform: scale(0.95); }
+.chip.selected { border-color: #FF6B00; background: rgba(255,107,0,0.1); color: #FF6B00; }
 
 /* ── Status picker ── */
 .status-picker {
   position: fixed; bottom: 0; left: 0; right: 0;
-  background: #333; border-radius: 20px 20px 0 0;
-  padding: 16px; z-index: 90;
+  background: #222; border-radius: 16px 16px 0 0;
+  padding: 16px; z-index: 290;
   transform: translateY(100%);
-  transition: transform 0.25s ease;
+  transition: transform 0.2s ease;
+  border-top: 1px solid #333;
 }
 .status-picker.active { transform: translateY(0); }
 .status-picker-backdrop {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.5); z-index: 89;
+  background: rgba(0,0,0,0.5); z-index: 289;
   opacity: 0; pointer-events: none;
-  transition: opacity 0.25s;
+  transition: opacity 0.2s;
 }
 .status-picker-backdrop.active { opacity: 1; pointer-events: auto; }
+.status-picker-title {
+  text-align: center; margin-bottom: 12px; font-size: 12px; color: #555;
+  text-transform: uppercase; font-weight: 800; letter-spacing: 1.5px;
+}
 .status-option {
   display: block; width: 100%; padding: 14px 16px;
-  border: none; background: none; color: #fff;
-  font-size: 16px; font-weight: 600; text-align: left;
-  border-radius: 12px; cursor: pointer; min-height: 48px;
+  border: none; background: none; color: #e0e0e0;
+  font-size: 15px; font-weight: 700; text-align: left;
+  border-radius: 10px; cursor: pointer; min-height: 48px;
   transition: background 0.15s;
 }
-.status-option:active { background: rgba(255,107,0,0.2); }
+.status-option:active { background: rgba(255,107,0,0.15); }
 .status-option .badge { margin-right: 10px; }
 
-/* ── Settings ── */
-.sync-status {
-  display: flex; align-items: center; gap: 10px;
-  padding: 14px; background: #333; border-radius: 12px;
-  font-size: 15px; margin-bottom: 16px;
-}
-.sync-dot { width: 12px; height: 12px; border-radius: 50%; background: #666; flex-shrink: 0; }
-.sync-dot.connected { background: #2d8a4e; }
-
-/* ── Empty state ── */
-.empty-state {
-  text-align: center; padding: 60px 20px; color: #555;
-}
-.empty-state div:first-child { font-size: 48px; margin-bottom: 12px; }
-.empty-state div:last-child { font-size: 15px; }
-
-/* ── Archive button ── */
-.btn-archive {
-  background: none; border: 2px solid #444; color: #777;
-  margin-top: 24px;
-}
-.btn-archive:active { border-color: #c0392b; color: #c0392b; }
-.btn-unarchive {
-  background: none; border: 2px solid #444; color: #FF6B00;
-  margin-top: 8px;
-}
-.btn-unarchive:active { border-color: #FF6B00; }
-
-/* ── Archive badge on cards ── */
-.badge-archived { background: #444; color: #888; }
-
 /* ── Search ── */
-.search-bar {
-  position: relative; margin-bottom: 16px;
-}
+.search-bar { position: relative; margin-bottom: 14px; }
 .search-bar input {
-  width: 100%; padding: 14px 14px 14px 48px; border-radius: 14px;
-  border: 2px solid #444; background: #333; color: #fff;
+  width: 100%; padding: 14px 14px 14px 48px; border-radius: 12px;
+  border: 2px solid #333; background: #222; color: #e0e0e0;
   font-size: 16px; font-family: inherit; min-height: 52px;
   transition: border-color 0.15s;
 }
 .search-bar input:focus { outline: none; border-color: #FF6B00; }
-.search-bar input::placeholder { color: #666; }
+.search-bar input::placeholder { color: #444; }
 .search-icon {
-  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
-  font-size: 18px; color: #666; pointer-events: none;
+  position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+  font-size: 16px; color: #444; pointer-events: none;
   line-height: 1; display: flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px;
+  width: 20px; height: 20px;
 }
 .search-divider {
-  font-size: 12px; font-weight: 700; color: #555; text-transform: uppercase;
-  letter-spacing: 0.5px; padding: 12px 0 6px; margin-top: 4px;
+  font-size: 12px; font-weight: 800; color: #444; text-transform: uppercase;
+  letter-spacing: 1.5px; padding: 14px 0 6px;
 }
 .search-hint {
-  text-align: center; padding: 40px 20px; color: #444; font-size: 15px;
+  text-align: center; padding: 40px 20px; color: #333; font-size: 14px;
+  text-transform: uppercase; letter-spacing: 0.5px;
 }
 
 /* ── Dashboard ── */
-.dash-card {
-  background: #333; border-radius: 14px; padding: 16px; margin-bottom: 12px;
-}
-.dash-card-title {
-  font-size: 13px; font-weight: 700; color: #999;
-  text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;
-}
-.dash-big-number {
-  font-size: 42px; font-weight: 800; color: #FF6B00; line-height: 1;
-}
-.dash-big-label { font-size: 13px; color: #777; margin-top: 4px; }
-.dash-row {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 8px 0; border-bottom: 1px solid #3a3a3a;
-}
+.dash-card { background: #222; border-radius: 12px; padding: 16px; margin-bottom: 10px; border: 1px solid #2a2a2a; }
+.dash-card-title { font-size: 12px; font-weight: 800; color: #555; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px; }
+.dash-big-number { font-size: 42px; font-weight: 900; color: #FF6B00; line-height: 1; }
+.dash-big-label { font-size: 12px; color: #555; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+.dash-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #2a2a2a; }
 .dash-row:last-child { border-bottom: none; }
-.dash-row-label { font-size: 14px; color: #aaa; display: flex; align-items: center; gap: 8px; }
-.dash-row-value { font-size: 16px; font-weight: 700; }
-.dash-bar-track {
-  flex: 1; height: 8px; background: #2b2b2b; border-radius: 4px;
-  margin: 0 12px; overflow: hidden;
-}
-.dash-bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
-.dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.dash-stat {
-  background: #3a3a3a; border-radius: 12px; padding: 14px; text-align: center;
-}
-.dash-stat-num { font-size: 28px; font-weight: 800; line-height: 1; }
-.dash-stat-label { font-size: 11px; color: #777; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-.dash-activity {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 0; border-bottom: 1px solid #3a3a3a;
-  font-size: 13px; color: #aaa;
-}
+.dash-row-label { font-size: 13px; color: #666; display: flex; align-items: center; gap: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.dash-row-value { font-size: 15px; font-weight: 800; }
+.dash-bar-track { flex: 1; height: 6px; background: #1a1a1a; border-radius: 3px; margin: 0 12px; overflow: hidden; }
+.dash-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
+.dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dash-stat { background: #222; border-radius: 12px; padding: 14px; text-align: center; border: 1px solid #2a2a2a; }
+.dash-stat-num { font-size: 28px; font-weight: 900; line-height: 1; }
+.dash-stat-label { font-size: 11px; color: #555; margin-top: 6px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+.dash-activity { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #2a2a2a; font-size: 13px; color: #666; }
 .dash-activity:last-child { border-bottom: none; }
-.dash-activity-dot {
-  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-}
+.dash-activity-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
 /* ── Address autocomplete ── */
-.addr-suggest {
-  background: #333; border-radius: 0 0 12px 12px; margin-top: -10px;
-  overflow: hidden; border: 2px solid #444; border-top: none;
-}
-.addr-suggest-item {
-  padding: 12px 14px; cursor: pointer; font-size: 14px;
-  border-bottom: 1px solid #3a3a3a; min-height: 44px;
-  display: flex; align-items: center; transition: background 0.1s;
-}
-.addr-suggest-item:active, .addr-suggest-item:last-child { border-bottom: none; }
-.addr-suggest-item:active { background: rgba(255,107,0,0.15); }
-.addr-suggest-new { color: #FF6B00; font-weight: 600; }
-.prop-field { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #3a3a3a; }
+.addr-suggest { background: #222; border-radius: 0 0 10px 10px; margin-top: -10px; overflow: hidden; border: 2px solid #333; border-top: none; }
+.addr-suggest-item { padding: 12px 14px; cursor: pointer; font-size: 14px; border-bottom: 1px solid #2a2a2a; min-height: 44px; display: flex; align-items: center; }
+.addr-suggest-item:active { background: rgba(255,107,0,0.1); }
+.addr-suggest-item:last-child { border-bottom: none; }
+.addr-suggest-new { color: #FF6B00; font-weight: 700; }
+
+/* ── Property fields ── */
+.prop-field { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #2a2a2a; }
 .prop-field:last-child { border-bottom: none; }
-.prop-label { font-size: 13px; color: #888; min-width: 90px; }
-.prop-input {
-  background: none; border: none; color: #fff; font-size: 14px;
-  text-align: right; font-family: inherit; padding: 4px 0; flex: 1;
-  min-height: 32px;
-}
+.prop-label { font-size: 12px; color: #555; min-width: 90px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+.prop-input { background: none; border: none; color: #e0e0e0; font-size: 14px; text-align: right; font-family: inherit; padding: 4px 0; flex: 1; min-height: 32px; }
+textarea.prop-input { resize: vertical; }
 .prop-input:focus { outline: none; color: #FF6B00; }
 
 /* ── Navigate button ── */
 .btn-navigate {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 8px 16px; border-radius: 10px;
-  border: 2px solid #4A9DFF; background: rgba(74,157,255,0.1);
-  color: #4A9DFF; font-size: 13px; font-weight: 700;
+  padding: 8px 16px; border-radius: 8px;
+  border: 1px solid #333; background: none;
+  color: #666; font-size: 12px; font-weight: 800;
   cursor: pointer; min-height: 36px; margin-top: 6px;
-  transition: background 0.15s;
+  text-transform: uppercase; letter-spacing: 1px;
 }
-.btn-navigate:active { background: rgba(74,157,255,0.25); }
+.btn-navigate:active { border-color: #FF6B00; color: #FF6B00; }
+
+/* ── Vector button on tickets ── */
+.btn-vector {
+  display: block; width: 100%; padding: 14px; margin-top: 12px;
+  border: 2px solid #333; border-radius: 10px; background: none;
+  color: #666; font-size: 14px; font-weight: 800; cursor: pointer;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  transition: all 0.15s; min-height: 52px;
+}
+.btn-vector:active { border-color: #FF6B00; color: #FF6B00; }
+.btn-vector.in-vector { border-color: #FF6B00; color: #FF6B00; background: rgba(255,107,0,0.08); }
 
 /* ── Map screen ── */
 #map-container { width: 100%; height: 100%; }
 .map-body { flex: 1; position: relative; overflow: hidden; }
-.map-controls {
-  position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-  z-index: 5; display: flex; gap: 10px;
-}
+.map-controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 5; display: flex; gap: 8px; }
 .map-btn {
-  padding: 14px 24px; border-radius: 14px;
-  border: none; color: #fff;
-  font-size: 14px; font-weight: 700; cursor: pointer;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-  transition: transform 0.15s;
+  padding: 14px 20px; border-radius: 10px; border: none; color: #fff;
+  font-size: 13px; font-weight: 800; cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  text-transform: uppercase; letter-spacing: 1px;
   white-space: nowrap;
 }
-.map-btn:active { transform: scale(0.95); }
+.map-btn:active { opacity: 0.85; }
 .map-btn-primary { background: #FF6B00; }
-.map-btn-secondary { background: #444; }
-.map-btn:disabled { background: #555; box-shadow: none; opacity: 0.6; }
+.map-btn-secondary { background: #333; }
+.map-btn:disabled { background: #333; box-shadow: none; opacity: 0.4; }
 .map-status {
   position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-  z-index: 5; background: rgba(43,43,43,0.95); border-radius: 12px;
-  padding: 10px 16px; font-size: 13px; color: #aaa;
+  z-index: 5; background: rgba(17,17,17,0.95); border-radius: 10px;
+  padding: 10px 16px; font-size: 12px; color: #666;
   text-align: center; max-width: 90%;
+  text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;
 }
 
-/* ── Hidden file input ── */
+/* ── Empty state ── */
+.empty-state { text-align: center; padding: 60px 20px; color: #333; }
+.empty-state div:first-child { font-size: 42px; margin-bottom: 12px; opacity: 0.5; }
+.empty-state div:last-child { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+
+/* ── Sync/storage ── */
+.sync-status { display: flex; align-items: center; gap: 10px; padding: 14px; background: #222; border-radius: 10px; font-size: 14px; margin-bottom: 16px; }
+.sync-dot { width: 12px; height: 12px; border-radius: 50%; background: #444; flex-shrink: 0; }
+.sync-dot.connected { background: #2d8a4e; }
+
+/* ── Hidden ── */
 .hidden-input { display: none; }
+
+/* ── Responsive: Tablet + Desktop ── */
+@media (min-width: 768px) {
+  .screen-body { max-width: 720px; margin: 0 auto; }
+  .fab { right: calc(50% - 340px); }
+  .card { transition: background 0.15s; }
+  .card:hover { background: #2a2a2a; }
+  .sidebar { width: 320px; }
+  .nav-shortcut:hover { background: rgba(255,107,0,0.1); color: #FF6B00; }
+  .sidebar-item:hover { background: rgba(255,107,0,0.08); color: #FF6B00; }
+  .btn:hover { opacity: 0.9; }
+  .week-header:hover { color: #888; }
+}
+@media (min-width: 1024px) {
+  .screen-body { max-width: 800px; }
+  .fab { right: calc(50% - 380px); }
+  .date-toggle { max-width: 300px; }
+  .search-bar { max-width: 600px; }
+}
+@media (min-width: 1440px) {
+  .screen-body { max-width: 900px; }
+  .fab { right: calc(50% - 430px); }
+}
+
+/* ── Print Stylesheet ── */
+@media print {
+  body { background: #fff !important; color: #000 !important; font-size: 14pt !important; }
+  #global-nav, .sidebar, .sidebar-backdrop, .fab, .overlay,
+  .status-picker, .status-picker-backdrop, .btn, .upload-btn,
+  .media-grid, .btn-navigate, .btn-vector, .map-controls, .map-status { display: none !important; }
+  .screen { position: static !important; opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; height: auto !important; }
+  .screen:not(.active) { display: none !important; }
+  .screen-body { overflow: visible !important; padding: 0 !important; }
+  .card { background: none !important; border: 1px solid #ccc !important; color: #000 !important; }
+  .badge { border: 1px solid #999 !important; background: #eee !important; color: #000 !important; }
+  .detail-header { background: none !important; border: 1px solid #ccc !important; }
+  .dash-card { background: none !important; border: 1px solid #ccc !important; }
+  .section-title { color: #000 !important; font-size: 14pt !important; font-weight: bold !important; }
+  .week-header { color: #000 !important; border-bottom: 2px solid #000 !important; }
+}
+
+/* Dark scrollbars */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #1a1a1a; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #444; }
+* { scrollbar-width: thin; scrollbar-color: #333 #1a1a1a; }
 </style>
 </head>
 <body>
 
-<!-- ══════════════ SCREEN: JOB LIST ══════════════ -->
+<!-- ══════════════ GLOBAL NAV ══════════════ -->
+<nav id="global-nav">
+  <div class="nav-logo" onclick="goTo('screen-jobs')">ASTRA</div>
+  <div class="nav-shortcuts" id="nav-shortcuts"></div>
+  <button class="nav-hamburger" id="hamburger-btn" onclick="toggleSidebar()">☰</button>
+</nav>
+
+<!-- ══════════════ SIDEBAR ══════════════ -->
+<div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeSidebar()"></div>
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <span>ASTRA</span>
+    <button class="sidebar-close" onclick="closeSidebar()">✕</button>
+  </div>
+  <button class="sidebar-item" data-screen="screen-jobs" onclick="goTo('screen-jobs');closeSidebar()">
+    <span class="sidebar-icon">⌂</span> HOME
+  </button>
+  <button class="sidebar-item" data-screen="screen-search" onclick="goTo('screen-search');closeSidebar()">
+    <span class="sidebar-icon">⌕</span> SEARCH
+  </button>
+  <button class="sidebar-item" data-screen="screen-addresses" onclick="goTo('screen-addresses');closeSidebar()">
+    <span class="sidebar-icon">◎</span> ADDRESSES
+  </button>
+  <button class="sidebar-item" data-screen="screen-vector" onclick="goTo('screen-vector');closeSidebar()">
+    <span class="sidebar-icon">▷</span> VECTOR
+  </button>
+  <button class="sidebar-item" data-screen="screen-materials" onclick="goTo('screen-materials');closeSidebar()">
+    <span class="sidebar-icon">☰</span> MATERIALS
+  </button>
+  <button class="sidebar-item" data-screen="screen-archive" onclick="goTo('screen-archive');closeSidebar()">
+    <span class="sidebar-icon">▣</span> ARCHIVE
+  </button>
+  <button class="sidebar-item" data-screen="screen-dashboard" onclick="goTo('screen-dashboard');closeSidebar()">
+    <span class="sidebar-icon">◧</span> DASHBOARD
+  </button>
+  <button class="sidebar-item" data-screen="screen-settings" onclick="goTo('screen-settings');closeSidebar()">
+    <span class="sidebar-icon">⚙</span> SETTINGS
+  </button>
+</div>
+
+<!-- ══════════════ SCREEN: HOME ══════════════ -->
 <div id="screen-jobs" class="screen active">
-  <div class="nav">
-    <div class="nav-logo">ASTRA</div>
-    <div class="nav-icons">
-      <button class="nav-btn" onclick="goTo('screen-search')" aria-label="Search">🔍</button>
-      <button class="nav-btn" onclick="goTo('screen-map')" aria-label="Map" style="font-size:19px;">🗺</button>
-      <button class="nav-btn" onclick="goTo('screen-addresses')" aria-label="Properties" style="font-size:19px;">🏠</button>
-      <button class="nav-btn" onclick="goTo('screen-archive')" aria-label="Archive" style="font-size:19px;">📦</button>
-      <button class="nav-btn" onclick="goTo('screen-dashboard')" aria-label="Dashboard" style="font-size:19px;">📊</button>
-      <button class="nav-btn" onclick="goTo('screen-settings')" aria-label="Settings">⚙</button>
+  <div class="screen-body">
+    <div class="date-toggle" id="home-toggle">
+      <button class="date-toggle-btn active" onclick="setHomeView('daily')">DAILY</button>
+      <button class="date-toggle-btn" onclick="setHomeView('weekly')">WEEKLY</button>
     </div>
+    <div id="jobs-body"></div>
   </div>
-  <div class="screen-body" id="jobs-body">
-    <!-- rendered by JS -->
-  </div>
-  <button class="fab" onclick="goTo('screen-create')" aria-label="Create ticket">+</button>
+  <button class="fab" onclick="goTo('screen-create')" aria-label="New ticket">+</button>
 </div>
 
 <!-- ══════════════ SCREEN: SEARCH ══════════════ -->
 <div id="screen-search" class="screen">
-  <div class="nav">
-    <button class="nav-btn back-btn" onclick="goTo('screen-jobs')" aria-label="Back">←</button>
-    <div style="font-weight:600;font-size:16px;">Search</div>
-    <div style="width:48px;"></div>
-  </div>
   <div class="screen-body">
     <div class="search-bar">
-      <span class="search-icon">🔍</span>
-      <input type="text" id="search-input" placeholder="Address, tech, job type, notes…" oninput="runSearch(this.value)">
+      <span class="search-icon">⌕</span>
+      <input type="text" id="search-input" placeholder="ADDRESS, TECH, TYPE, NOTES..." oninput="runSearch(this.value)">
     </div>
     <div id="search-results">
-      <div class="search-hint">Search across all tickets — active and archived.</div>
+      <div class="search-hint">SEARCH ALL TICKETS</div>
     </div>
   </div>
 </div>
 
 <!-- ══════════════ SCREEN: TICKET DETAIL ══════════════ -->
 <div id="screen-detail" class="screen">
-  <div class="nav">
-    <button class="nav-btn back-btn" onclick="goBackFromDetail()" aria-label="Back">←</button>
-    <div style="font-weight:600;font-size:16px;">Ticket</div>
-    <div style="width:48px;"></div>
-  </div>
   <div class="screen-body" id="detail-body"></div>
 </div>
 
 <!-- ══════════════ SCREEN: CREATE TICKET ══════════════ -->
 <div id="screen-create" class="screen">
-  <div class="nav">
-    <button class="nav-btn back-btn" onclick="goTo('screen-jobs')" aria-label="Back">←</button>
-    <div style="font-weight:600;font-size:16px;">New Ticket</div>
-    <div style="width:48px;"></div>
-  </div>
   <div class="screen-body" id="create-body">
     <div class="field">
-      <label>Street Address</label>
-      <input type="text" id="c-street" placeholder="1234 Main St" autocomplete="off" oninput="addrAutocomplete(this.value)">
+      <label>STREET ADDRESS</label>
+      <input type="text" id="c-street" placeholder="1234 MAIN ST" autocomplete="off" oninput="addrAutocomplete(this.value)">
       <div id="c-addr-suggest" class="addr-suggest" style="display:none;"></div>
     </div>
     <div class="field">
-      <label>Suite / Unit</label>
-      <input type="text" id="c-suite" placeholder="Apt, Suite, Unit (optional)">
+      <label>SUITE / UNIT</label>
+      <input type="text" id="c-suite" placeholder="APT, SUITE, UNIT">
     </div>
     <div style="display:grid;grid-template-columns:1fr 80px 100px;gap:10px;">
       <div class="field">
-        <label>City</label>
-        <input type="text" id="c-city" placeholder="Houston">
+        <label>CITY</label>
+        <input type="text" id="c-city" placeholder="HOUSTON">
       </div>
       <div class="field">
-        <label>State</label>
+        <label>STATE</label>
         <select id="c-state">
           <option value="">—</option>
           <option value="AL">AL</option><option value="AK">AK</option><option value="AZ">AZ</option>
@@ -517,23 +623,24 @@ body {
         </select>
       </div>
       <div class="field">
-        <label>Zip</label>
+        <label>ZIP</label>
         <input type="text" id="c-zip" placeholder="77001" inputmode="numeric" maxlength="10">
       </div>
     </div>
     <div class="field">
-      <label>Job Type</label>
+      <label>JOB TYPE</label>
       <div class="chip-group" id="c-types">
-        <button class="chip" onclick="toggleChip(this)">Panel Upgrade</button>
-        <button class="chip" onclick="toggleChip(this)">EV Charger</button>
-        <button class="chip" onclick="toggleChip(this)">Service Call</button>
-        <button class="chip" onclick="toggleChip(this)">Rough-In</button>
-        <button class="chip" onclick="toggleChip(this)">Fixture Install</button>
-        <button class="chip" onclick="toggleChip(this)">Trenching</button>
+        <button class="chip" onclick="toggleChip(this)">PANEL UPGRADE</button>
+        <button class="chip" onclick="toggleChip(this)">EV CHARGER</button>
+        <button class="chip" onclick="toggleChip(this)">SERVICE CALL</button>
+        <button class="chip" onclick="toggleChip(this)">ROUGH-IN</button>
+        <button class="chip" onclick="toggleChip(this)">FIXTURE INSTALL</button>
+        <button class="chip" onclick="toggleChip(this)">TRENCHING</button>
+        <button class="chip" onclick="toggleChip(this)">TRIM</button>
       </div>
     </div>
     <div class="field">
-      <label>Status</label>
+      <label>STATUS</label>
       <select id="c-status">
         <option>Not Started</option>
         <option>In Progress</option>
@@ -543,43 +650,40 @@ body {
       </select>
     </div>
     <div class="field">
-      <label>Assigned Tech</label>
+      <label>ASSIGNED TECH</label>
       <select id="c-tech"></select>
     </div>
     <div class="field">
-      <label>Date</label>
-      <input type="date" id="c-date">
+      <label>DUE DATE</label>
+      <input type="date" id="c-date" required>
+      <div class="field-error" id="c-date-error">DUE DATE REQUIRED</div>
     </div>
     <div class="field">
-      <label>Job Notes</label>
-      <textarea id="c-notes" placeholder="Scope of work, special instructions…"></textarea>
+      <label>JOB NOTES</label>
+      <textarea id="c-notes" placeholder="Scope of work, special instructions..."></textarea>
     </div>
-    <button class="btn btn-primary" onclick="saveNewTicket()">Save Ticket</button>
+    <button class="btn btn-primary" onclick="saveNewTicket()">SAVE</button>
     <div style="height:24px;"></div>
   </div>
 </div>
 
 <!-- ══════════════ SCREEN: ARCHIVE ══════════════ -->
 <div id="screen-archive" class="screen">
-  <div class="nav">
-    <button class="nav-btn back-btn" onclick="goTo('screen-jobs')" aria-label="Back">←</button>
-    <div style="font-weight:600;font-size:16px;">Archived</div>
-    <div style="width:48px;"></div>
+  <div class="screen-body">
+    <div class="date-toggle" id="archive-toggle">
+      <button class="date-toggle-btn active" onclick="setArchiveView('daily')">DAILY</button>
+      <button class="date-toggle-btn" onclick="setArchiveView('weekly')">WEEKLY</button>
+    </div>
+    <div id="archive-body"></div>
   </div>
-  <div class="screen-body" id="archive-body"></div>
 </div>
 
 <!-- ══════════════ SCREEN: ADDRESSES ══════════════ -->
 <div id="screen-addresses" class="screen">
-  <div class="nav">
-    <button class="nav-btn back-btn" onclick="goTo('screen-jobs')" aria-label="Back">←</button>
-    <div style="font-weight:600;font-size:16px;">Properties</div>
-    <div style="width:48px;"></div>
-  </div>
-  <div style="position:sticky;top:0;z-index:10;padding:16px 16px 0;background:#2b2b2b;">
+  <div style="position:sticky;top:0;z-index:10;padding:16px 16px 0;background:#1a1a1a;">
     <div class="search-bar">
-      <span class="search-icon">🔍</span>
-      <input type="text" id="addr-search" placeholder="Search properties…" oninput="renderAddressList(this.value)">
+      <span class="search-icon">⌕</span>
+      <input type="text" id="addr-search" placeholder="SEARCH PROPERTIES..." oninput="renderAddressList(this.value)">
     </div>
   </div>
   <div class="screen-body">
@@ -589,81 +693,88 @@ body {
 
 <!-- ══════════════ SCREEN: ADDRESS DETAIL ══════════════ -->
 <div id="screen-addr-detail" class="screen">
-  <div class="nav">
-    <button class="nav-btn back-btn" onclick="goTo('screen-addresses')" aria-label="Back">←</button>
-    <div style="font-weight:600;font-size:16px;">Property</div>
-    <div style="width:48px;"></div>
-  </div>
   <div class="screen-body" id="addr-detail-body"></div>
 </div>
 
-<!-- ══════════════ SCREEN: MAP ══════════════ -->
-<div id="screen-map" class="screen">
-  <div class="nav">
-    <button class="nav-btn back-btn" onclick="goTo('screen-jobs')" aria-label="Back">←</button>
-    <div style="font-weight:600;font-size:16px;">Route Map</div>
-    <div style="width:48px;"></div>
-  </div>
+<!-- ══════════════ SCREEN: VECTOR ══════════════ -->
+<div id="screen-vector" class="screen">
   <div class="map-body">
     <div id="map-container"></div>
     <div class="map-status" id="map-status" style="display:none;"></div>
     <div class="map-controls" id="map-controls" style="display:none;">
-      <button class="map-btn map-btn-primary" id="map-optimize-btn" onclick="optimizeRoute()">Optimize Route</button>
-      <button class="map-btn map-btn-secondary" id="map-clear-btn" onclick="clearRoute()" style="display:none;">Clear</button>
+      <button class="map-btn map-btn-primary" id="map-optimize-btn" onclick="optimizeRoute()">OPTIMIZE</button>
+      <button class="map-btn map-btn-secondary" id="map-reroute-btn" onclick="reroute()" style="display:none;">REROUTE</button>
+      <button class="map-btn map-btn-secondary" id="map-clear-btn" onclick="clearRoute()" style="display:none;">CLEAR</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ SCREEN: MATERIALS ══════════════ -->
+<div id="screen-materials" class="screen">
+  <div class="screen-body" id="materials-body">
+    <div class="empty-state">
+      <div>☰</div>
+      <div>MATERIALS — COMING SOON</div>
     </div>
   </div>
 </div>
 
 <!-- ══════════════ SCREEN: DASHBOARD ══════════════ -->
 <div id="screen-dashboard" class="screen">
-  <div class="nav">
-    <button class="nav-btn back-btn" onclick="goTo('screen-jobs')" aria-label="Back">←</button>
-    <div style="font-weight:600;font-size:16px;">Dashboard</div>
-    <div style="width:48px;"></div>
-  </div>
   <div class="screen-body" id="dashboard-body"></div>
 </div>
 
 <!-- ══════════════ SCREEN: SETTINGS ══════════════ -->
 <div id="screen-settings" class="screen">
-  <div class="nav">
-    <button class="nav-btn back-btn" onclick="goTo('screen-jobs')" aria-label="Back">←</button>
-    <div style="font-weight:600;font-size:16px;">Settings</div>
-    <div style="width:48px;"></div>
-  </div>
   <div class="screen-body" id="settings-body">
-    <div class="section-title">Data Overview</div>
+    <div class="section-title">DATA</div>
     <div id="settings-stats" class="dash-card" style="margin-bottom:16px;"></div>
 
-    <div class="section-title">Backup &amp; Restore</div>
-    <button class="btn btn-primary" style="margin-bottom:10px;" onclick="exportData()">Export All Data (JSON)</button>
-    <button class="btn btn-secondary" style="margin-bottom:16px;" onclick="document.getElementById('import-input').click()">Import Data from Backup</button>
+    <div class="section-title">HOME BASE</div>
+    <div class="dash-card" style="margin-bottom:16px;padding:14px;">
+      <div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">ORIGIN FOR VECTOR ROUTE OPTIMIZATION</div>
+      <div class="field" style="margin-bottom:0;">
+        <input type="text" id="home-base-input" placeholder="1234 MAIN ST, HOUSTON, TX 77001" style="font-size:14px;"
+          value="" onblur="saveHomeBase(this.value)">
+      </div>
+    </div>
+
+    <div class="section-title">BACKUP</div>
+    <button class="btn btn-primary" style="margin-bottom:10px;" onclick="exportData()">EXPORT</button>
+    <button class="btn btn-secondary" style="margin-bottom:16px;" onclick="document.getElementById('import-input').click()">IMPORT</button>
     <input type="file" class="hidden-input" id="import-input" accept=".json" onchange="importData(this)">
 
-    <div class="section-title">Google Maps API</div>
+    <div class="section-title">GOOGLE MAPS API</div>
     <div class="dash-card" style="margin-bottom:16px;padding:14px;">
-      <div style="font-size:13px;color:#777;margin-bottom:8px;">Used for address geocoding on the route map. Get a key from Google Cloud Console.</div>
+      <div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">GEOCODING AND ROUTE MAP</div>
       <div class="field" style="margin-bottom:0;">
-        <input type="text" id="gmaps-key" placeholder="Paste your API key…" style="font-size:14px;"
+        <input type="text" id="gmaps-key" placeholder="API KEY" style="font-size:14px;"
           value="" onblur="saveGmapsKey(this.value)">
       </div>
     </div>
 
-    <div class="section-title">Storage</div>
+    <div class="section-title">MATERIAL LIBRARY</div>
+    <div class="dash-card" style="margin-bottom:16px;padding:14px;">
+      <div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">IMPORT JSON FILES FOR ROUGH AND TRIM</div>
+      <button class="btn btn-secondary" style="margin-bottom:0;" onclick="document.getElementById('material-import-input').click()">IMPORT MATERIAL LIBRARY</button>
+      <input type="file" class="hidden-input" id="material-import-input" accept=".json" onchange="importMaterialLibrary(this)">
+    </div>
+
+    <div class="section-title">STORAGE</div>
     <div id="storage-info" class="dash-card" style="margin-bottom:16px;"></div>
 
-    <div style="color:#555;font-size:13px;text-align:center;margin-top:24px;">
-      Astra v0.5 — Route Map
+    <div style="color:#333;font-size:12px;text-align:center;margin-top:24px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">
+      ASTRA v0.5
     </div>
     <div style="height:24px;"></div>
   </div>
 </div>
 
-<!-- ══════════════ OVERLAY: FULLSCREEN IMAGE ══════════════ -->
+<!-- ══════════════ OVERLAY: FULLSCREEN MEDIA ══════════════ -->
 <div id="media-overlay" class="overlay">
   <div class="overlay-top">
-    <div class="overlay-title" id="overlay-title">Image</div>
-    <button class="overlay-close" onclick="closeOverlay()" aria-label="Close">✕</button>
+    <div class="overlay-title" id="overlay-title"></div>
+    <button class="overlay-close" onclick="closeOverlay()">✕</button>
   </div>
   <div class="overlay-body" id="overlay-body"></div>
 </div>
@@ -671,12 +782,12 @@ body {
 <!-- ══════════════ STATUS PICKER ══════════════ -->
 <div class="status-picker-backdrop" id="sp-backdrop" onclick="closeStatusPicker()"></div>
 <div class="status-picker" id="sp-picker">
-  <div style="text-align:center;margin-bottom:12px;font-size:13px;color:#666;text-transform:uppercase;font-weight:700;letter-spacing:0.5px;">Update Status</div>
-  <button class="status-option" onclick="pickStatus('Not Started')"><span class="badge badge-not-started">Not Started</span></button>
-  <button class="status-option" onclick="pickStatus('In Progress')"><span class="badge badge-in-progress">In Progress</span></button>
-  <button class="status-option" onclick="pickStatus('Complete')"><span class="badge badge-complete">Complete</span></button>
-  <button class="status-option" onclick="pickStatus('Needs Callback')"><span class="badge badge-needs-callback">Needs Callback</span></button>
-  <button class="status-option" onclick="pickStatus('Waiting on Materials')"><span class="badge badge-waiting-materials">Waiting on Materials</span></button>
+  <div class="status-picker-title">UPDATE STATUS</div>
+  <button class="status-option" onclick="pickStatus('Not Started')"><span class="badge badge-not-started">NOT STARTED</span></button>
+  <button class="status-option" onclick="pickStatus('In Progress')"><span class="badge badge-in-progress">IN PROGRESS</span></button>
+  <button class="status-option" onclick="pickStatus('Complete')"><span class="badge badge-complete">COMPLETE</span></button>
+  <button class="status-option" onclick="pickStatus('Needs Callback')"><span class="badge badge-needs-callback">NEEDS CALLBACK</span></button>
+  <button class="status-option" onclick="pickStatus('Waiting on Materials')"><span class="badge badge-waiting-on-materials">WAITING ON MATERIALS</span></button>
 </div>
 
 <!-- Hidden file inputs -->

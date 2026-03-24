@@ -1,9 +1,14 @@
 // ═══════════════════════════════════════════
-// DATA LAYER (localStorage for metadata)
+// ASTRA v0.5 — FIELD SERVICE
 // ═══════════════════════════════════════════
+
+// ── DATA LAYER ──
 const JOBS_KEY = 'astra_jobs';
 const TECHS_KEY = 'astra_techs';
 const ADDRS_KEY = 'astra_addresses';
+const NAV_FREQ_KEY = 'astra_nav_frequency';
+const HOME_BASE_KEY = 'astra_home_base';
+const GMAPS_KEY_STORAGE = 'astra_gmaps_key';
 const STATUSES = ['Not Started','In Progress','Complete','Needs Callback','Waiting on Materials'];
 
 function loadJobs() {
@@ -11,7 +16,6 @@ function loadJobs() {
   catch { return []; }
 }
 function saveJobs(jobs) {
-  // Strip any legacy inline base64 data before saving to localStorage
   const clean = jobs.map(j => ({
     ...j,
     photos: (j.photos || []).map(p => ({ id: p.id, name: p.name, type: p.type || 'image', addedAt: p.addedAt })),
@@ -38,19 +42,38 @@ function updateAddress(id, updates) {
   Object.assign(addrs[idx], updates);
   saveAddresses(addrs);
 }
-
-function statusClass(s) {
-  return 'badge-' + s.toLowerCase().replace(/\s+/g, '-');
+function statusClass(s) { return 'badge-' + s.toLowerCase().replace(/\s+/g, '-'); }
+function getJob(id) { return loadJobs().find(j => j.id === id); }
+function updateJob(id, updates) {
+  const jobs = loadJobs();
+  const idx = jobs.findIndex(j => j.id === id);
+  if (idx === -1) return;
+  Object.assign(jobs[idx], updates, { updatedAt: new Date().toISOString() });
+  saveJobs(jobs);
 }
 
-// Seed default tech if none exist
+// Seed default tech
 if (loadTechs().length === 0) {
   saveTechs([{ id: crypto.randomUUID(), name: 'Mike Torres' }]);
 }
 
-// ═══════════════════════════════════════════
-// INDEXEDDB MEDIA STORE
-// ═══════════════════════════════════════════
+// Migrate existing tickets: ensure all have a date field
+(function migrateDates() {
+  const jobs = loadJobs();
+  let changed = false;
+  jobs.forEach(j => {
+    if (!j.date) {
+      j.date = j.createdAt ? j.createdAt.split('T')[0] : new Date().toISOString().split('T')[0];
+      changed = true;
+    }
+    if (!j.videos) { j.videos = []; changed = true; }
+    if (j.techNotes === undefined) { j.techNotes = ''; changed = true; }
+    if (j.manually_added_to_vector === undefined) { j.manually_added_to_vector = false; changed = true; }
+  });
+  if (changed) saveJobs(jobs);
+})();
+
+// ── INDEXEDDB MEDIA STORE ──
 let mediaDB = null;
 
 function openMediaDB() {
@@ -59,9 +82,7 @@ function openMediaDB() {
     const req = indexedDB.open('astra_media', 1);
     req.onupgradeneeded = function(e) {
       const db = e.target.result;
-      if (!db.objectStoreNames.contains('blobs')) {
-        db.createObjectStore('blobs', { keyPath: 'id' });
-      }
+      if (!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs', { keyPath: 'id' });
     };
     req.onsuccess = function(e) { mediaDB = e.target.result; resolve(mediaDB); };
     req.onerror = function() { reject(req.error); };
@@ -72,7 +93,7 @@ async function saveMediaBlob(id, data) {
   const db = await openMediaDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction('blobs', 'readwrite');
-    tx.objectStore('blobs').put({ id: id, data: data });
+    tx.objectStore('blobs').put({ id, data });
     tx.oncomplete = resolve;
     tx.onerror = () => reject(tx.error);
   });
@@ -125,7 +146,6 @@ async function getMediaDBSize() {
   return total;
 }
 
-// Migrate legacy inline base64 data to IndexedDB
 async function migrateLegacyMedia() {
   const jobs = JSON.parse(localStorage.getItem(JOBS_KEY) || '[]');
   let migrated = false;
@@ -143,91 +163,304 @@ async function migrateLegacyMedia() {
     }
     if (!j.videos) j.videos = [];
   }
-  if (migrated) {
-    localStorage.setItem(JOBS_KEY, JSON.stringify(jobs));
-  }
+  if (migrated) localStorage.setItem(JOBS_KEY, JSON.stringify(jobs));
 }
 
-// Init IndexedDB and migrate
+// Init
 openMediaDB().then(() => migrateLegacyMedia()).then(() => renderJobList());
 
 // ═══════════════════════════════════════════
-// NAVIGATION
+// NAVIGATION + SIDEBAR
 // ═══════════════════════════════════════════
 let currentScreen = 'screen-jobs';
 let currentJobId = null;
+let homeView = 'daily';
+let archiveView = 'daily';
+
+const SCREEN_ICONS = {
+  'screen-search': '⌕', 'screen-addresses': '◎', 'screen-vector': '▷',
+  'screen-materials': '☰', 'screen-archive': '▣', 'screen-dashboard': '◧', 'screen-settings': '⚙'
+};
+const SCREEN_LABELS = {
+  'screen-jobs': 'HOME', 'screen-search': 'SEARCH', 'screen-addresses': 'ADDRESSES',
+  'screen-vector': 'VECTOR', 'screen-materials': 'MATERIALS', 'screen-archive': 'ARCHIVE',
+  'screen-dashboard': 'DASHBOARD', 'screen-settings': 'SETTINGS'
+};
+const DEFAULT_SHORTCUTS = ['screen-search', 'screen-addresses', 'screen-vector'];
+
+function loadNavFreq() {
+  try { return JSON.parse(localStorage.getItem(NAV_FREQ_KEY)) || {}; } catch { return {}; }
+}
+function saveNavFreq(freq) { localStorage.setItem(NAV_FREQ_KEY, JSON.stringify(freq)); }
+
+function trackNavigation(screenId) {
+  if (screenId === 'screen-jobs' || screenId === 'screen-detail' ||
+      screenId === 'screen-create' || screenId === 'screen-addr-detail') return;
+  const freq = loadNavFreq();
+  freq[screenId] = (freq[screenId] || 0) + 1;
+  saveNavFreq(freq);
+}
+
+function getShortcuts() {
+  const freq = loadNavFreq();
+  const totalNavs = Object.values(freq).reduce((a, b) => a + b, 0);
+  if (totalNavs < 10) return DEFAULT_SHORTCUTS;
+  return Object.entries(freq)
+    .filter(([k]) => k !== 'screen-jobs')
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([k]) => k);
+}
+
+function renderShortcuts() {
+  const shortcuts = getShortcuts();
+  const el = document.getElementById('nav-shortcuts');
+  el.innerHTML = shortcuts.map(s =>
+    `<button class="nav-shortcut${currentScreen === s ? ' sc-active' : ''}" onclick="goTo('${s}')" title="${SCREEN_LABELS[s] || ''}">${SCREEN_ICONS[s] || '·'}</button>`
+  ).join('');
+}
+
+function updateSidebarActive() {
+  document.querySelectorAll('.sidebar-item').forEach(item => {
+    item.classList.toggle('sb-active', item.dataset.screen === currentScreen);
+  });
+}
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-backdrop').classList.toggle('open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-backdrop').classList.remove('open');
+}
+
+let skipPushState = false;
 
 function goTo(screenId, jobId) {
+  closeSidebar();
+  initScreen(screenId, jobId);
+
+  // Transition
+  const prev = document.getElementById(currentScreen);
+  const next = document.getElementById(screenId);
+  if (prev) prev.classList.remove('active');
+  if (next) next.classList.add('active');
+  currentScreen = screenId;
+
+  const scrollBody = next ? next.querySelector('.screen-body') : null;
+  if (scrollBody) scrollBody.scrollTop = 0;
+
+  // Browser history for back/forward buttons
+  if (!skipPushState) {
+    const state = { screen: screenId };
+    if (jobId !== undefined) state.jobId = jobId;
+    history.pushState(state, '', '');
+  }
+
+  trackNavigation(screenId);
+  renderShortcuts();
+  updateSidebarActive();
+}
+
+function initScreen(screenId, jobId) {
   if (screenId === 'screen-jobs') renderJobList();
   if (screenId === 'screen-archive') renderArchiveList();
   if (screenId === 'screen-dashboard') renderDashboard();
-  if (screenId === 'screen-addresses') { renderAddressList(''); document.getElementById('addr-search').value = ''; }
+  if (screenId === 'screen-addresses') { renderAddressList(''); const s = document.getElementById('addr-search'); if(s) s.value = ''; }
   if (screenId === 'screen-addr-detail' && jobId !== undefined) renderAddrDetail(jobId);
-  if (screenId === 'screen-map') renderMap();
+  if (screenId === 'screen-vector') renderMap();
   if (screenId === 'screen-settings') renderSettings();
   if (screenId === 'screen-search') {
     setTimeout(() => {
       const inp = document.getElementById('search-input');
-      inp.value = '';
-      document.getElementById('search-results').innerHTML = '<div class="search-hint">Search across all tickets — active and archived.</div>';
-      inp.focus();
-    }, 300);
+      if (inp) { inp.value = ''; inp.focus(); }
+      const res = document.getElementById('search-results');
+      if (res) res.innerHTML = '<div class="search-hint">SEARCH ALL TICKETS</div>';
+    }, 200);
   }
   if (screenId === 'screen-detail' && jobId !== undefined) {
     currentJobId = jobId;
     renderDetail(jobId);
   }
   if (screenId === 'screen-create') resetCreateForm();
+}
 
-  const prev = document.getElementById(currentScreen);
-  const next = document.getElementById(screenId);
-  prev.classList.remove('active');
-  prev.classList.add('slide-out');
-  next.classList.add('active');
-  currentScreen = screenId;
-  const scrollBody = next.querySelector('.screen-body');
-  if (scrollBody) scrollBody.scrollTop = 0;
-  setTimeout(() => prev.classList.remove('slide-out'), 300);
+// Browser back/forward button support
+window.addEventListener('popstate', function(e) {
+  if (e.state && e.state.screen) {
+    skipPushState = true;
+    goTo(e.state.screen, e.state.jobId);
+    skipPushState = false;
+  } else {
+    skipPushState = true;
+    goTo('screen-jobs');
+    skipPushState = false;
+  }
+});
+
+// Set initial history state
+history.replaceState({ screen: 'screen-jobs' }, '', '');
+
+// ═══════════════════════════════════════════
+// ISO WEEK UTILITIES
+// ═══════════════════════════════════════════
+function getISOWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+
+function getISOWeekYear(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  return d.getUTCFullYear();
+}
+
+function getWeekRange(year, week) {
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const dayNum = jan4.getUTCDay() || 7;
+  const mon = new Date(jan4);
+  mon.setUTCDate(jan4.getUTCDate() - dayNum + 1 + (week - 1) * 7);
+  const sun = new Date(mon);
+  sun.setUTCDate(mon.getUTCDate() + 6);
+  const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  return months[mon.getUTCMonth()] + ' ' + mon.getUTCDate() + '–' + (sun.getUTCMonth() !== mon.getUTCMonth() ? months[sun.getUTCMonth()] + ' ' : '') + sun.getUTCDate();
+}
+
+function todayStr() { return new Date().toISOString().split('T')[0]; }
+
+// ═══════════════════════════════════════════
+// HOME SCREEN — DAILY / WEEKLY
+// ═══════════════════════════════════════════
+function setHomeView(view) {
+  homeView = view;
+  document.querySelectorAll('#home-toggle .date-toggle-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', (i === 0 && view === 'daily') || (i === 1 && view === 'weekly'));
+  });
+  renderJobList();
+}
+
+function renderJobList() {
+  const allJobs = loadJobs().filter(j => !j.archived);
+  const el = document.getElementById('jobs-body');
+  if (!el) return;
+
+  if (allJobs.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div>⚡</div><div>NO TICKETS</div></div>';
+    return;
+  }
+
+  if (homeView === 'daily') {
+    const today = todayStr();
+    const jobs = allJobs.filter(j => j.date === today);
+    if (jobs.length === 0) {
+      el.innerHTML = '<div class="empty-state"><div>—</div><div>NO TICKETS DUE TODAY</div></div>';
+      return;
+    }
+    el.innerHTML = jobs.map(j => jobCard(j)).join('');
+  } else {
+    // Weekly view — group by ISO week
+    const grouped = {};
+    allJobs.forEach(j => {
+      const d = new Date(j.date + 'T00:00:00');
+      const week = getISOWeek(d);
+      const year = getISOWeekYear(d);
+      const key = year + '-' + String(week).padStart(2, '0');
+      if (!grouped[key]) grouped[key] = { week, year, jobs: [] };
+      grouped[key].jobs.push(j);
+    });
+    const sortedKeys = Object.keys(grouped).sort();
+    if (sortedKeys.length === 0) {
+      el.innerHTML = '<div class="empty-state"><div>—</div><div>NO TICKETS</div></div>';
+      return;
+    }
+    let html = '';
+    sortedKeys.forEach(key => {
+      const g = grouped[key];
+      const range = getWeekRange(g.year, g.week);
+      html += `<div class="week-header" onclick="toggleWeek(this)"><span>WEEK ${g.week} — ${range}</span><span class="wh-arrow">▼</span></div>`;
+      html += `<div class="week-group">${g.jobs.map(j => jobCard(j)).join('')}</div>`;
+    });
+    el.innerHTML = html;
+  }
+}
+
+function toggleWeek(el) {
+  el.classList.toggle('collapsed');
+  const group = el.nextElementSibling;
+  if (group) group.classList.toggle('collapsed');
+}
+
+function autoExpand(el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+
+function jobCard(j) {
+  const dateStr = j.date ? new Date(j.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+  return `<div class="card" onclick="goTo('screen-detail','${j.id}')">
+    <div class="card-address">${esc(j.address)}</div>
+    <div class="card-meta">
+      ${j.types.map(t => `<span class="badge badge-type">${esc(t).toUpperCase()}</span>`).join('')}
+      <span class="badge ${statusClass(j.status)}">${esc(j.status).toUpperCase()}</span>
+      ${dateStr ? `<span class="card-due">${dateStr}</span>` : ''}
+    </div>
+  </div>`;
 }
 
 // ═══════════════════════════════════════════
-// JOB LIST
+// ARCHIVE — DAILY / WEEKLY (PARITY WITH HOME)
 // ═══════════════════════════════════════════
-function renderJobList() {
-  const jobs = loadJobs().filter(j => !j.archived);
-  const el = document.getElementById('jobs-body');
-  if (jobs.length === 0) {
-    el.innerHTML = '<div class="empty-state"><div>⚡</div><div>No tickets yet.<br>Tap + to create one.</div></div>';
-    return;
-  }
-  el.innerHTML = jobs.map(j => `
-    <div class="card" onclick="goTo('screen-detail','${j.id}')">
-      <div class="card-address">${esc(j.address)}</div>
-      <div class="card-meta">
-        ${j.types.map(t => `<span class="badge badge-type">${esc(t)}</span>`).join('')}
-        <span class="badge ${statusClass(j.status)}">${esc(j.status)}</span>
-      </div>
-    </div>
-  `).join('');
+function setArchiveView(view) {
+  archiveView = view;
+  document.querySelectorAll('#archive-toggle .date-toggle-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', (i === 0 && view === 'daily') || (i === 1 && view === 'weekly'));
+  });
+  renderArchiveList();
 }
 
 function renderArchiveList() {
-  const jobs = loadJobs().filter(j => j.archived);
+  const allJobs = loadJobs().filter(j => j.archived);
   const el = document.getElementById('archive-body');
-  if (jobs.length === 0) {
-    el.innerHTML = '<div class="empty-state"><div>📦</div><div>No archived tickets.</div></div>';
+  if (!el) return;
+
+  if (allJobs.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div>▣</div><div>NO ARCHIVED TICKETS</div></div>';
     return;
   }
-  el.innerHTML = jobs.map(j => `
-    <div class="card" onclick="goTo('screen-detail','${j.id}')">
-      <div class="card-address">${esc(j.address)}</div>
-      <div class="card-meta">
-        ${j.types.map(t => `<span class="badge badge-type">${esc(t)}</span>`).join('')}
-        <span class="badge ${statusClass(j.status)}">${esc(j.status)}</span>
-        <span class="badge badge-archived">Archived</span>
-      </div>
-    </div>
-  `).join('');
+
+  if (archiveView === 'daily') {
+    const today = todayStr();
+    const jobs = allJobs.filter(j => j.date === today);
+    if (jobs.length === 0) {
+      el.innerHTML = '<div class="empty-state"><div>—</div><div>NO ARCHIVED TICKETS FOR TODAY</div></div>';
+      return;
+    }
+    el.innerHTML = jobs.map(j => jobCard(j)).join('');
+  } else {
+    const grouped = {};
+    allJobs.forEach(j => {
+      const d = new Date(j.date + 'T00:00:00');
+      const week = getISOWeek(d);
+      const year = getISOWeekYear(d);
+      const key = year + '-' + String(week).padStart(2, '0');
+      if (!grouped[key]) grouped[key] = { week, year, jobs: [] };
+      grouped[key].jobs.push(j);
+    });
+    const sortedKeys = Object.keys(grouped).sort().reverse(); // newest first for archive
+    let html = '';
+    sortedKeys.forEach(key => {
+      const g = grouped[key];
+      const range = getWeekRange(g.year, g.week);
+      html += `<div class="week-header" onclick="toggleWeek(this)"><span>WEEK ${g.week} — ${range}</span><span class="wh-arrow">▼</span></div>`;
+      html += `<div class="week-group">${g.jobs.map(j => jobCard(j)).join('')}</div>`;
+    });
+    el.innerHTML = html;
+  }
 }
 
 // ═══════════════════════════════════════════
@@ -252,12 +485,13 @@ function resetCreateForm() {
   document.getElementById('c-zip').value = '';
   document.querySelectorAll('#c-types .chip').forEach(c => c.classList.remove('selected'));
   document.getElementById('c-status').value = 'Not Started';
-  document.getElementById('c-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('c-date').value = todayStr();
   document.getElementById('c-notes').value = '';
-  // Populate tech dropdown
+  const err = document.getElementById('c-date-error');
+  if (err) err.classList.remove('visible');
   const sel = document.getElementById('c-tech');
   const techs = loadTechs();
-  sel.innerHTML = '<option value="">Select tech…</option>' +
+  sel.innerHTML = '<option value="">—</option>' +
     techs.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
 }
 
@@ -272,10 +506,10 @@ function addrAutocomplete(val) {
     `<div class="addr-suggest-item" onclick="pickAddr('${a.id}')">${esc(a.address)}</div>`
   ).join('');
 }
+
 function pickAddr(addrId) {
   const a = getAddress(addrId);
   if (!a) return;
-  // Parse address components back into fields
   document.getElementById('c-street').value = a.street || a.address || '';
   document.getElementById('c-suite').value = a.suite || '';
   document.getElementById('c-city').value = a.city || '';
@@ -288,10 +522,16 @@ function saveNewTicket() {
   const street = document.getElementById('c-street').value.trim();
   if (!street) { document.getElementById('c-street').focus(); return; }
 
+  const dateVal = document.getElementById('c-date').value;
+  if (!dateVal) {
+    document.getElementById('c-date-error').classList.add('visible');
+    document.getElementById('c-date').focus();
+    return;
+  }
+
   const address = buildFullAddress();
   const addrComponents = {
-    street: street,
-    suite: document.getElementById('c-suite').value.trim(),
+    street, suite: document.getElementById('c-suite').value.trim(),
     city: document.getElementById('c-city').value.trim(),
     state: document.getElementById('c-state').value,
     zip: document.getElementById('c-zip').value.trim()
@@ -299,27 +539,22 @@ function saveNewTicket() {
 
   const types = [];
   document.querySelectorAll('#c-types .chip.selected').forEach(c => types.push(c.textContent));
-
   const techSel = document.getElementById('c-tech');
   const techId = techSel.value;
   const techName = techSel.options[techSel.selectedIndex]?.text || '';
-
   const addressId = findOrCreateAddress(address, addrComponents);
 
   const job = {
-    id: crypto.randomUUID(),
-    syncId: crypto.randomUUID(),
-    address: address,
-    addressId: addressId,
-    types: types.length ? types : ['General'],
+    id: crypto.randomUUID(), syncId: crypto.randomUUID(),
+    address, addressId,
+    types: types.length ? types : ['GENERAL'],
     status: document.getElementById('c-status').value,
-    date: document.getElementById('c-date').value,
-    techId: techId,
-    techName: techId ? techName : '',
+    date: dateVal,
+    techId, techName: techId ? techName : '',
     notes: document.getElementById('c-notes').value,
-    photos: [],
-    drawings: [],
-    videos: [],
+    techNotes: '',
+    photos: [], drawings: [], videos: [],
+    manually_added_to_vector: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -333,26 +568,15 @@ function saveNewTicket() {
 // ═══════════════════════════════════════════
 // TICKET DETAIL
 // ═══════════════════════════════════════════
-function getJob(id) { return loadJobs().find(j => j.id === id); }
-
-function updateJob(id, updates) {
-  const jobs = loadJobs();
-  const idx = jobs.findIndex(j => j.id === id);
-  if (idx === -1) return;
-  Object.assign(jobs[idx], updates, { updatedAt: new Date().toISOString() });
-  saveJobs(jobs);
-}
-
 async function renderDetail(jobId) {
   const j = getJob(jobId);
   if (!j) return;
   if (!j.videos) j.videos = [];
 
   const techs = loadTechs();
-  const typeBadges = j.types.map(t => `<span class="badge badge-type">${esc(t)}</span>`).join('');
-  const dateFormatted = j.date ? new Date(j.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+  const typeBadges = j.types.map(t => `<span class="badge badge-type">${esc(t).toUpperCase()}</span>`).join('');
+  const dateFormatted = j.date ? new Date(j.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase() : '—';
 
-  // Load thumbnail URLs from IndexedDB
   async function thumbHTML(items, type) {
     const parts = [];
     for (let i = 0; i < items.length; i++) {
@@ -379,219 +603,64 @@ async function renderDetail(jobId) {
   const drawingThumbs = await thumbHTML(j.drawings, 'drawings');
   const videoThumbs = await thumbHTML(j.videos, 'videos');
 
+  const vectorBtnClass = j.manually_added_to_vector ? 'btn-vector in-vector' : 'btn-vector';
+  const vectorBtnText = j.manually_added_to_vector ? 'REMOVE FROM VECTOR' : 'ADD TO VECTOR';
+
   document.getElementById('detail-body').innerHTML = `
     <div class="detail-header">
       <div class="detail-address">${esc(j.address)}</div>
-      <div style="display:flex;gap:16px;margin-bottom:6px;">
-        ${j.addressId ? '<button style="background:none;border:none;color:#FF6B00;font-size:13px;font-weight:600;cursor:pointer;padding:0;" onclick="goTo(\'screen-addr-detail\',\'' + j.addressId + '\')">View Property →</button>' : ''}
-        <button style="background:none;border:none;color:#4A9DFF;font-size:13px;font-weight:600;cursor:pointer;padding:0;" onclick="navigateTo('${esc(j.address).replace(/'/g, "\\'")}')">Navigate →</button>
+      <div style="display:flex;gap:12px;margin-bottom:8px;">
+        ${j.addressId ? `<button class="btn-navigate" onclick="goTo('screen-addr-detail','${j.addressId}')">PROPERTY</button>` : ''}
+        <button class="btn-navigate" onclick="navigateTo('${esc(j.address).replace(/'/g, "\\'")}')">NAVIGATE</button>
       </div>
       <div class="card-meta" style="margin-bottom:10px;">
         ${typeBadges}
-        <span class="badge ${statusClass(j.status)} badge-status" onclick="openStatusPicker()">${esc(j.status)}</span>
+        <span class="badge ${statusClass(j.status)} badge-status" onclick="openStatusPicker()">${esc(j.status).toUpperCase()}</span>
       </div>
-      <div class="detail-row"><span>Date</span><span>${dateFormatted}</span></div>
-      <div class="detail-row"><span>Tech</span>
-        <select style="background:#2b2b2b;color:#fff;border:1px solid #444;border-radius:8px;padding:6px 10px;font-size:14px;min-height:36px;" onchange="updateJob('${jobId}',{techId:this.value,techName:this.options[this.selectedIndex].text})">
-          <option value="">Unassigned</option>
+      <div class="detail-row"><span>DUE DATE</span><span>${dateFormatted}</span></div>
+      <div class="detail-row"><span>TECH</span>
+        <select style="background:#1a1a1a;color:#e0e0e0;border:1px solid #333;border-radius:8px;padding:6px 10px;font-size:14px;min-height:36px;" onchange="updateJob('${jobId}',{techId:this.value,techName:this.options[this.selectedIndex].text})">
+          <option value="">UNASSIGNED</option>
           ${techs.map(t => `<option value="${t.id}" ${t.id===j.techId?'selected':''}>${esc(t.name)}</option>`).join('')}
         </select>
       </div>
     </div>
 
-    <div class="section-title">Job Notes</div>
-    <div style="background:#333;border-radius:12px;padding:14px;font-size:14px;color:#aaa;line-height:1.5;min-height:48px;white-space:pre-wrap;">${esc(j.notes) || '<span style="color:#555;">No job notes.</span>'}</div>
+    <button class="${vectorBtnClass}" onclick="toggleVector('${jobId}')">${vectorBtnText}</button>
 
-    <div class="section-title">Tech Notes</div>
+    <div class="section-title">JOB NOTES</div>
+    <div style="background:#222;border-radius:10px;padding:14px;font-size:14px;color:#888;line-height:1.5;min-height:48px;white-space:pre-wrap;border:1px solid #2a2a2a;">${esc(j.notes) || '<span style="color:#333;">NO JOB NOTES.</span>'}</div>
+
+    <div class="section-title">TECH NOTES</div>
     <div class="field" style="margin-bottom:0;">
-      <textarea id="detail-tech-notes" style="min-height:90px;" placeholder="Add notes from the job…" onblur="updateJob('${jobId}',{techNotes:this.value})">${esc(j.techNotes || '')}</textarea>
+      <textarea id="detail-tech-notes" style="min-height:90px;" placeholder="NOTES FROM THE JOB..." onblur="updateJob('${jobId}',{techNotes:this.value})">${esc(j.techNotes || '')}</textarea>
     </div>
 
-    <div class="section-title">Photos${j.photos.length ? ' ('+j.photos.length+')' : ''}</div>
-    <button class="upload-btn" onclick="document.getElementById('photo-input').click()">
-      <span style="font-size:20px;">📷</span> Add Photos
-    </button>
+    <div class="section-title">PHOTOS${j.photos.length ? ' (' + j.photos.length + ')' : ''}</div>
+    <button class="upload-btn" onclick="document.getElementById('photo-input').click()">ADD PHOTOS</button>
     ${j.photos.length ? '<div class="media-grid">' + photoThumbs + '</div>' : ''}
 
-    <div class="section-title">Videos${j.videos.length ? ' ('+j.videos.length+')' : ''}</div>
-    <button class="upload-btn" onclick="document.getElementById('video-input').click()">
-      <span style="font-size:20px;">🎥</span> Add Videos
-    </button>
+    <div class="section-title">VIDEOS${j.videos.length ? ' (' + j.videos.length + ')' : ''}</div>
+    <button class="upload-btn" onclick="document.getElementById('video-input').click()">ADD VIDEOS</button>
     ${j.videos.length ? '<div class="media-grid">' + videoThumbs + '</div>' : ''}
 
-    <div class="section-title">Drawings${j.drawings.length ? ' ('+j.drawings.length+')' : ''}</div>
-    <button class="upload-btn" onclick="document.getElementById('drawing-input').click()">
-      <span style="font-size:20px;">📎</span> Upload Drawing
-    </button>
+    <div class="section-title">DRAWINGS${j.drawings.length ? ' (' + j.drawings.length + ')' : ''}</div>
+    <button class="upload-btn" onclick="document.getElementById('drawing-input').click()">UPLOAD DRAWING</button>
     ${j.drawings.length ? '<div class="media-grid">' + drawingThumbs + '</div>' : ''}
 
     ${j.archived
-      ? `<button class="btn btn-unarchive" onclick="unarchiveJob('${jobId}')">Restore from Archive</button>`
-      : `<button class="btn btn-archive" onclick="archiveJob('${jobId}')">Archive Ticket</button>`
+      ? `<button class="btn btn-restore" onclick="unarchiveJob('${jobId}')">RESTORE</button>`
+      : `<button class="btn btn-danger" onclick="archiveJob('${jobId}')">ARCHIVE</button>`
     }
     <div style="height:24px;"></div>
   `;
 }
 
-// ═══════════════════════════════════════════
-// DASHBOARD
-// ═══════════════════════════════════════════
-function renderDashboard() {
-  const allJobs = loadJobs();
-  const active = allJobs.filter(j => !j.archived);
-  const archived = allJobs.filter(j => j.archived);
-  const total = allJobs.length;
-
-  // Status breakdown (active only)
-  const statusCounts = {};
-  STATUSES.forEach(s => statusCounts[s] = 0);
-  active.forEach(j => { if (statusCounts[j.status] !== undefined) statusCounts[j.status]++; });
-
-  const statusColors = {
-    'Not Started': '#666', 'In Progress': '#c9a800', 'Complete': '#2d8a4e',
-    'Needs Callback': '#c0392b', 'Waiting on Materials': '#FF6B00'
-  };
-
-  // Job type frequency
-  const typeCounts = {};
-  allJobs.forEach(j => j.types.forEach(t => { typeCounts[t] = (typeCounts[t] || 0) + 1; }));
-  const typesSorted = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
-  const maxTypeCount = typesSorted.length ? typesSorted[0][1] : 1;
-
-  // Tech workload (active only)
-  const techCounts = {};
-  active.forEach(j => { if (j.techName) techCounts[j.techName] = (techCounts[j.techName] || 0) + 1; });
-  const techSorted = Object.entries(techCounts).sort((a, b) => b[1] - a[1]);
-
-  // Media counts
-  let totalPhotos = 0, totalDrawings = 0, totalVideos = 0;
-  allJobs.forEach(j => { totalPhotos += (j.photos || []).length; totalDrawings += (j.drawings || []).length; totalVideos += (j.videos || []).length; });
-
-  // Recent activity (last 10 updated)
-  const recent = [...allJobs].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 8);
-
-  // Completion rate
-  const completedCount = allJobs.filter(j => j.status === 'Complete' || j.archived).length;
-  const completionPct = total ? Math.round((completedCount / total) * 100) : 0;
-
-  // This week's activity
-  const now = new Date();
-  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const createdThisWeek = allJobs.filter(j => new Date(j.createdAt) >= weekAgo).length;
-  const updatedThisWeek = allJobs.filter(j => new Date(j.updatedAt) >= weekAgo).length;
-
-  document.getElementById('dashboard-body').innerHTML = `
-    <!-- Overview Stats -->
-    <div class="dash-grid">
-      <div class="dash-stat">
-        <div class="dash-stat-num" style="color:#FF6B00;">${active.length}</div>
-        <div class="dash-stat-label">Active Jobs</div>
-      </div>
-      <div class="dash-stat">
-        <div class="dash-stat-num" style="color:#2d8a4e;">${archived.length}</div>
-        <div class="dash-stat-label">Archived</div>
-      </div>
-      <div class="dash-stat">
-        <div class="dash-stat-num" style="color:#c9a800;">${completionPct}%</div>
-        <div class="dash-stat-label">Completion Rate</div>
-      </div>
-      <div class="dash-stat">
-        <div class="dash-stat-num" style="color:#fff;">${totalPhotos + totalDrawings + totalVideos}</div>
-        <div class="dash-stat-label">Total Files</div>
-      </div>
-    </div>
-
-    <!-- Status Breakdown -->
-    <div class="dash-card" style="margin-top:12px;">
-      <div class="dash-card-title">Active Jobs by Status</div>
-      ${STATUSES.map(s => {
-        const count = statusCounts[s];
-        const pct = active.length ? Math.round((count / active.length) * 100) : 0;
-        return `<div class="dash-row">
-          <div class="dash-row-label"><span class="badge ${statusClass(s)}" style="font-size:10px;">${s}</span></div>
-          <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%;background:${statusColors[s]};"></div></div>
-          <div class="dash-row-value">${count}</div>
-        </div>`;
-      }).join('')}
-    </div>
-
-    <!-- Job Types -->
-    ${typesSorted.length ? `<div class="dash-card">
-      <div class="dash-card-title">Job Types</div>
-      ${typesSorted.map(([type, count]) => {
-        const pct = Math.round((count / maxTypeCount) * 100);
-        return `<div class="dash-row">
-          <div class="dash-row-label" style="min-width:100px;">${esc(type)}</div>
-          <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%;background:#FF6B00;"></div></div>
-          <div class="dash-row-value">${count}</div>
-        </div>`;
-      }).join('')}
-    </div>` : ''}
-
-    <!-- Tech Workload -->
-    ${techSorted.length ? `<div class="dash-card">
-      <div class="dash-card-title">Tech Workload (Active)</div>
-      ${techSorted.map(([name, count]) => `<div class="dash-row">
-        <div class="dash-row-label">${esc(name)}</div>
-        <div class="dash-row-value">${count} job${count !== 1 ? 's' : ''}</div>
-      </div>`).join('')}
-    </div>` : ''}
-
-    <!-- This Week -->
-    <div class="dash-card">
-      <div class="dash-card-title">This Week</div>
-      <div class="dash-row">
-        <div class="dash-row-label">Tickets Created</div>
-        <div class="dash-row-value" style="color:#FF6B00;">${createdThisWeek}</div>
-      </div>
-      <div class="dash-row">
-        <div class="dash-row-label">Tickets Updated</div>
-        <div class="dash-row-value">${updatedThisWeek}</div>
-      </div>
-      <div class="dash-row">
-        <div class="dash-row-label">Photos</div>
-        <div class="dash-row-value">${totalPhotos}</div>
-      </div>
-      <div class="dash-row">
-        <div class="dash-row-label">Videos</div>
-        <div class="dash-row-value">${totalVideos}</div>
-      </div>
-      <div class="dash-row">
-        <div class="dash-row-label">Drawings</div>
-        <div class="dash-row-value">${totalDrawings}</div>
-      </div>
-    </div>
-
-    <!-- Recent Activity -->
-    ${recent.length ? `<div class="dash-card">
-      <div class="dash-card-title">Recent Activity</div>
-      ${recent.map(j => {
-        const ago = timeAgo(j.updatedAt);
-        return `<div class="dash-activity" onclick="goTo('screen-detail','${j.id}')" style="cursor:pointer;">
-          <div class="dash-activity-dot" style="background:${statusColors[j.status] || '#666'};"></div>
-          <div style="flex:1;overflow:hidden;">
-            <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#ccc;font-weight:500;">${esc(j.address)}</div>
-            <div style="font-size:11px;color:#555;">${esc(j.status)}${j.archived ? ' · Archived' : ''}</div>
-          </div>
-          <div style="font-size:11px;color:#555;white-space:nowrap;">${ago}</div>
-        </div>`;
-      }).join('')}
-    </div>` : ''}
-
-    <div style="height:24px;"></div>
-  `;
-}
-
-function timeAgo(isoStr) {
-  const diff = Date.now() - new Date(isoStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return mins + 'm ago';
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return hrs + 'h ago';
-  const days = Math.floor(hrs / 24);
-  if (days < 7) return days + 'd ago';
-  return Math.floor(days / 7) + 'w ago';
+function toggleVector(jobId) {
+  const j = getJob(jobId);
+  if (!j) return;
+  updateJob(jobId, { manually_added_to_vector: !j.manually_added_to_vector });
+  renderDetail(jobId);
 }
 
 // ═══════════════════════════════════════════
@@ -600,66 +669,42 @@ function timeAgo(isoStr) {
 function runSearch(query) {
   const el = document.getElementById('search-results');
   const q = query.trim().toLowerCase();
-
-  if (!q) {
-    el.innerHTML = '<div class="search-hint">Search across all tickets — active and archived.</div>';
-    return;
-  }
+  if (!q) { el.innerHTML = '<div class="search-hint">SEARCH ALL TICKETS</div>'; return; }
 
   const jobs = loadJobs();
   const matches = jobs.filter(j => {
-    const haystack = [
-      j.address, j.techName, j.notes, j.status,
-      ...j.types
-    ].join(' ').toLowerCase();
-    return q.split(/\s+/).every(word => haystack.includes(word));
+    const hay = [j.address, j.techName, j.notes, j.techNotes, j.status, ...j.types].join(' ').toLowerCase();
+    return q.split(/\s+/).every(w => hay.includes(w));
   });
 
-  if (matches.length === 0) {
-    el.innerHTML = '<div class="search-hint">No tickets match "' + esc(query) + '"</div>';
-    return;
-  }
+  if (!matches.length) { el.innerHTML = '<div class="search-hint">NO RESULTS FOR "' + esc(query).toUpperCase() + '"</div>'; return; }
 
   const active = matches.filter(j => !j.archived);
   const archived = matches.filter(j => j.archived);
   let html = '';
-
   if (active.length) {
-    html += '<div class="search-divider">Active (' + active.length + ')</div>';
-    html += active.map(j => searchCard(j)).join('');
+    html += '<div class="search-divider">ACTIVE (' + active.length + ')</div>';
+    html += active.map(j => jobCard(j)).join('');
   }
   if (archived.length) {
-    html += '<div class="search-divider">Archived (' + archived.length + ')</div>';
-    html += archived.map(j => searchCard(j, true)).join('');
+    html += '<div class="search-divider">ARCHIVED (' + archived.length + ')</div>';
+    html += archived.map(j => jobCard(j)).join('');
   }
   el.innerHTML = html;
-}
-
-function searchCard(j, isArchived) {
-  return `
-    <div class="card" onclick="goTo('screen-detail','${j.id}')">
-      <div class="card-address">${esc(j.address)}</div>
-      <div class="card-meta">
-        ${j.types.map(t => `<span class="badge badge-type">${esc(t)}</span>`).join('')}
-        <span class="badge ${statusClass(j.status)}">${esc(j.status)}</span>
-        ${isArchived ? '<span class="badge badge-archived">Archived</span>' : ''}
-      </div>
-    </div>
-  `;
 }
 
 // ═══════════════════════════════════════════
 // ADDRESS DATABASE
 // ═══════════════════════════════════════════
 const ADDR_FIELDS = [
-  { key: 'builder', label: 'Builder' },
-  { key: 'subdivision', label: 'Subdivision' },
-  { key: 'panelType', label: 'Panel Type' },
-  { key: 'ampRating', label: 'Amp Rating', options: ['100A', '150A', '200A', '250A', '300A', '400A', '600A'] },
-  { key: 'breakerType', label: 'Breaker Type', options: ['SQD', 'CH', 'BR', 'SIEM'] },
-  { key: 'serviceType', label: 'Service Type', options: ['Underground', 'Overhead'] },
-  { key: 'panelLocation', label: 'Panel Location', options: ['Indoor', 'Outdoor'] },
-  { key: 'notes', label: 'Property Notes', textarea: true }
+  { key: 'builder', label: 'BUILDER' },
+  { key: 'subdivision', label: 'SUBDIVISION' },
+  { key: 'panelType', label: 'PANEL TYPE' },
+  { key: 'ampRating', label: 'AMP RATING', options: ['100A','150A','200A','250A','300A','400A','600A'] },
+  { key: 'breakerType', label: 'BREAKER TYPE', options: ['SQD','CH','BR','SIEM'] },
+  { key: 'serviceType', label: 'SERVICE TYPE', options: ['Underground','Overhead'] },
+  { key: 'panelLocation', label: 'PANEL LOCATION', options: ['Indoor','Outdoor'] },
+  { key: 'notes', label: 'PROPERTY NOTES', textarea: true }
 ];
 
 function renderAddressList(query) {
@@ -673,8 +718,8 @@ function renderAddressList(query) {
   const el = document.getElementById('addr-list');
   if (!filtered.length) {
     el.innerHTML = q
-      ? '<div class="search-hint">No properties match "' + esc(query) + '"</div>'
-      : '<div class="empty-state"><div>🏠</div><div>No properties saved yet.<br>They\'re created when you make a ticket.</div></div>';
+      ? '<div class="search-hint">NO PROPERTIES MATCH "' + esc(query).toUpperCase() + '"</div>'
+      : '<div class="empty-state"><div>◎</div><div>NO PROPERTIES SAVED</div></div>';
     return;
   }
   const allJobs = loadJobs();
@@ -683,14 +728,14 @@ function renderAddressList(query) {
     const subtitle = [a.builder, a.subdivision].filter(Boolean).join(' · ');
     const panelChip = [a.ampRating, a.breakerType, a.panelType].filter(Boolean).join(' · ');
     const lastJob = jobs.filter(j => j.date).sort((x, y) => y.date.localeCompare(x.date))[0];
-    const lastDate = lastJob ? new Date(lastJob.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+    const lastDate = lastJob ? new Date(lastJob.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase() : '';
     return `<div class="card" onclick="goTo('screen-addr-detail','${a.id}')">
       <div class="card-address">${esc(a.address)}</div>
-      ${subtitle ? '<div class="card-subtitle">' + esc(subtitle) + '</div>' : ''}
+      ${subtitle ? '<div class="card-subtitle">' + esc(subtitle).toUpperCase() + '</div>' : ''}
       <div class="card-meta">
-        ${panelChip ? '<span class="card-panel-chip">' + esc(panelChip) + '</span>' : ''}
-        <span class="badge badge-type">${jobs.length} ticket${jobs.length !== 1 ? 's' : ''}</span>
-        ${lastDate ? '<span class="card-last-visit">Last: ' + lastDate + '</span>' : ''}
+        ${panelChip ? '<span class="card-panel-chip">' + esc(panelChip).toUpperCase() + '</span>' : ''}
+        <span class="badge badge-type">${jobs.length} TICKET${jobs.length !== 1 ? 'S' : ''}</span>
+        ${lastDate ? '<span class="card-last-visit">LAST: ' + lastDate + '</span>' : ''}
       </div>
     </div>`;
   }).join('');
@@ -708,8 +753,8 @@ function renderAddrDetail(addrId) {
     if (f.textarea) {
       return `<div class="prop-field" style="flex-direction:column;align-items:stretch;">
         <span class="prop-label" style="margin-bottom:6px;">${f.label}</span>
-        <textarea class="prop-input" style="text-align:left;min-height:100px;resize:vertical;padding:10px;background:#2b2b2b;border-radius:8px;border:1px solid #444;line-height:1.5;" placeholder="Add notes…"
-          onblur="updateAddress('${addrId}',{${f.key}:this.value})">${esc(val)}</textarea>
+        <textarea class="prop-input auto-expand" style="text-align:left;min-height:100px;padding:10px;background:#1a1a1a;border-radius:8px;border:1px solid #333;line-height:1.5;overflow:hidden;" placeholder="—"
+          oninput="autoExpand(this)" onblur="updateAddress('${addrId}',{${f.key}:this.value})">${esc(val)}</textarea>
       </div>`;
     }
     if (f.options) {
@@ -730,29 +775,30 @@ function renderAddrDetail(addrId) {
   }).join('');
 
   const ticketList = jobs.length ? jobs.map(j => {
-    const dateStr = j.date ? new Date(j.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '';
+    const dateStr = j.date ? new Date(j.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase() : '';
     return `<div class="card" onclick="goTo('screen-detail','${j.id}')" style="padding:12px;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div>
-          ${j.types.map(t => '<span class="badge badge-type" style="font-size:10px;">' + esc(t) + '</span>').join(' ')}
-          <span class="badge ${statusClass(j.status)}" style="font-size:10px;">${esc(j.status)}</span>
+          ${j.types.map(t => '<span class="badge badge-type" style="font-size:10px;">' + esc(t).toUpperCase() + '</span>').join(' ')}
+          <span class="badge ${statusClass(j.status)}" style="font-size:10px;">${esc(j.status).toUpperCase()}</span>
         </div>
-        <span style="font-size:12px;color:#666;">${dateStr}</span>
+        <span style="font-size:12px;color:#555;">${dateStr}</span>
       </div>
     </div>`;
-  }).join('') : '<div style="color:#555;font-size:14px;padding:12px;">No tickets yet for this property.</div>';
+  }).join('') : '<div style="color:#333;font-size:13px;padding:12px;text-transform:uppercase;letter-spacing:0.5px;">NO TICKETS FOR THIS PROPERTY.</div>';
 
   document.getElementById('addr-detail-body').innerHTML = `
     <div class="detail-header">
       <div class="detail-address">${esc(a.address)}</div>
-      <button class="btn-navigate" onclick="navigateTo('${esc(a.address).replace(/'/g, "\\'")}')">Navigate</button>
+      <button class="btn-navigate" onclick="navigateTo('${esc(a.address).replace(/'/g, "\\'")}')">NAVIGATE</button>
     </div>
-    <div class="section-title">Property Info</div>
+    <div class="section-title">PROPERTY INFO</div>
     <div class="dash-card" style="padding:8px 14px;">${fields}</div>
-    <div class="section-title">Work History (${jobs.length})</div>
+    <div class="section-title">WORK HISTORY (${jobs.length})</div>
     ${ticketList}
     <div style="height:24px;"></div>
   `;
+  document.querySelectorAll('#addr-detail-body .auto-expand').forEach(el => autoExpand(el));
 }
 
 function findOrCreateAddress(addressText, components) {
@@ -774,7 +820,7 @@ function findOrCreateAddress(addressText, components) {
 }
 
 // ═══════════════════════════════════════════
-// ARCHIVE
+// ARCHIVE / STATUS
 // ═══════════════════════════════════════════
 function archiveJob(id) {
   updateJob(id, { archived: true });
@@ -784,14 +830,7 @@ function unarchiveJob(id) {
   updateJob(id, { archived: false });
   goTo('screen-jobs');
 }
-function goBackFromDetail() {
-  const j = getJob(currentJobId);
-  goTo(j && j.archived ? 'screen-archive' : 'screen-jobs');
-}
 
-// ═══════════════════════════════════════════
-// STATUS PICKER
-// ═══════════════════════════════════════════
 function openStatusPicker() {
   document.getElementById('sp-backdrop').classList.add('active');
   document.getElementById('sp-picker').classList.add('active');
@@ -802,10 +841,123 @@ function closeStatusPicker() {
 }
 function pickStatus(status) {
   if (currentJobId) {
-    updateJob(currentJobId, { status: status });
+    updateJob(currentJobId, { status });
     renderDetail(currentJobId);
   }
   closeStatusPicker();
+}
+
+// ═══════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════
+function renderDashboard() {
+  const allJobs = loadJobs();
+  const active = allJobs.filter(j => !j.archived);
+  const archived = allJobs.filter(j => j.archived);
+  const total = allJobs.length;
+
+  const statusCounts = {};
+  STATUSES.forEach(s => statusCounts[s] = 0);
+  active.forEach(j => { if (statusCounts[j.status] !== undefined) statusCounts[j.status]++; });
+
+  const statusColors = {
+    'Not Started': '#444', 'In Progress': '#c9a800', 'Complete': '#2d8a4e',
+    'Needs Callback': '#c0392b', 'Waiting on Materials': '#FF6B00'
+  };
+
+  const typeCounts = {};
+  allJobs.forEach(j => j.types.forEach(t => { typeCounts[t] = (typeCounts[t] || 0) + 1; }));
+  const typesSorted = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
+  const maxTypeCount = typesSorted.length ? typesSorted[0][1] : 1;
+
+  const techCounts = {};
+  active.forEach(j => { if (j.techName) techCounts[j.techName] = (techCounts[j.techName] || 0) + 1; });
+  const techSorted = Object.entries(techCounts).sort((a, b) => b[1] - a[1]);
+
+  let totalPhotos = 0, totalDrawings = 0, totalVideos = 0;
+  allJobs.forEach(j => { totalPhotos += (j.photos || []).length; totalDrawings += (j.drawings || []).length; totalVideos += (j.videos || []).length; });
+
+  const recent = [...allJobs].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 8);
+  const completedCount = allJobs.filter(j => j.status === 'Complete' || j.archived).length;
+  const completionPct = total ? Math.round((completedCount / total) * 100) : 0;
+
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const createdThisWeek = allJobs.filter(j => new Date(j.createdAt) >= weekAgo).length;
+  const updatedThisWeek = allJobs.filter(j => new Date(j.updatedAt) >= weekAgo).length;
+
+  document.getElementById('dashboard-body').innerHTML = `
+    <div class="dash-grid">
+      <div class="dash-stat"><div class="dash-stat-num" style="color:#FF6B00;">${active.length}</div><div class="dash-stat-label">ACTIVE</div></div>
+      <div class="dash-stat"><div class="dash-stat-num" style="color:#2d8a4e;">${archived.length}</div><div class="dash-stat-label">ARCHIVED</div></div>
+      <div class="dash-stat"><div class="dash-stat-num" style="color:#c9a800;">${completionPct}%</div><div class="dash-stat-label">COMPLETION</div></div>
+      <div class="dash-stat"><div class="dash-stat-num" style="color:#e0e0e0;">${totalPhotos + totalDrawings + totalVideos}</div><div class="dash-stat-label">FILES</div></div>
+    </div>
+    <div class="dash-card" style="margin-top:10px;">
+      <div class="dash-card-title">STATUS BREAKDOWN</div>
+      ${STATUSES.map(s => {
+        const count = statusCounts[s];
+        const pct = active.length ? Math.round((count / active.length) * 100) : 0;
+        return `<div class="dash-row">
+          <div class="dash-row-label"><span class="badge ${statusClass(s)}" style="font-size:10px;">${s.toUpperCase()}</span></div>
+          <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%;background:${statusColors[s]};"></div></div>
+          <div class="dash-row-value">${count}</div>
+        </div>`;
+      }).join('')}
+    </div>
+    ${typesSorted.length ? `<div class="dash-card">
+      <div class="dash-card-title">JOB TYPES</div>
+      ${typesSorted.map(([type, count]) => {
+        const pct = Math.round((count / maxTypeCount) * 100);
+        return `<div class="dash-row">
+          <div class="dash-row-label" style="min-width:100px;">${esc(type).toUpperCase()}</div>
+          <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%;background:#FF6B00;"></div></div>
+          <div class="dash-row-value">${count}</div>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
+    ${techSorted.length ? `<div class="dash-card">
+      <div class="dash-card-title">TECH WORKLOAD</div>
+      ${techSorted.map(([name, count]) => `<div class="dash-row">
+        <div class="dash-row-label">${esc(name).toUpperCase()}</div>
+        <div class="dash-row-value">${count}</div>
+      </div>`).join('')}
+    </div>` : ''}
+    <div class="dash-card">
+      <div class="dash-card-title">THIS WEEK</div>
+      <div class="dash-row"><div class="dash-row-label">CREATED</div><div class="dash-row-value" style="color:#FF6B00;">${createdThisWeek}</div></div>
+      <div class="dash-row"><div class="dash-row-label">UPDATED</div><div class="dash-row-value">${updatedThisWeek}</div></div>
+      <div class="dash-row"><div class="dash-row-label">PHOTOS</div><div class="dash-row-value">${totalPhotos}</div></div>
+      <div class="dash-row"><div class="dash-row-label">VIDEOS</div><div class="dash-row-value">${totalVideos}</div></div>
+    </div>
+    ${recent.length ? `<div class="dash-card">
+      <div class="dash-card-title">RECENT ACTIVITY</div>
+      ${recent.map(j => {
+        const ago = timeAgo(j.updatedAt);
+        return `<div class="dash-activity" onclick="goTo('screen-detail','${j.id}')" style="cursor:pointer;">
+          <div class="dash-activity-dot" style="background:${statusColors[j.status] || '#444'};"></div>
+          <div style="flex:1;overflow:hidden;">
+            <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#888;font-weight:600;">${esc(j.address)}</div>
+            <div style="font-size:11px;color:#444;">${esc(j.status).toUpperCase()}${j.archived ? ' · ARCHIVED' : ''}</div>
+          </div>
+          <div style="font-size:11px;color:#444;white-space:nowrap;">${ago}</div>
+        </div>`;
+      }).join('')}
+    </div>` : ''}
+    <div style="height:24px;"></div>
+  `;
+}
+
+function timeAgo(isoStr) {
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'NOW';
+  if (mins < 60) return mins + 'M';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'H';
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return days + 'D';
+  return Math.floor(days / 7) + 'W';
 }
 
 // ═══════════════════════════════════════════
@@ -821,8 +973,7 @@ function compressImage(file, maxWidth, quality) {
       const canvas = document.createElement('canvas');
       canvas.width = img.width * scale;
       canvas.height = img.height * scale;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
       resolve(canvas.toDataURL('image/jpeg', quality));
       URL.revokeObjectURL(img.src);
     };
@@ -886,12 +1037,7 @@ document.getElementById('video-input').addEventListener('change', async function
   this.value = '';
 });
 
-// ═══════════════════════════════════════════
-// DELETE MEDIA
-// ═══════════════════════════════════════════
 async function deleteMedia(jobId, type, idx) {
-  const label = type === 'photos' ? 'photo' : type === 'videos' ? 'video' : 'drawing';
-  if (!confirm('Delete this ' + label + '?')) return;
   const j = getJob(jobId);
   if (!j) return;
   const item = j[type][idx];
@@ -906,7 +1052,7 @@ async function deleteMedia(jobId, type, idx) {
 // ═══════════════════════════════════════════
 let zoomScale = 1, zoomX = 0, zoomY = 0;
 let pinchStartDist = 0, pinchStartScale = 1;
-let panStartX = 0, panStartY = 0, panLastX = 0, panLastY = 0;
+let panStartX = 0, panStartY = 0;
 let isPanning = false;
 
 async function openMedia(jobId, type, idx) {
@@ -914,87 +1060,62 @@ async function openMedia(jobId, type, idx) {
   if (!j) return;
   const item = j[type][idx];
   if (!item) return;
-
   zoomScale = 1; zoomX = 0; zoomY = 0;
-  document.getElementById('overlay-title').textContent = item.name;
+  document.getElementById('overlay-title').textContent = item.name.toUpperCase();
   const body = document.getElementById('overlay-body');
   const data = await getMediaBlob(item.id);
-
   if (item.type === 'video') {
     body.innerHTML = `<video src="${data || ''}" controls autoplay style="max-width:100%;max-height:100%;" id="zoom-vid"></video>`;
   } else {
     body.innerHTML = `<img src="${data || ''}" alt="${esc(item.name)}" id="zoom-img" draggable="false">`;
-    const img = document.getElementById('zoom-img');
-    setupPinchZoom(body, img);
+    setupPinchZoom(body, document.getElementById('zoom-img'));
   }
   document.getElementById('media-overlay').classList.add('active');
 }
 
 function setupPinchZoom(container, img) {
-  function applyTransform() {
-    img.style.transform = `translate(${zoomX}px, ${zoomY}px) scale(${zoomScale})`;
-  }
-
-  // ── Touch: pinch-zoom + single-finger pan ──
+  function apply() { img.style.transform = `translate(${zoomX}px, ${zoomY}px) scale(${zoomScale})`; }
   container.addEventListener('touchstart', function(e) {
     if (e.touches.length === 2) {
-      e.preventDefault();
-      isPanning = false;
-      pinchStartDist = getTouchDist(e.touches);
-      pinchStartScale = zoomScale;
+      e.preventDefault(); isPanning = false;
+      pinchStartDist = getTouchDist(e.touches); pinchStartScale = zoomScale;
     } else if (e.touches.length === 1) {
       isPanning = true;
       panStartX = e.touches[0].clientX - zoomX;
       panStartY = e.touches[0].clientY - zoomY;
     }
   }, { passive: false });
-
   container.addEventListener('touchmove', function(e) {
     if (e.touches.length === 2) {
       e.preventDefault();
-      const dist = getTouchDist(e.touches);
-      zoomScale = Math.min(5, Math.max(1, pinchStartScale * (dist / pinchStartDist)));
+      zoomScale = Math.min(5, Math.max(1, pinchStartScale * (getTouchDist(e.touches) / pinchStartDist)));
       if (zoomScale <= 1) { zoomX = 0; zoomY = 0; }
-      applyTransform();
+      apply();
     } else if (e.touches.length === 1 && isPanning) {
       e.preventDefault();
       zoomX = e.touches[0].clientX - panStartX;
       zoomY = e.touches[0].clientY - panStartY;
-      applyTransform();
+      apply();
     }
   }, { passive: false });
-
-  container.addEventListener('touchend', function() { isPanning = false; });
-
-  // ── Mouse: click-drag pan + wheel zoom ──
+  container.addEventListener('touchend', () => { isPanning = false; });
   container.addEventListener('mousedown', function(e) {
-    e.preventDefault();
-    isPanning = true;
-    panStartX = e.clientX - zoomX;
-    panStartY = e.clientY - zoomY;
+    e.preventDefault(); isPanning = true;
+    panStartX = e.clientX - zoomX; panStartY = e.clientY - zoomY;
     container.style.cursor = 'grabbing';
   });
   container.addEventListener('mousemove', function(e) {
     if (!isPanning) return;
-    zoomX = e.clientX - panStartX;
-    zoomY = e.clientY - panStartY;
-    applyTransform();
+    zoomX = e.clientX - panStartX; zoomY = e.clientY - panStartY; apply();
   });
-  container.addEventListener('mouseup', function() {
-    isPanning = false;
-    container.style.cursor = 'grab';
-  });
-  container.addEventListener('mouseleave', function() {
-    isPanning = false;
-    container.style.cursor = 'grab';
-  });
+  container.addEventListener('mouseup', () => { isPanning = false; container.style.cursor = 'grab'; });
+  container.addEventListener('mouseleave', () => { isPanning = false; container.style.cursor = 'grab'; });
   container.style.cursor = 'grab';
-
   container.addEventListener('wheel', function(e) {
     e.preventDefault();
     zoomScale = Math.min(5, Math.max(1, zoomScale + (e.deltaY > 0 ? -0.2 : 0.2)));
     if (zoomScale <= 1) { zoomX = 0; zoomY = 0; }
-    applyTransform();
+    apply();
   }, { passive: false });
 }
 
@@ -1004,39 +1125,30 @@ function getTouchDist(touches) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-function closeOverlay() {
-  document.getElementById('media-overlay').classList.remove('active');
-}
+function closeOverlay() { document.getElementById('media-overlay').classList.remove('active'); }
 
 // ═══════════════════════════════════════════
-// GOOGLE MAPS — MAP & ROUTE OPTIMIZATION
+// GOOGLE MAPS — VECTOR ROUTE
 // ═══════════════════════════════════════════
-const GMAPS_KEY_STORAGE = 'astra_gmaps_key';
-let gmapsLoaded = false;
-let gMap = null;
-let gMarkers = [];
-let gDirectionsRenderer = null;
-let gMapJobs = [];
+let gmapsLoaded = false, gMap = null, gMarkers = [], gDirectionsRenderer = null, gMapJobs = [];
 
 function getGmapsKey() { return localStorage.getItem(GMAPS_KEY_STORAGE) || ''; }
-function saveGmapsKey(key) {
-  localStorage.setItem(GMAPS_KEY_STORAGE, key.trim());
-  gmapsLoaded = false;
-  gMap = null;
-}
+function saveGmapsKey(key) { localStorage.setItem(GMAPS_KEY_STORAGE, key.trim()); gmapsLoaded = false; gMap = null; }
+function getHomeBase() { return localStorage.getItem(HOME_BASE_KEY) || ''; }
+function saveHomeBase(val) { localStorage.setItem(HOME_BASE_KEY, val.trim()); }
 
 function loadGmaps() {
   return new Promise((resolve, reject) => {
     if (gmapsLoaded && window.google && window.google.maps) { resolve(); return; }
     const key = getGmapsKey();
-    if (!key) { reject('No Google Maps API key. Add one in Settings.'); return; }
+    if (!key) { reject('NO API KEY. ADD IN SETTINGS.'); return; }
     const old = document.getElementById('gmaps-script');
     if (old) old.remove();
     const s = document.createElement('script');
     s.id = 'gmaps-script';
     s.src = 'https://maps.googleapis.com/maps/api/js?key=' + key + '&libraries=places';
     s.onload = () => { gmapsLoaded = true; resolve(); };
-    s.onerror = () => reject('Failed to load Google Maps. Check your API key.');
+    s.onerror = () => reject('MAP LOAD FAILED. CHECK API KEY.');
     document.head.appendChild(s);
   });
 }
@@ -1047,9 +1159,7 @@ function gmapGeocode(address) {
       if (status === 'OK' && results[0]) {
         const loc = results[0].geometry.location;
         resolve({ lat: loc.lat(), lng: loc.lng() });
-      } else {
-        reject('Geocode failed: ' + status);
-      }
+      } else reject('GEOCODE FAILED: ' + status);
     });
   });
 }
@@ -1057,242 +1167,222 @@ function gmapGeocode(address) {
 function setMapStatus(msg) {
   const el = document.getElementById('map-status');
   if (msg) { el.textContent = msg; el.style.display = ''; }
-  else { el.style.display = 'none'; }
+  else el.style.display = 'none';
 }
 
 async function renderMap() {
   const key = getGmapsKey();
   if (!key) {
     document.getElementById('map-container').innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:40px;text-align:center;color:#666;font-size:15px;line-height:1.6;">Add your Google Maps API key in<br><b style="color:#FF6B00;">Settings</b> to use the route map.</div>';
+      '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:40px;text-align:center;color:#444;font-size:14px;line-height:1.6;text-transform:uppercase;letter-spacing:1px;font-weight:700;">ADD GOOGLE MAPS API KEY IN SETTINGS</div>';
     document.getElementById('map-controls').style.display = 'none';
     return;
   }
 
-  try {
-    setMapStatus('Loading map…');
-    await loadGmaps();
-  } catch (e) {
-    setMapStatus(e);
-    return;
-  }
+  try { setMapStatus('LOADING...'); await loadGmaps(); }
+  catch (e) { setMapStatus(e); return; }
 
-  const jobs = loadJobs().filter(j => !j.archived && j.status !== 'Complete');
+  // Vector: today's tickets + manually added
+  const today = todayStr();
+  const jobs = loadJobs().filter(j => !j.archived && (j.date === today || j.manually_added_to_vector));
 
-  // Init map
   if (!gMap) {
     gMap = new google.maps.Map(document.getElementById('map-container'), {
-      center: { lat: 29.76, lng: -95.37 },
-      zoom: 11,
-      mapId: 'astra-dark',
-      disableDefaultUI: true,
-      zoomControl: true,
+      center: { lat: 29.76, lng: -95.37 }, zoom: 11,
+      disableDefaultUI: true, zoomControl: true,
       zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
       styles: [
-        { elementType: 'geometry', stylers: [{ color: '#242f3e' }] },
-        { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
-        { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
-        { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#38414e' }] },
-        { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#9ca5b3' }] },
-        { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] }
+        { elementType: 'geometry', stylers: [{ color: '#1a1a1a' }] },
+        { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1a1a' }] },
+        { elementType: 'labels.text.fill', stylers: [{ color: '#555' }] },
+        { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2a2a2a' }] },
+        { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#666' }] },
+        { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#111' }] }
       ]
     });
-
-    // Center on user location
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(pos => {
         gMap.setCenter({ lat: pos.coords.latitude, lng: pos.coords.longitude });
       }, () => {}, { timeout: 5000 });
     }
   } else {
-    // Trigger resize for screen transition
-    setTimeout(() => google.maps.event.trigger(gMap, 'resize'), 350);
+    setTimeout(() => google.maps.event.trigger(gMap, 'resize'), 200);
   }
 
-  // Clear old markers
   gMarkers.forEach(m => m.setMap(null));
-  gMarkers = [];
-  gMapJobs = [];
+  gMarkers = []; gMapJobs = [];
   if (gDirectionsRenderer) { gDirectionsRenderer.setMap(null); gDirectionsRenderer = null; }
 
   if (jobs.length === 0) {
-    setMapStatus('No active jobs to show.');
+    setMapStatus('NO TICKETS FOR TODAY.');
     document.getElementById('map-controls').style.display = 'none';
     return;
   }
 
-  setMapStatus('Geocoding ' + jobs.length + ' addresses…');
+  setMapStatus('GEOCODING ' + jobs.length + ' ADDRESSES...');
   const bounds = new google.maps.LatLngBounds();
   let geocoded = 0;
 
+  const statusColors = {
+    'Not Started': '#FF6B00', 'In Progress': '#FBBF24',
+    'Needs Callback': '#EF4444', 'Waiting on Materials': '#3B82F6'
+  };
+
   for (const job of jobs) {
     try {
-      // Check cache first
       const addrs = loadAddresses();
       const addrRec = addrs.find(a => a.address.toLowerCase() === job.address.toLowerCase());
       let coords;
-
       if (addrRec && addrRec.lat && addrRec.lng) {
         coords = { lat: addrRec.lat, lng: addrRec.lng };
       } else {
         coords = await gmapGeocode(job.address);
         if (addrRec) updateAddress(addrRec.id, { lat: coords.lat, lng: coords.lng });
       }
-
-      const statusColors = {
-        'Not Started': '#FF6B00', 'In Progress': '#FBBF24',
-        'Needs Callback': '#EF4444', 'Waiting on Materials': '#3B82F6'
-      };
       const color = statusColors[job.status] || '#FF6B00';
-
       const marker = new google.maps.Marker({
-        position: coords,
-        map: gMap,
-        title: job.address,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: color,
-          fillOpacity: 1,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-          scale: 10
-        }
+        position: coords, map: gMap, title: job.address,
+        icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 10 }
       });
-
-      const types = (job.types || []).join(', ');
       const infoWindow = new google.maps.InfoWindow({
         content: `<div style="font-family:sans-serif;min-width:180px;padding:4px;">
-          <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${esc(job.address)}</div>
-          <div style="font-size:12px;color:#666;margin-bottom:6px;">${esc(types)}</div>
-          <div style="margin-bottom:8px;">
-            <span style="display:inline-block;padding:2px 8px;border-radius:6px;font-weight:700;font-size:11px;color:#fff;background:${color};">${esc(job.status)}</span>
-          </div>
-          <button onclick="goTo('screen-detail','${job.id}')" style="background:#FF6B00;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;width:100%;">View Ticket</button>
+          <div style="font-weight:800;font-size:13px;margin-bottom:4px;">${esc(job.address)}</div>
+          <div style="font-size:11px;color:#666;margin-bottom:6px;">${esc((job.types || []).join(', ')).toUpperCase()}</div>
+          <div style="margin-bottom:8px;"><span style="display:inline-block;padding:2px 8px;border-radius:6px;font-weight:800;font-size:10px;color:#fff;background:${color};">${esc(job.status).toUpperCase()}</span></div>
+          <button onclick="goTo('screen-detail','${job.id}')" style="background:#FF6B00;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;width:100%;text-transform:uppercase;letter-spacing:1px;">VIEW TICKET</button>
         </div>`
       });
-
       marker.addListener('click', () => infoWindow.open(gMap, marker));
-
       gMarkers.push(marker);
       gMapJobs.push({ job, coords, marker });
       bounds.extend(coords);
       geocoded++;
-      setMapStatus('Geocoded ' + geocoded + ' of ' + jobs.length + '…');
-
-    } catch (e) {
-      console.warn('Failed to geocode:', job.address, e);
-    }
+      setMapStatus('GEOCODED ' + geocoded + '/' + jobs.length);
+    } catch (e) { console.warn('Geocode failed:', job.address, e); }
   }
 
-  if (geocoded > 0) {
-    gMap.fitBounds(bounds, { top: 60, bottom: 80, left: 40, right: 40 });
-  }
-
+  if (geocoded > 0) gMap.fitBounds(bounds, { top: 60, bottom: 80, left: 40, right: 40 });
   setMapStatus(null);
   document.getElementById('map-controls').style.display = 'flex';
   document.getElementById('map-optimize-btn').disabled = gMapJobs.length < 2;
   document.getElementById('map-clear-btn').style.display = 'none';
+  document.getElementById('map-reroute-btn').style.display = 'none';
 }
 
 async function optimizeRoute() {
   if (gMapJobs.length < 2) return;
-
   const btn = document.getElementById('map-optimize-btn');
-  btn.textContent = 'Optimizing…';
-  btn.disabled = true;
+  btn.textContent = 'OPTIMIZING...'; btn.disabled = true;
 
   try {
-    const directionsService = new google.maps.DirectionsService();
+    const homeBase = getHomeBase();
+    let origin, destination;
 
-    // First job as origin, last as destination, rest as waypoints
-    const origin = gMapJobs[0].coords;
-    const destination = gMapJobs[gMapJobs.length - 1].coords;
-    const waypoints = gMapJobs.slice(1, -1).map(d => ({
-      location: d.coords,
-      stopover: true
-    }));
+    if (homeBase) {
+      try {
+        const homeCoords = await gmapGeocode(homeBase);
+        origin = homeCoords;
+        destination = homeCoords; // round trip
+      } catch (e) {
+        origin = gMapJobs[0].coords;
+        destination = gMapJobs[gMapJobs.length - 1].coords;
+      }
+    } else {
+      origin = gMapJobs[0].coords;
+      destination = gMapJobs[gMapJobs.length - 1].coords;
+    }
+
+    const waypoints = gMapJobs.map(d => ({ location: d.coords, stopover: true }));
 
     const result = await new Promise((resolve, reject) => {
-      directionsService.route({
-        origin: origin,
-        destination: destination,
-        waypoints: waypoints,
-        optimizeWaypoints: true,
+      new google.maps.DirectionsService().route({
+        origin, destination, waypoints, optimizeWaypoints: true,
         travelMode: google.maps.TravelMode.DRIVING
-      }, (result, status) => {
-        if (status === 'OK') resolve(result);
-        else reject('Directions failed: ' + status);
-      });
+      }, (r, s) => s === 'OK' ? resolve(r) : reject('ROUTE FAILED: ' + s));
     });
 
-    // Draw the route
     if (gDirectionsRenderer) gDirectionsRenderer.setMap(null);
     gDirectionsRenderer = new google.maps.DirectionsRenderer({
-      map: gMap,
-      directions: result,
-      suppressMarkers: true,
-      polylineOptions: {
-        strokeColor: '#FF6B00',
-        strokeWeight: 4,
-        strokeOpacity: 0.8
-      }
+      map: gMap, directions: result, suppressMarkers: true,
+      polylineOptions: { strokeColor: '#FF6B00', strokeWeight: 4, strokeOpacity: 0.8 }
     });
 
-    // Get optimized order and update markers with numbers
     const order = result.routes[0].waypoint_order;
-    const orderedJobs = [0, ...order.map(i => i + 1), gMapJobs.length - 1];
-
-    // Update marker labels with route order
     gMarkers.forEach(m => m.setMap(null));
-    orderedJobs.forEach((jobIdx, routePos) => {
+    order.forEach((jobIdx, routePos) => {
       const d = gMapJobs[jobIdx];
       const marker = new google.maps.Marker({
-        position: d.coords,
-        map: gMap,
-        label: {
-          text: String(routePos + 1),
-          color: '#fff',
-          fontWeight: '800',
-          fontSize: '13px'
-        },
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: '#FF6B00',
-          fillOpacity: 1,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-          scale: 16
-        }
+        position: d.coords, map: gMap,
+        label: { text: String(routePos + 1), color: '#fff', fontWeight: '800', fontSize: '13px' },
+        icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: '#FF6B00', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 16 }
       });
       gMarkers[jobIdx] = marker;
     });
 
-    // Calculate totals
-    const route = result.routes[0];
     let totalDist = 0, totalTime = 0;
-    route.legs.forEach(leg => {
-      totalDist += leg.distance.value;
-      totalTime += leg.duration.value;
-    });
-    const totalMin = Math.round(totalTime / 60);
-    const totalMi = (totalDist / 1609.34).toFixed(1);
-
-    btn.textContent = totalMin + ' min · ' + totalMi + ' mi';
+    result.routes[0].legs.forEach(leg => { totalDist += leg.distance.value; totalTime += leg.duration.value; });
+    btn.textContent = Math.round(totalTime / 60) + ' MIN · ' + (totalDist / 1609.34).toFixed(1) + ' MI';
     btn.disabled = false;
     document.getElementById('map-clear-btn').style.display = '';
+    document.getElementById('map-reroute-btn').style.display = '';
 
   } catch (e) {
-    console.error('Route optimization failed:', e);
-    btn.textContent = 'Failed — retry?';
-    btn.disabled = false;
+    console.error('Route failed:', e);
+    btn.textContent = 'FAILED — RETRY'; btn.disabled = false;
   }
+}
+
+function reroute() {
+  if (!('geolocation' in navigator)) { setMapStatus('GPS NOT AVAILABLE.'); return; }
+  setMapStatus('GETTING GPS...');
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    // Re-optimize from current location
+    if (gMapJobs.length < 1) return;
+    const btn = document.getElementById('map-optimize-btn');
+    btn.textContent = 'REROUTING...'; btn.disabled = true;
+
+    try {
+      const waypoints = gMapJobs.map(d => ({ location: d.coords, stopover: true }));
+      const result = await new Promise((resolve, reject) => {
+        new google.maps.DirectionsService().route({
+          origin, destination: origin, waypoints, optimizeWaypoints: true,
+          travelMode: google.maps.TravelMode.DRIVING
+        }, (r, s) => s === 'OK' ? resolve(r) : reject('REROUTE FAILED: ' + s));
+      });
+
+      if (gDirectionsRenderer) gDirectionsRenderer.setMap(null);
+      gDirectionsRenderer = new google.maps.DirectionsRenderer({
+        map: gMap, directions: result, suppressMarkers: true,
+        polylineOptions: { strokeColor: '#FF6B00', strokeWeight: 4, strokeOpacity: 0.8 }
+      });
+
+      const order = result.routes[0].waypoint_order;
+      gMarkers.forEach(m => m.setMap(null));
+      order.forEach((jobIdx, routePos) => {
+        const d = gMapJobs[jobIdx];
+        gMarkers[jobIdx] = new google.maps.Marker({
+          position: d.coords, map: gMap,
+          label: { text: String(routePos + 1), color: '#fff', fontWeight: '800', fontSize: '13px' },
+          icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: '#FF6B00', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 16 }
+        });
+      });
+
+      let totalDist = 0, totalTime = 0;
+      result.routes[0].legs.forEach(leg => { totalDist += leg.distance.value; totalTime += leg.duration.value; });
+      btn.textContent = Math.round(totalTime / 60) + ' MIN · ' + (totalDist / 1609.34).toFixed(1) + ' MI';
+      btn.disabled = false;
+      setMapStatus(null);
+    } catch (e) {
+      btn.textContent = 'FAILED'; btn.disabled = false;
+      setMapStatus(String(e));
+    }
+  }, () => { setMapStatus('GPS DENIED.'); }, { timeout: 10000 });
 }
 
 function clearRoute() {
   if (gDirectionsRenderer) { gDirectionsRenderer.setMap(null); gDirectionsRenderer = null; }
-  // Restore original markers
-  gMarkers.forEach(m => m.setMap(null));
-  gMarkers = [];
+  gMarkers.forEach(m => m.setMap(null)); gMarkers = [];
   const statusColors = {
     'Not Started': '#FF6B00', 'In Progress': '#FBBF24',
     'Needs Callback': '#EF4444', 'Waiting on Materials': '#3B82F6'
@@ -1300,21 +1390,39 @@ function clearRoute() {
   gMapJobs.forEach(d => {
     const color = statusColors[d.job.status] || '#FF6B00';
     const marker = new google.maps.Marker({
-      position: d.coords,
-      map: gMap,
-      title: d.job.address,
-      icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        fillColor: color, fillOpacity: 1,
-        strokeColor: '#fff', strokeWeight: 2, scale: 10
-      }
+      position: d.coords, map: gMap, title: d.job.address,
+      icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 10 }
     });
-    gMarkers.push(marker);
-    d.marker = marker;
+    gMarkers.push(marker); d.marker = marker;
   });
-  document.getElementById('map-optimize-btn').textContent = 'Optimize Route';
+  document.getElementById('map-optimize-btn').textContent = 'OPTIMIZE';
   document.getElementById('map-optimize-btn').disabled = gMapJobs.length < 2;
   document.getElementById('map-clear-btn').style.display = 'none';
+  document.getElementById('map-reroute-btn').style.display = 'none';
+}
+
+// ═══════════════════════════════════════════
+// MATERIALS PLACEHOLDER
+// ═══════════════════════════════════════════
+function importMaterialLibrary(input) {
+  if (!input.files.length) return;
+  const reader = new FileReader();
+  reader.onload = function() {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data.material_type || !data.categories) {
+        alert('INVALID MATERIAL JSON.');
+        return;
+      }
+      const key = 'astra_material_library_' + data.material_type.toLowerCase();
+      localStorage.setItem(key, JSON.stringify(data));
+      alert('IMPORTED: ' + data.material_type.toUpperCase() + ' (' + data.categories.length + ' CATEGORIES)');
+    } catch (e) {
+      alert('IMPORT FAILED: ' + e.message);
+    }
+    input.value = '';
+  };
+  reader.readAsText(input.files[0]);
 }
 
 // ═══════════════════════════════════════════
@@ -1341,27 +1449,23 @@ async function renderSettings() {
   const active = jobs.filter(j => !j.archived).length;
   const archived = jobs.filter(j => j.archived).length;
   let photos = 0, drawings = 0, videos = 0;
-  jobs.forEach(j => {
-    photos += (j.photos || []).length;
-    drawings += (j.drawings || []).length;
-    videos += (j.videos || []).length;
-  });
+  jobs.forEach(j => { photos += (j.photos || []).length; drawings += (j.drawings || []).length; videos += (j.videos || []).length; });
 
   document.getElementById('settings-stats').innerHTML = `
-    <div class="dash-row"><div class="dash-row-label">Total Tickets</div><div class="dash-row-value">${jobs.length}</div></div>
-    <div class="dash-row"><div class="dash-row-label">Active</div><div class="dash-row-value" style="color:#FF6B00;">${active}</div></div>
-    <div class="dash-row"><div class="dash-row-label">Archived</div><div class="dash-row-value" style="color:#2d8a4e;">${archived}</div></div>
-    <div class="dash-row"><div class="dash-row-label">Photos</div><div class="dash-row-value">${photos}</div></div>
-    <div class="dash-row"><div class="dash-row-label">Videos</div><div class="dash-row-value">${videos}</div></div>
-    <div class="dash-row"><div class="dash-row-label">Drawings</div><div class="dash-row-value">${drawings}</div></div>
-    <div class="dash-row"><div class="dash-row-label">Properties</div><div class="dash-row-value">${loadAddresses().length}</div></div>
+    <div class="dash-row"><div class="dash-row-label">TOTAL</div><div class="dash-row-value">${jobs.length}</div></div>
+    <div class="dash-row"><div class="dash-row-label">ACTIVE</div><div class="dash-row-value" style="color:#FF6B00;">${active}</div></div>
+    <div class="dash-row"><div class="dash-row-label">ARCHIVED</div><div class="dash-row-value" style="color:#2d8a4e;">${archived}</div></div>
+    <div class="dash-row"><div class="dash-row-label">PHOTOS</div><div class="dash-row-value">${photos}</div></div>
+    <div class="dash-row"><div class="dash-row-label">VIDEOS</div><div class="dash-row-value">${videos}</div></div>
+    <div class="dash-row"><div class="dash-row-label">DRAWINGS</div><div class="dash-row-value">${drawings}</div></div>
+    <div class="dash-row"><div class="dash-row-label">PROPERTIES</div><div class="dash-row-value">${loadAddresses().length}</div></div>
   `;
 
-  // Load Google Maps API key into settings input
   const gmapsInput = document.getElementById('gmaps-key');
   if (gmapsInput) gmapsInput.value = getGmapsKey();
+  const homeBaseInput = document.getElementById('home-base-input');
+  if (homeBaseInput) homeBaseInput.value = getHomeBase();
 
-  // Storage usage — IndexedDB (media) + localStorage (metadata)
   let mediaBytes = 0;
   try { mediaBytes = await getMediaDBSize(); } catch(e) {}
   let lsBytes = 0;
@@ -1369,22 +1473,19 @@ async function renderSettings() {
     const key = localStorage.key(i);
     lsBytes += (localStorage.getItem(key) || '').length * 2;
   }
-  const totalBytes = mediaBytes + lsBytes;
-  const usedMB = (totalBytes / (1024 * 1024)).toFixed(1);
+  const usedMB = ((mediaBytes + lsBytes) / (1024 * 1024)).toFixed(1);
 
-  // IndexedDB can store hundreds of MB — show usage without a hard cap
   document.getElementById('storage-info').innerHTML = `
-    <div class="dash-row"><div class="dash-row-label">Media (IndexedDB)</div><div class="dash-row-value">${(mediaBytes / (1024 * 1024)).toFixed(1)} MB</div></div>
-    <div class="dash-row"><div class="dash-row-label">Ticket Data</div><div class="dash-row-value">${(lsBytes / 1024).toFixed(0)} KB</div></div>
-    <div class="dash-row"><div class="dash-row-label">Total Used</div><div class="dash-row-value" style="color:#FF6B00;">${usedMB} MB</div></div>
-    <div style="font-size:12px;color:#555;margin-top:8px;">Media stored in IndexedDB — hundreds of MB available.</div>
+    <div class="dash-row"><div class="dash-row-label">MEDIA</div><div class="dash-row-value">${(mediaBytes / (1024 * 1024)).toFixed(1)} MB</div></div>
+    <div class="dash-row"><div class="dash-row-label">METADATA</div><div class="dash-row-value">${(lsBytes / 1024).toFixed(0)} KB</div></div>
+    <div class="dash-row"><div class="dash-row-label">TOTAL</div><div class="dash-row-value" style="color:#FF6B00;">${usedMB} MB</div></div>
   `;
 }
 
 async function exportData() {
   const mediaBlobs = await getAllMediaBlobs();
   const data = {
-    version: '0.4',
+    version: '0.5',
     exportedAt: new Date().toISOString(),
     jobs: JSON.parse(localStorage.getItem(JOBS_KEY) || '[]'),
     techs: loadTechs(),
@@ -1406,26 +1507,18 @@ async function importData(input) {
   reader.onload = async function() {
     try {
       const data = JSON.parse(reader.result);
-      if (!data.jobs || !Array.isArray(data.jobs)) {
-        alert('Invalid backup file — no jobs found.');
-        return;
-      }
-      if (!confirm('This will replace ALL current data with the backup. Continue?')) return;
+      if (!data.jobs || !Array.isArray(data.jobs)) { alert('INVALID BACKUP.'); return; }
+      if (!confirm('REPLACE ALL DATA WITH BACKUP?')) return;
       localStorage.setItem(JOBS_KEY, JSON.stringify(data.jobs));
       if (data.techs) saveTechs(data.techs);
       if (data.addresses) saveAddresses(data.addresses);
-      // Restore media blobs
       if (data.media && Array.isArray(data.media)) {
         await clearAllMediaBlobs();
-        for (const blob of data.media) {
-          await saveMediaBlob(blob.id, blob.data);
-        }
+        for (const blob of data.media) await saveMediaBlob(blob.id, blob.data);
       }
       renderSettings();
-      alert('Data restored! ' + data.jobs.length + ' tickets imported.');
-    } catch (e) {
-      alert('Error reading backup file: ' + e.message);
-    }
+      alert(data.jobs.length + ' TICKETS RESTORED.');
+    } catch (e) { alert('IMPORT FAILED: ' + e.message); }
     input.value = '';
   };
   reader.readAsText(input.files[0]);
@@ -1434,56 +1527,57 @@ async function importData(input) {
 // ═══════════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════════
-// renderJobList() is called after IndexedDB init + migration (see DATA LAYER)
+renderShortcuts();
+updateSidebarActive();
 
-// Generate PWA icons via canvas and cache them for the service worker
+// Clear vector flags at midnight
+(function clearVectorAtMidnight() {
+  const lastClear = localStorage.getItem('astra_vector_last_clear');
+  const today = todayStr();
+  if (lastClear !== today) {
+    const jobs = loadJobs();
+    let changed = false;
+    jobs.forEach(j => {
+      if (j.manually_added_to_vector) { j.manually_added_to_vector = false; changed = true; }
+    });
+    if (changed) saveJobs(jobs);
+    localStorage.setItem('astra_vector_last_clear', today);
+  }
+})();
+
+// PWA icons
 (function() {
   function generateIcon(size) {
     const c = document.createElement('canvas');
     c.width = size; c.height = size;
     const ctx = c.getContext('2d');
-    const r = size * 0.2;
-    ctx.fillStyle = '#2b2b2b';
-    ctx.beginPath();
-    ctx.roundRect(0, 0, size, size, r);
-    ctx.fill();
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath(); ctx.roundRect(0, 0, size, size, size * 0.2); ctx.fill();
     ctx.fillStyle = '#FF6B00';
     ctx.font = 'bold ' + (size * 0.55) + 'px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('A', size / 2, size / 2 + size * 0.04);
     return new Promise(resolve => c.toBlob(resolve, 'image/png'));
   }
-
   async function cacheIcons() {
     const cache = await caches.open('astra-icons');
-    const icon192 = await generateIcon(192);
-    const icon512 = await generateIcon(512);
-    await cache.put(new Request('icon-192.png'), new Response(icon192, { headers: { 'Content-Type': 'image/png' } }));
-    await cache.put(new Request('icon-512.png'), new Response(icon512, { headers: { 'Content-Type': 'image/png' } }));
+    const i192 = await generateIcon(192);
+    const i512 = await generateIcon(512);
+    await cache.put(new Request('icon-192.png'), new Response(i192, { headers: { 'Content-Type': 'image/png' } }));
+    await cache.put(new Request('icon-512.png'), new Response(i512, { headers: { 'Content-Type': 'image/png' } }));
   }
   cacheIcons();
-
-  // Apple touch icon via data URL
   const c = document.createElement('canvas');
   c.width = 180; c.height = 180;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#2b2b2b';
-  ctx.beginPath();
-  ctx.roundRect(0, 0, 180, 180, 36);
-  ctx.fill();
-  ctx.fillStyle = '#FF6B00';
-  ctx.font = 'bold 99px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('A', 90, 97);
+  ctx.fillStyle = '#1a1a1a'; ctx.beginPath(); ctx.roundRect(0, 0, 180, 180, 36); ctx.fill();
+  ctx.fillStyle = '#FF6B00'; ctx.font = 'bold 99px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('A', 90, 97);
   const appleIcon = document.createElement('link');
-  appleIcon.rel = 'apple-touch-icon';
-  appleIcon.href = c.toDataURL('image/png');
+  appleIcon.rel = 'apple-touch-icon'; appleIcon.href = c.toDataURL('image/png');
   document.head.appendChild(appleIcon);
 })();
 
-// Register service worker for PWA
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
