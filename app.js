@@ -477,6 +477,8 @@ function buildFullAddress() {
   return zip ? parts.join(', ') + ' ' + zip : parts.join(', ');
 }
 
+let gPlacesAutocomplete = null;
+
 function resetCreateForm() {
   document.getElementById('c-street').value = '';
   document.getElementById('c-suite').value = '';
@@ -493,6 +495,52 @@ function resetCreateForm() {
   const techs = loadTechs();
   sel.innerHTML = '<option value="">—</option>' +
     techs.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+  initPlacesAutocomplete();
+}
+
+function initPlacesAutocomplete() {
+  if (gPlacesAutocomplete) return; // already attached
+  if (!window.google || !window.google.maps || !window.google.maps.places) {
+    // Try loading Google Maps first
+    const key = getGmapsKey();
+    if (!key) return;
+    loadGmaps().then(() => attachPlacesAutocomplete()).catch(() => {});
+    return;
+  }
+  attachPlacesAutocomplete();
+}
+
+function attachPlacesAutocomplete() {
+  if (gPlacesAutocomplete) return;
+  const input = document.getElementById('c-street');
+  if (!input) return;
+  gPlacesAutocomplete = new google.maps.places.Autocomplete(input, {
+    types: ['address'],
+    componentRestrictions: { country: 'us' },
+    fields: ['address_components', 'formatted_address', 'geometry']
+  });
+  gPlacesAutocomplete.addListener('place_changed', () => {
+    const place = gPlacesAutocomplete.getPlace();
+    if (!place || !place.address_components) return;
+    // Hide local suggestions
+    document.getElementById('c-addr-suggest').style.display = 'none';
+    // Parse components
+    let streetNum = '', route = '', city = '', state = '', zip = '', suite = '';
+    for (const c of place.address_components) {
+      const t = c.types[0];
+      if (t === 'street_number') streetNum = c.long_name;
+      else if (t === 'route') route = c.short_name;
+      else if (t === 'locality') city = c.long_name;
+      else if (t === 'administrative_area_level_1') state = c.short_name;
+      else if (t === 'postal_code') zip = c.long_name;
+      else if (t === 'subpremise') suite = c.long_name;
+    }
+    document.getElementById('c-street').value = (streetNum + ' ' + route).trim();
+    document.getElementById('c-suite').value = suite;
+    document.getElementById('c-city').value = city;
+    document.getElementById('c-state').value = state;
+    document.getElementById('c-zip').value = zip;
+  });
 }
 
 function addrAutocomplete(val) {
