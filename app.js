@@ -498,18 +498,30 @@ function resetCreateForm() {
   initPlacesAutocomplete();
 }
 
+function dismissGmapsBanner() {
+  // Purge any Google error banners
+  document.querySelectorAll('.dismissButton, .gm-err-container').forEach(el => el.closest('div[style]')?.remove() || el.remove());
+  // Nuclear: find the white overlay Google injects
+  document.querySelectorAll('div[style*="background-color: white"], div[style*="background-color: rgb(255, 255, 255)"]').forEach(el => {
+    if (el.textContent.includes('Google Maps') || el.textContent.includes('Do you own')) el.remove();
+  });
+}
+
 function initPlacesAutocomplete() {
-  // Destroy old instance so it re-attaches cleanly
   gPlacesAutocomplete = null;
   const key = getGmapsKey();
   if (!key) return;
   if (!window.google || !window.google.maps || !window.google.maps.places) {
     loadGmaps().then(() => {
-      setTimeout(() => attachPlacesAutocomplete(), 100);
+      setTimeout(() => { attachPlacesAutocomplete(); dismissGmapsBanner(); }, 200);
+      setTimeout(dismissGmapsBanner, 1000);
+      setTimeout(dismissGmapsBanner, 3000);
     }).catch(e => console.warn('GMAPS LOAD FAILED:', e));
     return;
   }
-  setTimeout(() => attachPlacesAutocomplete(), 100);
+  setTimeout(() => { attachPlacesAutocomplete(); dismissGmapsBanner(); }, 200);
+  setTimeout(dismissGmapsBanner, 1000);
+  setTimeout(dismissGmapsBanner, 3000);
 }
 
 function attachPlacesAutocomplete() {

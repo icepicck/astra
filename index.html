@@ -220,6 +220,13 @@ select:-webkit-autofill {
 .pac-item .pac-item-query span { color: #e0e0e0 !important; }
 .pac-logo::after { display: none !important; }
 .pac-container { z-index: 10000 !important; }
+/* Silence Google's dramatic error banner */
+.gm-err-container, .gm-err-message, .gm-err-autocomplete,
+div[style*="background-color: white"][style*="position: absolute"] > div > div > a,
+.dismissButton, .gm-style > div > div > div > div > div > div[style*="background-color: rgb(255, 255, 255)"] {
+  display: none !important;
+}
+.gm-err-container ~ * { display: block !important; }
 /* Purge Google Maps InfoWindow white heresy */
 .gm-style-iw-c { background: #1a1a1a !important; border: 1px solid #333 !important; border-radius: 12px !important; box-shadow: 0 4px 16px rgba(0,0,0,0.6) !important; padding: 0 !important; }
 .gm-style-iw-d { overflow: hidden !important; padding: 0 !important; }
