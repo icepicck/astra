@@ -216,6 +216,13 @@ select:-webkit-autofill {
 .pac-item-query { color: #e0e0e0 !important; }
 .pac-matched { color: #FF6B00 !important; }
 .pac-icon { display: none !important; }
+/* Purge Google Maps InfoWindow white heresy */
+.gm-style-iw-c { background: #1a1a1a !important; border: 1px solid #333 !important; border-radius: 12px !important; box-shadow: 0 4px 16px rgba(0,0,0,0.6) !important; padding: 0 !important; }
+.gm-style-iw-d { overflow: hidden !important; padding: 0 !important; }
+.gm-style-iw-tc::after { background: #1a1a1a !important; }
+.gm-style-iw-c button[aria-label="Close"] { top: 2px !important; right: 2px !important; }
+.gm-style-iw-c button[aria-label="Close"] span { background-color: #666 !important; }
+.gm-style-iw-chr { position: absolute; top: 0; right: 0; }
 .field textarea { resize: vertical; min-height: 100px; }
 .field select { appearance: none; cursor: pointer; }
 .field-error { color: #c0392b; font-size: 12px; font-weight: 700; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; display: none; }

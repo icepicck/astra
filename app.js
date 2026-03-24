@@ -1245,11 +1245,11 @@ async function renderMap() {
         icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 10 }
       });
       const infoWindow = new google.maps.InfoWindow({
-        content: `<div style="font-family:sans-serif;min-width:180px;padding:4px;">
-          <div style="font-weight:800;font-size:13px;margin-bottom:4px;">${esc(job.address)}</div>
-          <div style="font-size:11px;color:#666;margin-bottom:6px;">${esc((job.types || []).join(', ')).toUpperCase()}</div>
-          <div style="margin-bottom:8px;"><span style="display:inline-block;padding:2px 8px;border-radius:6px;font-weight:800;font-size:10px;color:#fff;background:${color};">${esc(job.status).toUpperCase()}</span></div>
-          <button onclick="goTo('screen-detail','${job.id}')" style="background:#FF6B00;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;width:100%;text-transform:uppercase;letter-spacing:1px;">VIEW TICKET</button>
+        content: `<div style="font-family:inherit;min-width:200px;padding:10px;background:#1a1a1a;color:#e0e0e0;border-radius:10px;">
+          <div style="font-weight:800;font-size:13px;margin-bottom:6px;letter-spacing:0.5px;">${esc(job.address)}</div>
+          <div style="font-size:11px;color:#555;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">${esc((job.types || []).join(', ')).toUpperCase()}</div>
+          <div style="margin-bottom:10px;"><span style="display:inline-block;padding:3px 10px;border-radius:6px;font-weight:800;font-size:10px;color:#fff;background:${color};letter-spacing:0.5px;">${esc(job.status).toUpperCase()}</span></div>
+          <button onclick="goTo('screen-detail','${job.id}')" style="background:#FF6B00;color:#fff;border:none;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;width:100%;text-transform:uppercase;letter-spacing:1px;">VIEW TICKET</button>
         </div>`
       });
       marker.addListener('click', () => infoWindow.open(gMap, marker));
