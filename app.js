@@ -499,32 +499,41 @@ function resetCreateForm() {
 }
 
 function initPlacesAutocomplete() {
-  if (gPlacesAutocomplete) return; // already attached
+  // Destroy old instance so it re-attaches cleanly
+  gPlacesAutocomplete = null;
+  const key = getGmapsKey();
+  if (!key) return;
   if (!window.google || !window.google.maps || !window.google.maps.places) {
-    // Try loading Google Maps first
-    const key = getGmapsKey();
-    if (!key) return;
-    loadGmaps().then(() => attachPlacesAutocomplete()).catch(() => {});
+    loadGmaps().then(() => {
+      setTimeout(() => attachPlacesAutocomplete(), 100);
+    }).catch(e => console.warn('GMAPS LOAD FAILED:', e));
     return;
   }
-  attachPlacesAutocomplete();
+  setTimeout(() => attachPlacesAutocomplete(), 100);
 }
 
 function attachPlacesAutocomplete() {
-  if (gPlacesAutocomplete) return;
   const input = document.getElementById('c-street');
-  if (!input) return;
+  if (!input || !window.google || !window.google.maps || !window.google.maps.places) return;
+  // Remove autocomplete="off" so Google widget can work
+  input.removeAttribute('autocomplete');
+  // Clean up old pac-containers
+  document.querySelectorAll('.pac-container').forEach(el => el.remove());
   gPlacesAutocomplete = new google.maps.places.Autocomplete(input, {
     types: ['address'],
     componentRestrictions: { country: 'us' },
     fields: ['address_components', 'formatted_address', 'geometry']
   });
+  // Bias toward Houston area
+  const houstonBounds = new google.maps.LatLngBounds(
+    new google.maps.LatLng(29.5, -95.8),
+    new google.maps.LatLng(30.2, -95.0)
+  );
+  gPlacesAutocomplete.setBounds(houstonBounds);
   gPlacesAutocomplete.addListener('place_changed', () => {
     const place = gPlacesAutocomplete.getPlace();
     if (!place || !place.address_components) return;
-    // Hide local suggestions
     document.getElementById('c-addr-suggest').style.display = 'none';
-    // Parse components
     let streetNum = '', route = '', city = '', state = '', zip = '', suite = '';
     for (const c of place.address_components) {
       const t = c.types[0];
