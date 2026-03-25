@@ -206,16 +206,22 @@ function reroute() {
   setMapStatus('GETTING GPS...');
   navigator.geolocation.getCurrentPosition(async pos => {
     const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-    // Re-optimize from current location
+    // Re-optimize from current location, route back to shop
     if (gMapJobs.length < 1) return;
     const btn = document.getElementById('map-optimize-btn');
     btn.textContent = 'REROUTING...'; btn.disabled = true;
 
     try {
+      const homeBase = A.getHomeBase();
+      let destination = origin; // fallback if no shop set
+      if (homeBase) {
+        try { destination = await gmapGeocode(homeBase); }
+        catch (e) { console.warn('Home base geocode failed, using current location:', e); }
+      }
       const waypoints = gMapJobs.map(d => ({ location: d.coords, stopover: true }));
       const result = await new Promise((resolve, reject) => {
         new google.maps.DirectionsService().route({
-          origin, destination: origin, waypoints, optimizeWaypoints: true,
+          origin, destination, waypoints, optimizeWaypoints: true,
           travelMode: google.maps.TravelMode.DRIVING
         }, (r, s) => s === 'OK' ? resolve(r) : reject('REROUTE FAILED: ' + s));
       });
