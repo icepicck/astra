@@ -1733,14 +1733,17 @@ function renderJobMaterials(jobId) {
   for (const [cat, items] of Object.entries(grouped)) {
     html += `<div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;margin-top:8px;margin-bottom:4px;">${esc(cat)}</div>`;
     for (const m of items) {
-      html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #2a2a2a;">
-        <span style="font-size:13px;flex:1;">${esc(m.name)}</span>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <button onclick="adjustMatQty('${jobId}','${m.itemId}',-1)" style="background:none;border:1px solid #333;color:#e0e0e0;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;">−</button>
-          <span style="font-size:14px;font-weight:800;min-width:24px;text-align:center;">${m.qty}</span>
-          <button onclick="adjustMatQty('${jobId}','${m.itemId}',1)" style="background:none;border:1px solid #333;color:#e0e0e0;width:28px;height:28px;border-radius:6px;cursor:pointer;font-size:14px;">+</button>
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #2a2a2a;gap:8px;">
+        <span style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${esc(m.name)}</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <button onclick="adjustMatQty('${jobId}','${m.itemId}',-1)" style="background:none;border:1px solid #333;color:#e0e0e0;width:40px;height:40px;border-radius:10px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;">−</button>
+          <input type="number" inputmode="numeric" value="${m.qty}" min="1"
+            onchange="setMatQty('${jobId}','${m.itemId}',this.value)"
+            onblur="setMatQty('${jobId}','${m.itemId}',this.value)"
+            style="width:56px;height:40px;background:#1a1a1a;border:1px solid #333;border-radius:10px;color:#FF6B00;font-size:16px;font-weight:800;text-align:center;font-family:inherit;outline:none;"
+            onfocus="this.select()">
           <span style="font-size:10px;color:#555;min-width:24px;">${esc(m.unit)}</span>
-          <button onclick="removeMatFromJob('${jobId}','${m.itemId}')" style="background:none;border:none;color:#c0392b;cursor:pointer;font-size:14px;padding:0 4px;">✕</button>
+          <button onclick="removeMatFromJob('${jobId}','${m.itemId}')" style="background:none;border:none;color:#c0392b;cursor:pointer;font-size:16px;width:32px;height:40px;display:flex;align-items:center;justify-content:center;">✕</button>
         </div>
       </div>`;
     }
@@ -1753,6 +1756,17 @@ function adjustMatQty(jobId, itemId, delta) {
   const m = mats.find(x => x.itemId === itemId);
   if (!m) return;
   m.qty = Math.max(1, m.qty + delta);
+  setJobMaterials(jobId, mats);
+  renderJobMaterials(jobId);
+}
+
+function setMatQty(jobId, itemId, val) {
+  const mats = getJobMaterials(jobId);
+  const m = mats.find(x => x.itemId === itemId);
+  if (!m) return;
+  const qty = Math.max(1, parseInt(val) || 1);
+  if (m.qty === qty) return;
+  m.qty = qty;
   setJobMaterials(jobId, mats);
   renderJobMaterials(jobId);
 }
@@ -1793,6 +1807,27 @@ function closeMatPicker() {
   if (overlay) overlay.remove();
 }
 
+let _matPickerActiveItem = null;
+
+// ── Frequent flyers — track material add frequency ──
+const MAT_FREQ_KEY = 'astra_mat_frequency';
+function loadMatFreq() {
+  try { return JSON.parse(localStorage.getItem(MAT_FREQ_KEY)) || {}; } catch { return {}; }
+}
+function trackMatAdd(itemId) {
+  const freq = loadMatFreq();
+  freq[itemId] = (freq[itemId] || 0) + 1;
+  localStorage.setItem(MAT_FREQ_KEY, JSON.stringify(freq));
+}
+function getFrequentMats(lib, limit) {
+  const freq = loadMatFreq();
+  const entries = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, limit || 10);
+  if (!entries.length) return [];
+  const allItems = {};
+  lib.categories.forEach(c => c.items.forEach(i => { allItems[i.id] = { ...i, catLabel: c.label }; }));
+  return entries.map(([id]) => allItems[id]).filter(Boolean);
+}
+
 function filterMatPicker(jobId, query) {
   const lib = loadMaterialLibrary();
   if (!lib) return;
@@ -1800,32 +1835,145 @@ function filterMatPicker(jobId, query) {
   const q = query.trim().toLowerCase();
   const existing = getJobMaterials(jobId).map(m => m.itemId);
   let html = '';
+
+  // "Previously at this address" section (only when not searching)
+  if (!q) {
+    const job = getJob(jobId);
+    if (job && job.addressId) {
+      const otherJobs = loadJobs().filter(j => j.addressId === job.addressId && j.id !== jobId);
+      const prevMats = {};
+      otherJobs.forEach(j => {
+        if (!j.materials) return;
+        j.materials.forEach(m => {
+          if (!prevMats[m.itemId]) prevMats[m.itemId] = { ...m };
+          else prevMats[m.itemId].qty += m.qty;
+        });
+      });
+      const prevList = Object.values(prevMats);
+      if (prevList.length > 0) {
+        html += `<div style="font-size:10px;color:#2d8a4e;font-weight:800;letter-spacing:1px;margin:4px 0 6px;">PREVIOUSLY AT THIS ADDRESS</div>`;
+        for (const item of prevList) {
+          const added = existing.includes(item.itemId);
+          const isActive = _matPickerActiveItem === item.itemId;
+          const libItem = lib.categories.flatMap(c => c.items).find(i => i.id === item.itemId);
+          const unit = libItem ? libItem.unit : item.unit;
+          if (isActive && !added) {
+            html += `<div style="background:#2a2a2a;border-radius:10px;padding:12px;margin:4px 0;border:1px solid #2d8a4e;">
+              <div style="font-size:13px;font-weight:700;margin-bottom:8px;">${esc(item.name)} <span style="color:#555;font-size:11px;">${esc(unit)} — PREV: ${item.qty}</span></div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <input type="number" id="mat-qty-input" inputmode="numeric" pattern="[0-9]*" min="1" value="${item.qty}"
+                  style="flex:1;height:48px;background:#1a1a1a;border:2px solid #2d8a4e;border-radius:10px;color:#e0e0e0;font-size:20px;font-weight:800;text-align:center;font-family:inherit;outline:none;"
+                  onkeydown="if(event.key==='Enter'){addMatToJob('${jobId}','${item.itemId}','${esc(item.name).replace(/'/g, "\\'")}','${unit}',this.value);event.preventDefault();}">
+                <button onclick="addMatToJob('${jobId}','${item.itemId}','${esc(item.name).replace(/'/g, "\\'")}','${unit}',document.getElementById('mat-qty-input').value)"
+                  style="height:48px;min-width:72px;background:#2d8a4e;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:1px;">ADD</button>
+                <button onclick="_matPickerActiveItem=null;filterMatPicker('${jobId}','')"
+                  style="height:48px;width:48px;background:none;border:1px solid #333;border-radius:10px;color:#666;font-size:18px;cursor:pointer;">✕</button>
+              </div>
+            </div>`;
+          } else {
+            html += `<div onclick="${added ? '' : "showMatQtyInput('" + jobId + "','" + item.itemId + "')"}"
+              style="display:flex;justify-content:space-between;align-items:center;padding:12px 8px;border-bottom:1px solid #2a2a2a;cursor:${added ? 'default' : 'pointer'};min-height:48px;${added ? 'opacity:0.4;' : ''}">
+              <span style="font-size:13px;font-weight:600;">${esc(item.name)}</span>
+              <span style="font-size:11px;color:${added ? '#FF6B00' : '#2d8a4e'};">${added ? '✓ ADDED' : 'PREV: ' + item.qty + ' ' + unit}</span>
+            </div>`;
+          }
+        }
+        html += `<div style="height:1px;background:#333;margin:12px 0;"></div>`;
+      }
+    }
+  }
+
+  // Frequent flyers section (only when not searching)
+  if (!q) {
+    const frequent = getFrequentMats(lib, 10);
+    if (frequent.length > 0) {
+      html += `<div style="font-size:10px;color:#FF6B00;font-weight:800;letter-spacing:1px;margin:4px 0 6px;">FREQUENT</div>`;
+      for (const item of frequent) {
+        const added = existing.includes(item.id);
+        const isActive = _matPickerActiveItem === item.id;
+        if (isActive && !added) {
+          html += `<div style="background:#2a2a2a;border-radius:10px;padding:12px;margin:4px 0;border:1px solid #FF6B00;">
+            <div style="font-size:13px;font-weight:700;margin-bottom:8px;">${esc(item.name)} <span style="color:#555;font-size:11px;">${esc(item.unit)}</span></div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input type="number" id="mat-qty-input" inputmode="numeric" pattern="[0-9]*" min="1" value="1"
+                style="flex:1;height:48px;background:#1a1a1a;border:2px solid #FF6B00;border-radius:10px;color:#e0e0e0;font-size:20px;font-weight:800;text-align:center;font-family:inherit;outline:none;"
+                onkeydown="if(event.key==='Enter'){addMatToJob('${jobId}','${item.id}','${esc(item.name).replace(/'/g, "\\'")}','${item.unit}',this.value);event.preventDefault();}">
+              <button onclick="addMatToJob('${jobId}','${item.id}','${esc(item.name).replace(/'/g, "\\'")}','${item.unit}',document.getElementById('mat-qty-input').value)"
+                style="height:48px;min-width:72px;background:#FF6B00;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:1px;">ADD</button>
+              <button onclick="_matPickerActiveItem=null;filterMatPicker('${jobId}','')"
+                style="height:48px;width:48px;background:none;border:1px solid #333;border-radius:10px;color:#666;font-size:18px;cursor:pointer;">✕</button>
+            </div>
+          </div>`;
+        } else {
+          html += `<div onclick="${added ? '' : "showMatQtyInput('" + jobId + "','" + item.id + "')"}"
+            style="display:flex;justify-content:space-between;align-items:center;padding:12px 8px;border-bottom:1px solid #2a2a2a;cursor:${added ? 'default' : 'pointer'};min-height:48px;${added ? 'opacity:0.4;' : ''}">
+            <span style="font-size:13px;font-weight:600;">${esc(item.name)}</span>
+            <span style="font-size:11px;color:${added ? '#FF6B00' : '#555'};">${added ? '✓ ADDED' : item.unit}</span>
+          </div>`;
+        }
+      }
+      html += `<div style="height:1px;background:#333;margin:12px 0;"></div>`;
+    }
+  }
+
   for (const cat of lib.categories) {
     const items = q ? cat.items.filter(i => i.name.toLowerCase().includes(q)) : cat.items;
     if (!items.length) continue;
     html += `<div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;margin:12px 0 6px;">${esc(cat.label)}</div>`;
     for (const item of items) {
       const added = existing.includes(item.id);
-      html += `<div onclick="${added ? '' : "addMatToJob('" + jobId + "','" + item.id + "','" + esc(item.name).replace(/'/g, "\\'") + "','" + item.unit + "')"}"
-        style="display:flex;justify-content:space-between;align-items:center;padding:12px 8px;border-bottom:1px solid #2a2a2a;cursor:${added ? 'default' : 'pointer'};min-height:44px;${added ? 'opacity:0.4;' : ''}">
-        <span style="font-size:13px;font-weight:600;">${esc(item.name)}</span>
-        <span style="font-size:11px;color:${added ? '#FF6B00' : '#555'};">${added ? '✓ ADDED' : item.unit}</span>
-      </div>`;
+      const isActive = _matPickerActiveItem === item.id;
+      if (isActive && !added) {
+        // Inline quantity input row
+        html += `<div style="background:#2a2a2a;border-radius:10px;padding:12px;margin:4px 0;border:1px solid #FF6B00;">
+          <div style="font-size:13px;font-weight:700;margin-bottom:8px;">${esc(item.name)} <span style="color:#555;font-size:11px;">${esc(item.unit)}</span></div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="number" id="mat-qty-input" inputmode="numeric" pattern="[0-9]*" min="1" value="1"
+              style="flex:1;height:48px;background:#1a1a1a;border:2px solid #FF6B00;border-radius:10px;color:#e0e0e0;font-size:20px;font-weight:800;text-align:center;font-family:inherit;outline:none;"
+              onkeydown="if(event.key==='Enter'){addMatToJob('${jobId}','${item.id}','${esc(item.name).replace(/'/g, "\\'")}','${item.unit}',this.value);event.preventDefault();}">
+            <button onclick="addMatToJob('${jobId}','${item.id}','${esc(item.name).replace(/'/g, "\\'")}','${item.unit}',document.getElementById('mat-qty-input').value)"
+              style="height:48px;min-width:72px;background:#FF6B00;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:1px;">ADD</button>
+            <button onclick="_matPickerActiveItem=null;filterMatPicker('${jobId}',document.getElementById('mat-picker-search')?document.getElementById('mat-picker-search').value:'')"
+              style="height:48px;width:48px;background:none;border:1px solid #333;border-radius:10px;color:#666;font-size:18px;cursor:pointer;">✕</button>
+          </div>
+        </div>`;
+      } else {
+        html += `<div onclick="${added ? '' : "showMatQtyInput('" + jobId + "','" + item.id + "')"}"
+          style="display:flex;justify-content:space-between;align-items:center;padding:12px 8px;border-bottom:1px solid #2a2a2a;cursor:${added ? 'default' : 'pointer'};min-height:48px;${added ? 'opacity:0.4;' : ''}">
+          <span style="font-size:13px;font-weight:600;">${esc(item.name)}</span>
+          <span style="font-size:11px;color:${added ? '#FF6B00' : '#555'};">${added ? '✓ ADDED' : item.unit}</span>
+        </div>`;
+      }
     }
   }
   if (!html) html = '<div style="color:#555;text-align:center;padding:24px;font-size:12px;">NO ITEMS MATCH</div>';
   el.innerHTML = html;
+  // Auto-focus qty input if active
+  if (_matPickerActiveItem) {
+    const inp = document.getElementById('mat-qty-input');
+    if (inp) { inp.focus(); inp.select(); }
+  }
 }
 
-function addMatToJob(jobId, itemId, name, unit) {
+function showMatQtyInput(jobId, itemId) {
+  _matPickerActiveItem = itemId;
+  const search = document.getElementById('mat-picker-search');
+  filterMatPicker(jobId, search ? search.value : '');
+}
+
+function addMatToJob(jobId, itemId, name, unit, qtyStr) {
   const mats = getJobMaterials(jobId);
   if (mats.find(m => m.itemId === itemId)) return;
-  mats.push({ itemId, name, qty: 1, unit });
+  const qty = Math.max(1, parseInt(qtyStr) || 1);
+  mats.push({ itemId, name, qty, unit });
   setJobMaterials(jobId, mats);
+  trackMatAdd(itemId);
+  _matPickerActiveItem = null;
   // Re-render picker to show checkmark
   const search = document.getElementById('mat-picker-search');
   filterMatPicker(jobId, search ? search.value : '');
   renderJobMaterials(jobId);
+  showToast(name + ' ×' + qty + ' ADDED');
 }
 
 // ── Address-level material rollup ──
