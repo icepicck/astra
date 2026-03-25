@@ -239,6 +239,11 @@ div[style*="background-color: white"][style*="position: absolute"] > div > div >
 .field-error { color: #c0392b; font-size: 12px; font-weight: 700; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; display: none; }
 .field-error.visible { display: block; }
 
+/* ── Kill number input spinners ── */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; }
+
 /* ── Buttons ── */
 .btn {
   display: block; width: 100%; padding: 16px;
