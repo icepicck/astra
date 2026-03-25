@@ -1435,15 +1435,7 @@ async function renderMap() {
     gMap = new google.maps.Map(document.getElementById('map-container'), {
       center: { lat: 29.76, lng: -95.37 }, zoom: 11,
       disableDefaultUI: true, zoomControl: true,
-      zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
-      styles: [
-        { elementType: 'geometry', stylers: [{ color: '#1a1a1a' }] },
-        { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1a1a' }] },
-        { elementType: 'labels.text.fill', stylers: [{ color: '#555' }] },
-        { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2a2a2a' }] },
-        { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#666' }] },
-        { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#111' }] }
-      ]
+      zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM }
     });
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(pos => {
@@ -1501,7 +1493,14 @@ async function renderMap() {
     } catch (e) { console.warn('Geocode failed:', job.address, e); }
   }
 
-  if (geocoded > 0) gMap.fitBounds(bounds, { top: 60, bottom: 80, left: 40, right: 40 });
+  if (geocoded > 0) {
+    gMap.fitBounds(bounds, { top: 60, bottom: 80, left: 40, right: 40 });
+    // Prevent over-zoom on single ticket — cap at street level
+    const listener = google.maps.event.addListener(gMap, 'idle', () => {
+      if (gMap.getZoom() > 15) gMap.setZoom(15);
+      google.maps.event.removeListener(listener);
+    });
+  }
   setMapStatus(null);
   document.getElementById('map-controls').style.display = 'flex';
   document.getElementById('map-optimize-btn').disabled = gMapJobs.length < 2;
