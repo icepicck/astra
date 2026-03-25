@@ -1809,6 +1809,29 @@ function closeMatPicker() {
 
 let _matPickerActiveItem = null;
 
+function _matQtyRow(jobId, itemId, escapedName, escapedUnit, defaultQty, color) {
+  return `<div style="background:#2a2a2a;border-radius:10px;padding:12px;margin:4px 0;border:1px solid ${color};">
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px;">${escapedName} <span style="color:#555;font-size:11px;">${escapedUnit}</span></div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <input type="number" id="mat-qty-input" inputmode="numeric" pattern="[0-9]*" min="1" value="${defaultQty}"
+        style="flex:1;height:48px;background:#1a1a1a;border:2px solid ${color};border-radius:10px;color:#e0e0e0;font-size:20px;font-weight:800;text-align:center;font-family:inherit;outline:none;"
+        onkeydown="if(event.key==='Enter'){addMatToJob('${jobId}','${itemId}','','',this.value);event.preventDefault();}">
+      <button onclick="addMatToJob('${jobId}','${itemId}','','',document.getElementById('mat-qty-input').value)"
+        style="height:48px;min-width:72px;background:${color};border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:1px;">ADD</button>
+      <button onclick="_matPickerActiveItem=null;filterMatPicker('${jobId}',document.getElementById('mat-picker-search')?document.getElementById('mat-picker-search').value:'')"
+        style="height:48px;width:48px;background:none;border:1px solid #333;border-radius:10px;color:#666;font-size:18px;cursor:pointer;">✕</button>
+    </div>
+  </div>`;
+}
+
+function _matPickerRow(jobId, itemId, escapedName, added, rightText, rightColor) {
+  return `<div onclick="${added ? '' : "showMatQtyInput('" + jobId + "','" + itemId + "')"}"
+    style="display:flex;justify-content:space-between;align-items:center;padding:12px 8px;border-bottom:1px solid #2a2a2a;cursor:${added ? 'default' : 'pointer'};min-height:48px;${added ? 'opacity:0.4;' : ''}">
+    <span style="font-size:13px;font-weight:600;">${escapedName}</span>
+    <span style="font-size:11px;color:${rightColor};">${rightText}</span>
+  </div>`;
+}
+
 // ── Frequent flyers — track material add frequency ──
 const MAT_FREQ_KEY = 'astra_mat_frequency';
 function loadMatFreq() {
@@ -1859,24 +1882,9 @@ function filterMatPicker(jobId, query) {
           const libItem = lib.categories.flatMap(c => c.items).find(i => i.id === item.itemId);
           const unit = libItem ? libItem.unit : item.unit;
           if (isActive && !added) {
-            html += `<div style="background:#2a2a2a;border-radius:10px;padding:12px;margin:4px 0;border:1px solid #2d8a4e;">
-              <div style="font-size:13px;font-weight:700;margin-bottom:8px;">${esc(item.name)} <span style="color:#555;font-size:11px;">${esc(unit)} — PREV: ${item.qty}</span></div>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <input type="number" id="mat-qty-input" inputmode="numeric" pattern="[0-9]*" min="1" value="${item.qty}"
-                  style="flex:1;height:48px;background:#1a1a1a;border:2px solid #2d8a4e;border-radius:10px;color:#e0e0e0;font-size:20px;font-weight:800;text-align:center;font-family:inherit;outline:none;"
-                  onkeydown="if(event.key==='Enter'){addMatToJob('${jobId}','${item.itemId}','${esc(item.name).replace(/'/g, "\\'")}','${unit}',this.value);event.preventDefault();}">
-                <button onclick="addMatToJob('${jobId}','${item.itemId}','${esc(item.name).replace(/'/g, "\\'")}','${unit}',document.getElementById('mat-qty-input').value)"
-                  style="height:48px;min-width:72px;background:#2d8a4e;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:1px;">ADD</button>
-                <button onclick="_matPickerActiveItem=null;filterMatPicker('${jobId}','')"
-                  style="height:48px;width:48px;background:none;border:1px solid #333;border-radius:10px;color:#666;font-size:18px;cursor:pointer;">✕</button>
-              </div>
-            </div>`;
+            html += _matQtyRow(jobId, item.itemId, esc(item.name), esc(unit) + ' — PREV: ' + item.qty, item.qty, '#2d8a4e');
           } else {
-            html += `<div onclick="${added ? '' : "showMatQtyInput('" + jobId + "','" + item.itemId + "')"}"
-              style="display:flex;justify-content:space-between;align-items:center;padding:12px 8px;border-bottom:1px solid #2a2a2a;cursor:${added ? 'default' : 'pointer'};min-height:48px;${added ? 'opacity:0.4;' : ''}">
-              <span style="font-size:13px;font-weight:600;">${esc(item.name)}</span>
-              <span style="font-size:11px;color:${added ? '#FF6B00' : '#2d8a4e'};">${added ? '✓ ADDED' : 'PREV: ' + item.qty + ' ' + unit}</span>
-            </div>`;
+            html += _matPickerRow(jobId, item.itemId, esc(item.name), added, added ? '✓ ADDED' : 'PREV: ' + item.qty + ' ' + unit, added ? '#FF6B00' : '#2d8a4e');
           }
         }
         html += `<div style="height:1px;background:#333;margin:12px 0;"></div>`;
@@ -1893,24 +1901,9 @@ function filterMatPicker(jobId, query) {
         const added = existing.includes(item.id);
         const isActive = _matPickerActiveItem === item.id;
         if (isActive && !added) {
-          html += `<div style="background:#2a2a2a;border-radius:10px;padding:12px;margin:4px 0;border:1px solid #FF6B00;">
-            <div style="font-size:13px;font-weight:700;margin-bottom:8px;">${esc(item.name)} <span style="color:#555;font-size:11px;">${esc(item.unit)}</span></div>
-            <div style="display:flex;align-items:center;gap:8px;">
-              <input type="number" id="mat-qty-input" inputmode="numeric" pattern="[0-9]*" min="1" value="1"
-                style="flex:1;height:48px;background:#1a1a1a;border:2px solid #FF6B00;border-radius:10px;color:#e0e0e0;font-size:20px;font-weight:800;text-align:center;font-family:inherit;outline:none;"
-                onkeydown="if(event.key==='Enter'){addMatToJob('${jobId}','${item.id}','${esc(item.name).replace(/'/g, "\\'")}','${item.unit}',this.value);event.preventDefault();}">
-              <button onclick="addMatToJob('${jobId}','${item.id}','${esc(item.name).replace(/'/g, "\\'")}','${item.unit}',document.getElementById('mat-qty-input').value)"
-                style="height:48px;min-width:72px;background:#FF6B00;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:1px;">ADD</button>
-              <button onclick="_matPickerActiveItem=null;filterMatPicker('${jobId}','')"
-                style="height:48px;width:48px;background:none;border:1px solid #333;border-radius:10px;color:#666;font-size:18px;cursor:pointer;">✕</button>
-            </div>
-          </div>`;
+          html += _matQtyRow(jobId, item.id, esc(item.name), esc(item.unit), 1, '#FF6B00');
         } else {
-          html += `<div onclick="${added ? '' : "showMatQtyInput('" + jobId + "','" + item.id + "')"}"
-            style="display:flex;justify-content:space-between;align-items:center;padding:12px 8px;border-bottom:1px solid #2a2a2a;cursor:${added ? 'default' : 'pointer'};min-height:48px;${added ? 'opacity:0.4;' : ''}">
-            <span style="font-size:13px;font-weight:600;">${esc(item.name)}</span>
-            <span style="font-size:11px;color:${added ? '#FF6B00' : '#555'};">${added ? '✓ ADDED' : item.unit}</span>
-          </div>`;
+          html += _matPickerRow(jobId, item.id, esc(item.name), added, added ? '✓ ADDED' : item.unit, added ? '#FF6B00' : '#555');
         }
       }
       html += `<div style="height:1px;background:#333;margin:12px 0;"></div>`;
@@ -1925,25 +1918,9 @@ function filterMatPicker(jobId, query) {
       const added = existing.includes(item.id);
       const isActive = _matPickerActiveItem === item.id;
       if (isActive && !added) {
-        // Inline quantity input row
-        html += `<div style="background:#2a2a2a;border-radius:10px;padding:12px;margin:4px 0;border:1px solid #FF6B00;">
-          <div style="font-size:13px;font-weight:700;margin-bottom:8px;">${esc(item.name)} <span style="color:#555;font-size:11px;">${esc(item.unit)}</span></div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <input type="number" id="mat-qty-input" inputmode="numeric" pattern="[0-9]*" min="1" value="1"
-              style="flex:1;height:48px;background:#1a1a1a;border:2px solid #FF6B00;border-radius:10px;color:#e0e0e0;font-size:20px;font-weight:800;text-align:center;font-family:inherit;outline:none;"
-              onkeydown="if(event.key==='Enter'){addMatToJob('${jobId}','${item.id}','${esc(item.name).replace(/'/g, "\\'")}','${item.unit}',this.value);event.preventDefault();}">
-            <button onclick="addMatToJob('${jobId}','${item.id}','${esc(item.name).replace(/'/g, "\\'")}','${item.unit}',document.getElementById('mat-qty-input').value)"
-              style="height:48px;min-width:72px;background:#FF6B00;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:1px;">ADD</button>
-            <button onclick="_matPickerActiveItem=null;filterMatPicker('${jobId}',document.getElementById('mat-picker-search')?document.getElementById('mat-picker-search').value:'')"
-              style="height:48px;width:48px;background:none;border:1px solid #333;border-radius:10px;color:#666;font-size:18px;cursor:pointer;">✕</button>
-          </div>
-        </div>`;
+        html += _matQtyRow(jobId, item.id, esc(item.name), esc(item.unit), 1, '#FF6B00');
       } else {
-        html += `<div onclick="${added ? '' : "showMatQtyInput('" + jobId + "','" + item.id + "')"}"
-          style="display:flex;justify-content:space-between;align-items:center;padding:12px 8px;border-bottom:1px solid #2a2a2a;cursor:${added ? 'default' : 'pointer'};min-height:48px;${added ? 'opacity:0.4;' : ''}">
-          <span style="font-size:13px;font-weight:600;">${esc(item.name)}</span>
-          <span style="font-size:11px;color:${added ? '#FF6B00' : '#555'};">${added ? '✓ ADDED' : item.unit}</span>
-        </div>`;
+        html += _matPickerRow(jobId, item.id, esc(item.name), added, added ? '✓ ADDED' : item.unit, added ? '#FF6B00' : '#555');
       }
     }
   }
@@ -1962,9 +1939,22 @@ function showMatQtyInput(jobId, itemId) {
   filterMatPicker(jobId, search ? search.value : '');
 }
 
-function addMatToJob(jobId, itemId, name, unit, qtyStr) {
+function _lookupMatItem(itemId) {
+  const lib = loadMaterialLibrary();
+  if (!lib) return null;
+  for (const cat of lib.categories) {
+    const item = cat.items.find(i => i.id === itemId);
+    if (item) return item;
+  }
+  return null;
+}
+
+function addMatToJob(jobId, itemId, nameOverride, unitOverride, qtyStr) {
   const mats = getJobMaterials(jobId);
   if (mats.find(m => m.itemId === itemId)) return;
+  const item = _lookupMatItem(itemId);
+  const name = item ? item.name : (nameOverride || itemId);
+  const unit = item ? item.unit : (unitOverride || 'EA');
   const qty = Math.max(1, parseInt(qtyStr) || 1);
   mats.push({ itemId, name, qty, unit });
   setJobMaterials(jobId, mats);
