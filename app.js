@@ -55,14 +55,40 @@ function _openAstraDB() {
   });
 }
 
-function _idbPutAll(storeName, items) {
+// Granular IDB operations — no more nuke-and-rebuild
+function _idbPut(storeName, item) {
+  if (!_astraDB) return;
+  try {
+    const tx = _astraDB.transaction(storeName, 'readwrite');
+    tx.objectStore(storeName).put(item);
+  } catch (e) { console.error('IDB put error (' + storeName + '):', e); }
+}
+
+function _idbDelete(storeName, id) {
+  if (!_astraDB) return;
+  try {
+    const tx = _astraDB.transaction(storeName, 'readwrite');
+    tx.objectStore(storeName).delete(id);
+  } catch (e) { console.error('IDB delete error (' + storeName + '):', e); }
+}
+
+function _idbReplaceAll(storeName, items) {
   if (!_astraDB) return;
   try {
     const tx = _astraDB.transaction(storeName, 'readwrite');
     const store = tx.objectStore(storeName);
     store.clear();
     items.forEach(item => store.put(item));
-  } catch (e) { console.error('IDB write error (' + storeName + '):', e); }
+  } catch (e) { console.error('IDB replaceAll error (' + storeName + '):', e); }
+}
+
+function _cleanJobForStorage(j) {
+  return {
+    ...j,
+    photos: (j.photos || []).map(p => ({ id: p.id, name: p.name, type: p.type || 'image', addedAt: p.addedAt })),
+    drawings: (j.drawings || []).map(d => ({ id: d.id, name: d.name, type: d.type || 'image', addedAt: d.addedAt })),
+    videos: (j.videos || []).map(v => ({ id: v.id, name: v.name, type: 'video', mimeType: v.mimeType, addedAt: v.addedAt }))
+  };
 }
 
 function _idbGetAll(storeName) {
@@ -93,9 +119,9 @@ async function initDataLayer() {
     try { _cache.techs = JSON.parse(localStorage.getItem(TECHS_KEY)) || []; } catch { _cache.techs = []; }
     try { _cache.addresses = JSON.parse(localStorage.getItem(ADDRS_KEY)) || []; } catch { _cache.addresses = []; }
     // Persist to IDB
-    _idbPutAll('jobs', _cache.jobs);
-    _idbPutAll('techs', _cache.techs);
-    _idbPutAll('addresses', _cache.addresses);
+    _idbReplaceAll('jobs', _cache.jobs);
+    _idbReplaceAll('techs', _cache.techs);
+    _idbReplaceAll('addresses', _cache.addresses);
     // Clean up localStorage business data (keep settings)
     localStorage.removeItem(JOBS_KEY);
     localStorage.removeItem(TECHS_KEY);
@@ -105,7 +131,7 @@ async function initDataLayer() {
   // Seed default tech
   if (_cache.techs.length === 0) {
     _cache.techs = [{ id: crypto.randomUUID(), name: 'Mike Torres' }];
-    _idbPutAll('techs', _cache.techs);
+    _idbReplaceAll('techs', _cache.techs);
   }
 
   // Migrate dates + ensure fields exist
@@ -119,30 +145,29 @@ async function initDataLayer() {
     if (j.techNotes === undefined) { j.techNotes = ''; changed = true; }
     if (j.manually_added_to_vector === undefined) { j.manually_added_to_vector = false; changed = true; }
   });
-  if (changed) _idbPutAll('jobs', _cache.jobs);
+  if (changed) _idbReplaceAll('jobs', _cache.jobs);
 }
 
-// Synchronous read/write API — same signatures as before
+// Synchronous read/write API
 function loadJobs() { return _cache.jobs; }
-function saveJobs(jobs) {
-  _cache.jobs = jobs.map(j => ({
-    ...j,
-    photos: (j.photos || []).map(p => ({ id: p.id, name: p.name, type: p.type || 'image', addedAt: p.addedAt })),
-    drawings: (j.drawings || []).map(d => ({ id: d.id, name: d.name, type: d.type || 'image', addedAt: d.addedAt })),
-    videos: (j.videos || []).map(v => ({ id: v.id, name: v.name, type: 'video', mimeType: v.mimeType, addedAt: v.addedAt }))
-  }));
-  _idbPutAll('jobs', _cache.jobs);
+function replaceAllJobs(jobs) {
+  _cache.jobs = jobs.map(j => _cleanJobForStorage(j));
+  _idbReplaceAll('jobs', _cache.jobs);
 }
 function loadTechs() { return _cache.techs; }
-function saveTechs(techs) { _cache.techs = techs; _idbPutAll('techs', techs); }
+function replaceAllTechs(techs) { _cache.techs = techs; _idbReplaceAll('techs', techs); }
 function loadAddresses() { return _cache.addresses; }
-function saveAddresses(addrs) { _cache.addresses = addrs; _idbPutAll('addresses', addrs); }
+function replaceAllAddresses(addrs) { _cache.addresses = addrs; _idbReplaceAll('addresses', addrs); }
 function getAddress(id) { return _cache.addresses.find(a => a.id === id); }
 function updateAddress(id, updates) {
   const idx = _cache.addresses.findIndex(a => a.id === id);
   if (idx === -1) return;
   Object.assign(_cache.addresses[idx], updates);
-  _idbPutAll('addresses', _cache.addresses);
+  _idbPut('addresses', _cache.addresses[idx]);
+}
+function addAddress(addr) {
+  _cache.addresses.push(addr);
+  _idbPut('addresses', addr);
 }
 function statusClass(s) { return 'badge-' + s.toLowerCase().replace(/\s+/g, '-'); }
 function getJob(id) { return _cache.jobs.find(j => j.id === id); }
@@ -150,7 +175,11 @@ function updateJob(id, updates) {
   const idx = _cache.jobs.findIndex(j => j.id === id);
   if (idx === -1) return;
   Object.assign(_cache.jobs[idx], updates, { updatedAt: new Date().toISOString() });
-  saveJobs(_cache.jobs);
+  _idbPut('jobs', _cleanJobForStorage(_cache.jobs[idx]));
+}
+function addJob(job) {
+  _cache.jobs.unshift(job);
+  _idbPut('jobs', _cleanJobForStorage(job));
 }
 
 // ── INDEXEDDB MEDIA STORE ──
@@ -264,7 +293,7 @@ async function migrateLegacyMedia() {
     }
     if (!j.videos) j.videos = [];
   }
-  if (migrated) saveJobs(_cache.jobs);
+  if (migrated) _idbReplaceAll('jobs', _cache.jobs);
 }
 
 // ── REQUEST PERSISTENT STORAGE ──
@@ -745,9 +774,7 @@ function saveNewTicket() {
     updatedAt: new Date().toISOString()
   };
 
-  const jobs = loadJobs();
-  jobs.unshift(job);
-  saveJobs(jobs);
+  addJob(job);
   goTo('screen-jobs');
 }
 
@@ -1036,8 +1063,7 @@ function findOrCreateAddress(addressText, components) {
     newAddr.zip = components.zip || '';
   }
   ADDR_FIELDS.forEach(f => { if (!(f.key in newAddr)) newAddr[f.key] = ''; });
-  addrs.push(newAddr);
-  saveAddresses(addrs);
+  addAddress(newAddr);
   return newAddr.id;
 }
 
@@ -2330,9 +2356,9 @@ async function importData(input) {
         if (j.techNotes === undefined) j.techNotes = '';
         if (j.manually_added_to_vector === undefined) j.manually_added_to_vector = false;
       });
-      saveJobs(data.jobs);
-      if (data.techs) saveTechs(data.techs);
-      if (data.addresses) saveAddresses(data.addresses);
+      replaceAllJobs(data.jobs);
+      if (data.techs) replaceAllTechs(data.techs);
+      if (data.addresses) replaceAllAddresses(data.addresses);
       if (data.materialLibrary) localStorage.setItem(MAT_LIB_KEY, JSON.stringify(data.materialLibrary));
       if (data.materialLibraryTrim) localStorage.setItem(MAT_LIB_TRIM_KEY, JSON.stringify(data.materialLibraryTrim));
       if (data.navFrequency) localStorage.setItem(NAV_FREQ_KEY, JSON.stringify(data.navFrequency));
@@ -2364,11 +2390,12 @@ updateSidebarActive();
   const today = todayStr();
   if (lastClear !== today) {
     const jobs = loadJobs();
-    let changed = false;
     jobs.forEach(j => {
-      if (j.manually_added_to_vector) { j.manually_added_to_vector = false; changed = true; }
+      if (j.manually_added_to_vector) {
+        j.manually_added_to_vector = false;
+        _idbPut('jobs', _cleanJobForStorage(j));
+      }
     });
-    if (changed) saveJobs(jobs);
     localStorage.setItem('astra_vector_last_clear', today);
   }
 })();
