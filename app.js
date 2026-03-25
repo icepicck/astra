@@ -640,6 +640,9 @@ function resetCreateForm() {
   document.getElementById('c-status').value = 'Not Started';
   document.getElementById('c-date').value = todayStr();
   document.getElementById('c-notes').value = '';
+  _createTicketMaterials = [];
+  const matList = document.getElementById('create-materials-list');
+  if (matList) matList.innerHTML = '';
   const err = document.getElementById('c-date-error');
   if (err) err.classList.remove('visible');
   const sel = document.getElementById('c-tech');
@@ -773,12 +776,14 @@ function saveNewTicket() {
     techId, techName: techId ? techName : '',
     notes: document.getElementById('c-notes').value,
     techNotes: '',
+    materials: _createTicketMaterials.length ? [..._createTicketMaterials] : [],
     photos: [], drawings: [], videos: [],
     manually_added_to_vector: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
 
+  _createTicketMaterials = [];
   addJob(job);
   goTo('screen-jobs');
 }
@@ -1805,17 +1810,21 @@ function filterMaterials(query) {
 }
 
 // ── Ticket-level materials ──
+let _createTicketMaterials = [];
+
 function getJobMaterials(jobId) {
+  if (jobId === '_new_') return _createTicketMaterials;
   const j = getJob(jobId);
   return (j && j.materials) ? j.materials : [];
 }
 
 function setJobMaterials(jobId, materials) {
+  if (jobId === '_new_') { _createTicketMaterials = materials; return; }
   updateJob(jobId, { materials });
 }
 
 function renderJobMaterials(jobId) {
-  const el = document.getElementById('job-materials-list');
+  const el = document.getElementById(jobId === '_new_' ? 'create-materials-list' : 'job-materials-list');
   if (!el) return;
   const mats = getJobMaterials(jobId);
   if (!mats.length) {

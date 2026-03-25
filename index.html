@@ -745,7 +745,10 @@ textarea.prop-input { resize: vertical; }
       <label>JOB NOTES</label>
       <textarea id="c-notes" placeholder="Scope of work, special instructions..."></textarea>
     </div>
-    <button class="btn btn-primary" onclick="saveNewTicket()">SAVE</button>
+    <div class="section-title" style="margin-top:16px;">MATERIALS</div>
+    <button class="upload-btn" onclick="openMatPicker('_new_')">ADD MATERIALS</button>
+    <div id="create-materials-list"></div>
+    <button class="btn btn-primary" style="margin-top:16px;" onclick="saveNewTicket()">SAVE</button>
     <div style="height:24px;"></div>
   </div>
 </div>
