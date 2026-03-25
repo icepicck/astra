@@ -856,6 +856,18 @@ textarea.prop-input { resize: vertical; }
     <button class="btn btn-secondary" style="margin-bottom:16px;" onclick="document.getElementById('import-input').click()">IMPORT</button>
     <input type="file" class="hidden-input" id="import-input" accept=".json" onchange="importData(this)">
 
+    <div class="section-title">CLOUD SYNC</div>
+    <div class="dash-card" style="margin-bottom:16px;padding:14px;">
+      <div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">AIRTABLE — VIEW AND EDIT DATA IN THE CLOUD</div>
+      <div class="field" style="margin-bottom:12px;">
+        <input type="text" id="airtable-key" name="astra-xatkey" autocomplete="nope" placeholder="AIRTABLE PERSONAL ACCESS TOKEN" style="font-size:14px;"
+          value="" onblur="Astra.saveAirtableKey(this.value)">
+      </div>
+      <div id="sync-status" style="font-size:12px;color:#555;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;display:none;"></div>
+      <button class="btn btn-primary" style="margin-bottom:10px;background:#FF6B00;" id="sync-push-btn" onclick="runSyncPush()">SYNC TO CLOUD</button>
+      <button class="btn btn-secondary" style="margin-bottom:0;" id="sync-pull-btn" onclick="runSyncPull()">PULL FROM CLOUD</button>
+    </div>
+
     <div class="section-title">GOOGLE MAPS API</div>
     <div class="dash-card" style="margin-bottom:16px;padding:14px;">
       <div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">GEOCODING AND ROUTE MAP</div>
@@ -913,5 +925,6 @@ textarea.prop-input { resize: vertical; }
 <script src="app.js"></script>
 <script src="astra-materials.js"></script>
 <script src="astra-maps.js"></script>
+<script src="astra-sync.js"></script>
 </body>
 </html>

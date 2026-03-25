@@ -1470,6 +1470,8 @@ async function renderSettings() {
   if (gmapsInput) gmapsInput.value = getGmapsKey();
   const homeBaseInput = document.getElementById('home-base-input');
   if (homeBaseInput) homeBaseInput.value = getHomeBase();
+  const atInput = document.getElementById('airtable-key');
+  if (atInput && window.Astra.getAirtableKey) atInput.value = window.Astra.getAirtableKey();
 
   let mediaBytes = 0;
   try { mediaBytes = await getMediaDBSize(); } catch(e) {}
@@ -1554,6 +1556,58 @@ async function importData(input) {
     input.value = '';
   };
   reader.readAsText(input.files[0]);
+}
+
+// ── Cloud Sync UI ──
+function _syncStatus(msg) {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  el.style.display = msg ? '' : 'none';
+  el.textContent = msg || '';
+}
+
+async function runSyncPush() {
+  if (!window.Astra.getAirtableKey || !window.Astra.getAirtableKey()) {
+    showToast('ADD AIRTABLE KEY FIRST', 'error'); return;
+  }
+  const btn = document.getElementById('sync-push-btn');
+  btn.disabled = true; btn.textContent = 'SYNCING...';
+  _syncStatus('STARTING...');
+  try {
+    const result = await window.syncToAirtable((step, total, msg) => _syncStatus(msg));
+    _syncStatus(null);
+    showToast(result.jobs + ' TICKETS, ' + result.addresses + ' ADDRESSES, ' + result.materials + ' MATERIALS SYNCED');
+    btn.textContent = 'SYNCED ✓';
+    setTimeout(() => { btn.textContent = 'SYNC TO CLOUD'; btn.disabled = false; }, 3000);
+  } catch (e) {
+    console.error('Sync failed:', e);
+    _syncStatus('FAILED: ' + e.message);
+    showToast('SYNC FAILED: ' + e.message, 'error');
+    btn.textContent = 'SYNC TO CLOUD'; btn.disabled = false;
+  }
+}
+
+async function runSyncPull() {
+  if (!window.Astra.getAirtableKey || !window.Astra.getAirtableKey()) {
+    showToast('ADD AIRTABLE KEY FIRST', 'error'); return;
+  }
+  if (!confirm('PULL DATA FROM CLOUD? THIS WILL UPDATE LOCAL TICKETS WITH CLOUD CHANGES.')) return;
+  const btn = document.getElementById('sync-pull-btn');
+  btn.disabled = true; btn.textContent = 'PULLING...';
+  _syncStatus('STARTING...');
+  try {
+    const result = await window.syncFromAirtable((step, total, msg) => _syncStatus(msg));
+    _syncStatus(null);
+    showToast('PULLED ' + result.jobs + ' TICKETS FROM CLOUD');
+    btn.textContent = 'PULLED ✓';
+    setTimeout(() => { btn.textContent = 'PULL FROM CLOUD'; btn.disabled = false; }, 3000);
+    renderJobList();
+  } catch (e) {
+    console.error('Pull failed:', e);
+    _syncStatus('FAILED: ' + e.message);
+    showToast('PULL FAILED: ' + e.message, 'error');
+    btn.textContent = 'PULL FROM CLOUD'; btn.disabled = false;
+  }
 }
 
 // ═══════════════════════════════════════════
@@ -1661,6 +1715,8 @@ Object.assign(window, {
   openMedia, deleteMedia, closeOverlay,
   // Data import/export
   exportData, importData,
+  // Cloud sync
+  runSyncPush, runSyncPull,
   // Settings
   saveGmapsKey, saveHomeBase,
 });

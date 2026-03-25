@@ -1,5 +1,5 @@
-const CACHE_NAME = 'astra-v25';
-const ASSETS = ['index.html', 'app.js', 'astra-materials.js', 'astra-maps.js', 'manifest.json', 'rough_materials.json', 'trim_materials.json'];
+const CACHE_NAME = 'astra-v26';
+const ASSETS = ['index.html', 'app.js', 'astra-materials.js', 'astra-maps.js', 'astra-sync.js', 'manifest.json', 'rough_materials.json', 'trim_materials.json'];
 const TIMEOUT_MS = 3000;
 
 self.addEventListener('install', e => {
