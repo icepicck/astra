@@ -252,7 +252,11 @@ function reroute() {
       btn.textContent = 'FAILED'; btn.disabled = false;
       setMapStatus(String(e));
     }
-  }, () => { setMapStatus('GPS DENIED.'); }, { timeout: 10000 });
+  }, (err) => {
+    if (err.code === 1) setMapStatus('GPS DENIED — CHECK PERMISSIONS.');
+    else if (err.code === 3) setMapStatus('GPS TIMED OUT — TRY AGAIN.');
+    else setMapStatus('GPS UNAVAILABLE — TRY AGAIN.');
+  }, { timeout: 20000, enableHighAccuracy: false });
 }
 
 function clearRoute() {
