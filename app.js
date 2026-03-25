@@ -2408,5 +2408,24 @@ updateSidebarActive();
 })();
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    // Check for updates every 30 seconds
+    setInterval(() => reg.update(), 30000);
+    // When a new SW is waiting, it will skipWaiting automatically,
+    // then controllerchange fires and we reload
+    reg.addEventListener('updatefound', () => {
+      const newSW = reg.installing;
+      if (!newSW) return;
+      newSW.addEventListener('statechange', () => {
+        if (newSW.state === 'activated') {
+          showToast('UPDATED — RELOADING...');
+          setTimeout(() => window.location.reload(), 500);
+        }
+      });
+    });
+  }).catch(() => {});
+  // Also catch controller changes (covers edge cases)
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    window.location.reload();
+  });
 }
