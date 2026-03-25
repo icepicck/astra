@@ -829,10 +829,6 @@ async function renderDetail(jobId) {
       <textarea id="detail-tech-notes" style="min-height:90px;" placeholder="NOTES FROM THE JOB..." onblur="updateJob('${jobId}',{techNotes:this.value})">${esc(j.techNotes || '')}</textarea>
     </div>
 
-    <div class="section-title">MATERIALS${(j.materials||[]).length ? ' (' + (j.materials||[]).length + ')' : ''}</div>
-    <button class="upload-btn" onclick="openMatPicker('${jobId}')">ADD MATERIALS</button>
-    <div id="job-materials-list"></div>
-
     <div class="section-title">PHOTOS${j.photos.length ? ' (' + j.photos.length + ')' : ''}</div>
     <button class="upload-btn" onclick="document.getElementById('photo-input').click()">ADD PHOTOS</button>
     ${j.photos.length ? '<div class="media-grid">' + photoThumbs + '</div>' : ''}
@@ -845,6 +841,15 @@ async function renderDetail(jobId) {
     <button class="upload-btn" onclick="document.getElementById('drawing-input').click()">UPLOAD DRAWING</button>
     ${j.drawings.length ? '<div class="media-grid">' + drawingThumbs + '</div>' : ''}
 
+    <div class="section-title" onclick="toggleMatSection()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+      <span>MATERIALS${(j.materials||[]).length ? ' (' + (j.materials||[]).length + ')' : ''}</span>
+      <span id="mat-section-arrow" style="font-size:14px;color:#555;transition:transform 0.2s;">▼</span>
+    </div>
+    <div id="mat-section-collapsible">
+      <button class="upload-btn" onclick="openMatPicker('${jobId}')">ADD MATERIALS</button>
+      <div id="job-materials-list"></div>
+    </div>
+
     ${j.archived
       ? `<button class="btn btn-restore" onclick="unarchiveJob('${jobId}')">RESTORE</button>`
       : `<button class="btn btn-danger" onclick="archiveJob('${jobId}')">ARCHIVE</button>`
@@ -852,6 +857,19 @@ async function renderDetail(jobId) {
     <div style="height:24px;"></div>
   `;
   renderJobMaterials(jobId);
+}
+
+function toggleMatSection() {
+  const el = document.getElementById('mat-section-collapsible');
+  const arrow = document.getElementById('mat-section-arrow');
+  if (!el) return;
+  if (el.style.display === 'none') {
+    el.style.display = '';
+    if (arrow) arrow.style.transform = '';
+  } else {
+    el.style.display = 'none';
+    if (arrow) arrow.style.transform = 'rotate(-90deg)';
+  }
 }
 
 function toggleVector(jobId) {
