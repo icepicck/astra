@@ -1,4 +1,4 @@
-const CACHE_NAME = 'astra-v21';
+const CACHE_NAME = 'astra-v22';
 const ASSETS = ['index.html', 'app.js', 'manifest.json', 'rough_materials.json', 'trim_materials.json'];
 const TIMEOUT_MS = 3000;
 

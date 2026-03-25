@@ -1,6 +1,8 @@
 // ═══════════════════════════════════════════
 // ASTRA v0.6 — FIELD SERVICE
 // ═══════════════════════════════════════════
+(function() {
+'use strict';
 
 // ── TOAST NOTIFICATIONS ──
 function showToast(msg, type) {
@@ -2464,3 +2466,44 @@ if ('serviceWorker' in navigator) {
     window.location.reload();
   });
 }
+
+// ── Public API — expose only what HTML handlers need ──
+Object.assign(window, {
+  // Navigation
+  goTo, toggleSidebar, closeSidebar, setHomeView, setArchiveView,
+  // Ticket CRUD
+  saveNewTicket, updateJob, archiveJob, unarchiveJob,
+  toggleVector, openStatusPicker, closeStatusPicker, pickStatus,
+  // Address
+  updateAddress, addrAutocomplete, pickAddr, navigateTo, renderAddressList, autoExpand,
+  // Search
+  debouncedSearch,
+  // Materials
+  openMatPicker, closeMatPicker, filterMatPicker, showMatQtyInput,
+  adjustMatQty, setMatQty, removeMatFromJob, applyBulkTemplate,
+  addMatToJob, filterMaterials, importMaterialLibrary,
+  toggleMatSection,
+  // Material picker internals (referenced from template onclick)
+  _matStepQty, _matAddFromPicker, _matLongPress, _matLongStop,
+  // Chips & toggles
+  toggleChip, toggleWeek,
+  // Media
+  openMedia, deleteMedia, closeOverlay,
+  // Data import/export
+  exportData, importData,
+  // Settings
+  saveGmapsKey, saveHomeBase,
+  // Map
+  optimizeRoute, reroute, clearRoute,
+});
+// Material picker state (read/written from template onclick)
+Object.defineProperty(window, '_matPickerActiveItem', {
+  get() { return _matPickerActiveItem; },
+  set(v) { _matPickerActiveItem = v; }
+});
+Object.defineProperty(window, '_matPickerActiveVariant', {
+  get() { return _matPickerActiveVariant; },
+  set(v) { _matPickerActiveVariant = v; }
+});
+
+})();
