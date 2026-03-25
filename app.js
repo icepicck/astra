@@ -144,6 +144,11 @@ async function initDataLayer() {
     if (!j.videos) { j.videos = []; changed = true; }
     if (j.techNotes === undefined) { j.techNotes = ''; changed = true; }
     if (j.manually_added_to_vector === undefined) { j.manually_added_to_vector = false; changed = true; }
+    // Backfill addressId for legacy jobs
+    if (!j.addressId && j.address) {
+      const match = _cache.addresses.find(a => a.address.toLowerCase() === j.address.toLowerCase());
+      if (match) { j.addressId = match.id; changed = true; }
+    }
   });
   if (changed) _idbReplaceAll('jobs', _cache.jobs);
 }
