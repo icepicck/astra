@@ -277,6 +277,6 @@ function clearRoute() {
 }
 
 // ── Public API ──
-Object.assign(window, { renderMap, optimizeRoute, reroute, clearRoute });
+Object.assign(window, { loadGmaps, renderMap, optimizeRoute, reroute, clearRoute });
 
 })();

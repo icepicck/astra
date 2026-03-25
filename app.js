@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════
 // ASTRA v0.6 — FIELD SERVICE
 // ═══════════════════════════════════════════
+window.Astra = window.Astra || {};
 (function() {
 'use strict';
 
@@ -555,12 +556,16 @@ function renderJobList() {
       el.innerHTML = '<div class="empty-state"><div>—</div><div>NO TICKETS</div></div>';
       return;
     }
+    const nowWeek = getISOWeek(new Date());
+    const nowYear = getISOWeekYear(new Date());
+    const currentKey = nowYear + '-' + String(nowWeek).padStart(2, '0');
     let html = '';
     sortedKeys.forEach(key => {
       const g = grouped[key];
       const range = getWeekRange(g.year, g.week);
-      html += `<div class="week-header" onclick="toggleWeek(this)"><span>WEEK ${g.week} — ${range}</span><span class="wh-arrow">▼</span></div>`;
-      html += `<div class="week-group">${g.jobs.map(j => jobCard(j)).join('')}</div>`;
+      const isCurrent = key === currentKey;
+      html += `<div class="week-header${isCurrent ? '' : ' collapsed'}" onclick="toggleWeek(this)"><span>WEEK ${g.week} — ${range}</span><span class="wh-arrow">▼</span></div>`;
+      html += `<div class="week-group${isCurrent ? '' : ' collapsed'}">${g.jobs.map(j => jobCard(j)).join('')}</div>`;
     });
     el.innerHTML = html;
   }
@@ -630,11 +635,13 @@ function renderArchiveList() {
     });
     const sortedKeys = Object.keys(grouped).sort().reverse(); // newest first for archive
     let html = '';
+    const first = sortedKeys[0]; // most recent week expanded
     sortedKeys.forEach(key => {
       const g = grouped[key];
       const range = getWeekRange(g.year, g.week);
-      html += `<div class="week-header" onclick="toggleWeek(this)"><span>WEEK ${g.week} — ${range}</span><span class="wh-arrow">▼</span></div>`;
-      html += `<div class="week-group">${g.jobs.map(j => jobCard(j)).join('')}</div>`;
+      const isFirst = key === first;
+      html += `<div class="week-header${isFirst ? '' : ' collapsed'}" onclick="toggleWeek(this)"><span>WEEK ${g.week} — ${range}</span><span class="wh-arrow">▼</span></div>`;
+      html += `<div class="week-group${isFirst ? '' : ' collapsed'}">${g.jobs.map(j => jobCard(j)).join('')}</div>`;
     });
     el.innerHTML = html;
   }
@@ -906,10 +913,10 @@ async function renderDetail(jobId) {
 
     <div class="section-title" onclick="toggleMatSection()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
       <span>MATERIALS${(j.materials||[]).length ? ' (' + (j.materials||[]).length + ')' : ''}</span>
-      <span id="mat-section-arrow" style="font-size:14px;color:#555;transition:transform 0.2s;">▼</span>
+      <span id="mat-section-arrow" style="font-size:14px;color:#555;transition:transform 0.2s;transform:rotate(-90deg);">▼</span>
     </div>
     <button class="upload-btn" onclick="openMatPicker('${jobId}')">ADD MATERIALS</button>
-    <div id="mat-section-collapsible">
+    <div id="mat-section-collapsible" style="display:none;">
       <div id="job-materials-list"></div>
     </div>
 
@@ -1470,8 +1477,10 @@ async function renderSettings() {
   if (gmapsInput) gmapsInput.value = getGmapsKey();
   const homeBaseInput = document.getElementById('home-base-input');
   if (homeBaseInput) homeBaseInput.value = getHomeBase();
-  const atInput = document.getElementById('airtable-key');
-  if (atInput && window.Astra.getAirtableKey) atInput.value = window.Astra.getAirtableKey();
+  const supaUrlInput = document.getElementById('supabase-url');
+  if (supaUrlInput && window.Astra.getSupabaseUrl) supaUrlInput.value = window.Astra.getSupabaseUrl();
+  const supaKeyInput = document.getElementById('supabase-key');
+  if (supaKeyInput && window.Astra.getSupabaseKey) supaKeyInput.value = window.Astra.getSupabaseKey();
 
   let mediaBytes = 0;
   try { mediaBytes = await getMediaDBSize(); } catch(e) {}
@@ -1567,38 +1576,42 @@ function _syncStatus(msg) {
 }
 
 async function runSyncPush() {
-  if (!window.Astra.getAirtableKey || !window.Astra.getAirtableKey()) {
-    showToast('ADD AIRTABLE KEY FIRST', 'error'); return;
+  if (!window.Astra.isSyncConfigured || !window.Astra.isSyncConfigured()) {
+    showToast('ADD SUPABASE URL AND KEY IN SETTINGS', 'error'); return;
   }
   const btn = document.getElementById('sync-push-btn');
-  btn.disabled = true; btn.textContent = 'SYNCING...';
+  btn.disabled = true; btn.textContent = 'PUSHING...';
   _syncStatus('STARTING...');
   try {
-    const result = await window.syncToAirtable((step, total, msg) => _syncStatus(msg));
+    const result = await window.syncToCloud((step, total, msg) => _syncStatus(msg));
     _syncStatus(null);
-    showToast(result.jobs + ' TICKETS, ' + result.addresses + ' ADDRESSES, ' + result.materials + ' MATERIALS SYNCED');
-    btn.textContent = 'SYNCED ✓';
-    setTimeout(() => { btn.textContent = 'SYNC TO CLOUD'; btn.disabled = false; }, 3000);
+    showToast(result.jobs + ' TICKETS, ' + result.addresses + ' ADDRESSES, ' + result.materials + ' MATERIALS PUSHED');
+    btn.textContent = 'PUSHED ✓';
+    setTimeout(() => { btn.textContent = 'PUSH TO CLOUD'; btn.disabled = false; }, 3000);
   } catch (e) {
-    console.error('Sync failed:', e);
+    console.error('Push failed:', e);
     _syncStatus('FAILED: ' + e.message);
-    showToast('SYNC FAILED: ' + e.message, 'error');
-    btn.textContent = 'SYNC TO CLOUD'; btn.disabled = false;
+    showToast('PUSH FAILED: ' + e.message, 'error');
+    btn.textContent = 'PUSH TO CLOUD'; btn.disabled = false;
   }
 }
 
 async function runSyncPull() {
-  if (!window.Astra.getAirtableKey || !window.Astra.getAirtableKey()) {
-    showToast('ADD AIRTABLE KEY FIRST', 'error'); return;
+  if (!window.Astra.isSyncConfigured || !window.Astra.isSyncConfigured()) {
+    showToast('ADD SUPABASE URL AND KEY IN SETTINGS', 'error'); return;
   }
   if (!confirm('PULL DATA FROM CLOUD? THIS WILL UPDATE LOCAL TICKETS WITH CLOUD CHANGES.')) return;
   const btn = document.getElementById('sync-pull-btn');
   btn.disabled = true; btn.textContent = 'PULLING...';
   _syncStatus('STARTING...');
   try {
-    const result = await window.syncFromAirtable((step, total, msg) => _syncStatus(msg));
+    const result = await window.syncFromCloud((step, total, msg) => _syncStatus(msg));
     _syncStatus(null);
-    showToast('PULLED ' + result.jobs + ' TICKETS FROM CLOUD');
+    const parts = [];
+    if (result.newJobs) parts.push(result.newJobs + ' NEW TICKETS');
+    if (result.newAddresses) parts.push(result.newAddresses + ' NEW ADDRESSES');
+    parts.push(result.jobs + ' TOTAL SYNCED');
+    showToast(parts.join(', '));
     btn.textContent = 'PULLED ✓';
     setTimeout(() => { btn.textContent = 'PULL FROM CLOUD'; btn.disabled = false; }, 3000);
     renderJobList();
@@ -1689,12 +1702,12 @@ if ('serviceWorker' in navigator) {
 }
 
 // ── Shared namespace for sub-modules (maps, materials) ──
-window.Astra = {
-  loadJobs, loadAddresses, updateAddress, getJob, updateJob, loadTechs,
+Object.assign(window.Astra, {
+  loadJobs, loadAddresses, updateAddress, addAddress, getJob, updateJob, addJob, loadTechs,
   todayStr, esc, goTo, showToast,
   getGmapsKey, saveGmapsKey, getHomeBase, saveHomeBase,
   MAT_LIB_KEY, MAT_LIB_TRIM_KEY, loadMaterialLibrary, loadRoughLibrary, loadTrimLibrary,
-};
+});
 
 // ── Public API — expose only what HTML handlers need ──
 Object.assign(window, {

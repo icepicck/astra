@@ -1,352 +1,396 @@
 // ═══════════════════════════════════════════
-// ASTRA — AIRTABLE SYNC
+// ASTRA — SUPABASE CLOUD SYNC
+// One DB. One Account. Every Device. Same Data.
 // ═══════════════════════════════════════════
 (function() {
 'use strict';
 
 const A = window.Astra;
-const AIRTABLE_KEY_STORAGE = 'astra_airtable_pat';
-const AIRTABLE_SYNC_MAP = 'astra_airtable_sync_map'; // maps astra IDs → airtable record IDs
-const BASE_ID = 'appvxHudZe5QS4Dcd';
-const API_BASE = 'https://api.airtable.com/v0/' + BASE_ID;
+const SUPA_URL_KEY = 'astra_supabase_url';
+const SUPA_KEY_KEY = 'astra_supabase_key';
+const LAST_SYNC_KEY = 'astra_last_sync';
 
-// Table IDs
-const TABLES = {
-  jobs: 'tblNy4jBI79SZHyvB',
-  addresses: 'tblFEnaMCGXlsSa2A',
-  techs: 'tblRIILIHddrtpuew',
-  materials: 'tblyZgCLcNO35Y6C8'
-};
+function getSupabaseUrl() { return localStorage.getItem(SUPA_URL_KEY) || ''; }
+function saveSupabaseUrl(val) { localStorage.setItem(SUPA_URL_KEY, val.trim()); _client = null; }
+function getSupabaseKey() { return localStorage.getItem(SUPA_KEY_KEY) || ''; }
+function saveSupabaseKey(val) { localStorage.setItem(SUPA_KEY_KEY, val.trim()); _client = null; }
+function getLastSync() { return localStorage.getItem(LAST_SYNC_KEY) || ''; }
+function setLastSync() { localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString()); }
+function isConfigured() { return !!(getSupabaseUrl() && getSupabaseKey()); }
 
-function getAirtableKey() { return localStorage.getItem(AIRTABLE_KEY_STORAGE) || ''; }
-function saveAirtableKey(key) { localStorage.setItem(AIRTABLE_KEY_STORAGE, key.trim()); }
-
-function getSyncMap() {
-  try { return JSON.parse(localStorage.getItem(AIRTABLE_SYNC_MAP)) || {}; } catch { return {}; }
+// ── Supabase Client (lazy singleton) ──
+let _client = null;
+function getClient() {
+  if (_client) return _client;
+  const url = getSupabaseUrl();
+  const key = getSupabaseKey();
+  if (!url || !key) throw new Error('SUPABASE NOT CONFIGURED — ADD URL AND KEY IN SETTINGS.');
+  if (!window.supabase || !window.supabase.createClient) throw new Error('SUPABASE LIBRARY NOT LOADED.');
+  _client = window.supabase.createClient(url, key);
+  return _client;
 }
-function saveSyncMap(map) { localStorage.setItem(AIRTABLE_SYNC_MAP, JSON.stringify(map)); }
 
-// ── Airtable API helpers ──
-async function atFetch(path, method, body) {
-  const key = getAirtableKey();
-  if (!key) throw new Error('NO AIRTABLE API KEY');
-  const opts = {
-    method: method || 'GET',
-    headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' }
+// ── Field mapping: local camelCase ↔ Postgres snake_case ──
+function jobToCloud(j) {
+  return {
+    id: j.id,
+    address: j.address || '',
+    address_id: j.addressId || null,
+    types: j.types || [],
+    status: j.status || 'Not Started',
+    notes: j.notes || '',
+    tech_notes: j.techNotes || '',
+    date: j.date || null,
+    archived: !!j.archived,
+    tech_id: j.techId || null,
+    tech_name: j.techName || '',
+    photo_meta: (j.photos || []).map(p => ({ id: p.id, name: p.name, type: p.type, addedAt: p.addedAt })),
+    drawing_meta: (j.drawings || []).map(d => ({ id: d.id, name: d.name, type: d.type, addedAt: d.addedAt })),
+    video_meta: (j.videos || []).map(v => ({ id: v.id, name: v.name, type: v.type, addedAt: v.addedAt })),
+    manually_added_to_vector: !!j.manually_added_to_vector,
+    created_at: j.createdAt || new Date().toISOString(),
+    updated_at: j.updatedAt || new Date().toISOString()
   };
-  if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(API_BASE + '/' + path, opts);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error('AIRTABLE ' + res.status + ': ' + (err.error && err.error.message || res.statusText));
+}
+
+function jobFromCloud(r) {
+  return {
+    id: r.id,
+    address: r.address || '',
+    addressId: r.address_id || '',
+    types: r.types || [],
+    status: r.status || 'Not Started',
+    notes: r.notes || '',
+    techNotes: r.tech_notes || '',
+    date: r.date || '',
+    archived: !!r.archived,
+    techId: r.tech_id || '',
+    techName: r.tech_name || '',
+    photos: (r.photo_meta || []),
+    drawings: (r.drawing_meta || []),
+    videos: (r.video_meta || []),
+    manually_added_to_vector: !!r.manually_added_to_vector,
+    materials: [], // filled separately
+    createdAt: r.created_at || new Date().toISOString(),
+    updatedAt: r.updated_at || new Date().toISOString()
+  };
+}
+
+function addrToCloud(a) {
+  return {
+    id: a.id,
+    address: a.address || '',
+    city: a.city || '',
+    builder: a.builder || '',
+    subdivision: a.subdivision || '',
+    notes: a.notes || '',
+    lat: a.lat || null,
+    lng: a.lng || null,
+    updated_at: new Date().toISOString(),
+    created_at: a.createdAt || new Date().toISOString()
+  };
+}
+
+function addrFromCloud(r) {
+  return {
+    id: r.id,
+    address: r.address || '',
+    city: r.city || '',
+    builder: r.builder || '',
+    subdivision: r.subdivision || '',
+    notes: r.notes || '',
+    lat: r.lat || null,
+    lng: r.lng || null
+  };
+}
+
+function techToCloud(t) {
+  return {
+    id: t.id,
+    name: t.name || '',
+    phone: t.phone || '',
+    license: t.license || '',
+    active: t.active !== false,
+    updated_at: new Date().toISOString(),
+    created_at: t.createdAt || new Date().toISOString()
+  };
+}
+
+function techFromCloud(r) {
+  return {
+    id: r.id,
+    name: r.name || '',
+    phone: r.phone || '',
+    license: r.license || '',
+    active: r.active !== false
+  };
+}
+
+// ── Batch upsert helper (chunks of 500) ──
+async function batchUpsert(table, records) {
+  const sb = getClient();
+  const CHUNK = 500;
+  let total = 0;
+  for (let i = 0; i < records.length; i += CHUNK) {
+    const batch = records.slice(i, i + CHUNK);
+    const { error } = await sb.from(table).upsert(batch, { onConflict: 'id' });
+    if (error) throw new Error(table.toUpperCase() + ' UPSERT FAILED: ' + error.message);
+    total += batch.length;
   }
-  return res.json();
+  return total;
 }
 
-// Airtable limits to 10 records per request
-async function atBatchCreate(tableId, records) {
-  const results = [];
-  for (let i = 0; i < records.length; i += 10) {
-    const batch = records.slice(i, i + 10);
-    const res = await atFetch(tableId, 'POST', { records: batch });
-    results.push(...res.records);
-  }
-  return results;
-}
-
-async function atBatchUpdate(tableId, records) {
-  const results = [];
-  for (let i = 0; i < records.length; i += 10) {
-    const batch = records.slice(i, i + 10);
-    const res = await atFetch(tableId, 'PATCH', { records: batch });
-    results.push(...res.records);
-  }
-  return results;
-}
-
-async function atListAll(tableId, filterFormula) {
-  let all = [];
-  let offset = null;
-  do {
-    let path = tableId + '?pageSize=100';
-    if (offset) path += '&offset=' + offset;
-    if (filterFormula) path += '&filterByFormula=' + encodeURIComponent(filterFormula);
-    const res = await atFetch(path);
-    all.push(...res.records);
-    offset = res.offset || null;
-  } while (offset);
-  return all;
-}
-
-// ── PUSH: Astra → Airtable ──
-async function syncToAirtable(statusCallback) {
-  const syncMap = getSyncMap();
-  if (!syncMap.addresses) syncMap.addresses = {};
-  if (!syncMap.jobs) syncMap.jobs = {};
-  if (!syncMap.techs) syncMap.techs = {};
+// ═══════════════════════════════════════════
+// PUSH: Local → Cloud
+// ═══════════════════════════════════════════
+async function syncToCloud(statusCallback) {
+  const status = (msg) => { if (statusCallback) statusCallback(0, 4, msg); };
 
   const jobs = A.loadJobs();
   const addresses = A.loadAddresses();
   const techs = A.loadTechs();
 
-  let step = 0;
-  const totalSteps = 4;
-  const status = (msg) => { step++; if (statusCallback) statusCallback(step, totalSteps, msg); };
+  // 1. Addresses
+  status('PUSHING ADDRESSES...');
+  await batchUpsert('addresses', addresses.map(addrToCloud));
 
-  // 1. Sync addresses
-  status('SYNCING ADDRESSES...');
-  const existingAddrs = await atListAll(TABLES.addresses);
-  const addrByStreet = {};
-  existingAddrs.forEach(r => { addrByStreet[r.fields['Street Address']] = r.id; });
+  // 2. Techs
+  status('PUSHING TECHS...');
+  await batchUpsert('techs', techs.map(techToCloud));
 
-  const newAddrs = [];
-  const updateAddrs = [];
-  for (const addr of addresses) {
-    const fields = {
-      'Street Address': addr.address || '',
-      'City': addr.city || '',
-      'Builder/Client': addr.builder || '',
-      'Subdivision': addr.subdivision || '',
-      'Notes': addr.notes || '',
-      'Active': true
-    };
-    const existingId = syncMap.addresses[addr.id] || addrByStreet[addr.address];
-    if (existingId) {
-      syncMap.addresses[addr.id] = existingId;
-      updateAddrs.push({ id: existingId, fields });
-    } else {
-      newAddrs.push({ _astraId: addr.id, fields });
-    }
-  }
-  if (updateAddrs.length) await atBatchUpdate(TABLES.addresses, updateAddrs);
-  if (newAddrs.length) {
-    const created = await atBatchCreate(TABLES.addresses, newAddrs.map(r => ({ fields: r.fields })));
-    created.forEach((rec, i) => { syncMap.addresses[newAddrs[i]._astraId] = rec.id; });
+  // 3. Jobs
+  status('PUSHING JOBS...');
+  await batchUpsert('jobs', jobs.map(jobToCloud));
+
+  // 4. Materials — delete all, re-insert
+  status('PUSHING MATERIALS...');
+  const sb = getClient();
+  const jobIds = jobs.map(j => j.id);
+  if (jobIds.length) {
+    const { error: delErr } = await sb.from('materials').delete().in('job_id', jobIds);
+    if (delErr) throw new Error('MATERIAL DELETE FAILED: ' + delErr.message);
   }
 
-  // 2. Sync techs
-  status('SYNCING TECHS...');
-  const existingTechs = await atListAll(TABLES.techs);
-  const techByName = {};
-  existingTechs.forEach(r => { techByName[r.fields['Name']] = r.id; });
-
-  const newTechs = [];
-  const updateTechs = [];
-  for (const tech of techs) {
-    const fields = {
-      'Name': tech.name || '',
-      'Active': true
-    };
-    const existingId = syncMap.techs[tech.id] || techByName[tech.name];
-    if (existingId) {
-      syncMap.techs[tech.id] = existingId;
-      updateTechs.push({ id: existingId, fields });
-    } else {
-      newTechs.push({ _astraId: tech.id, fields });
-    }
-  }
-  if (updateTechs.length) await atBatchUpdate(TABLES.techs, updateTechs);
-  if (newTechs.length) {
-    const created = await atBatchCreate(TABLES.techs, newTechs.map(r => ({ fields: r.fields })));
-    created.forEach((rec, i) => { syncMap.techs[newTechs[i]._astraId] = rec.id; });
-  }
-
-  // 3. Sync jobs
-  status('SYNCING JOBS...');
-  const existingJobs = await atListAll(TABLES.jobs);
-  const jobBySyncId = {};
-  existingJobs.forEach(r => { if (r.fields['Sync ID']) jobBySyncId[r.fields['Sync ID']] = r.id; });
-
-  const newJobs = [];
-  const updateJobs = [];
-  for (const job of jobs) {
-    const fields = {
-      'Job ID': job.id,
-      'Sync ID': job.id,
-      'Status': job.status || 'Not Started',
-      'Notes': job.notes || '',
-      'Tech Notes': job.techNotes || '',
-      'Archived': !!job.archived,
-      'Last Synced': new Date().toISOString()
-    };
-    // Job types
-    if (job.types && job.types.length) {
-      fields['Job Types'] = job.types.map(t => {
-        // Map Astra type names to Airtable choice names
-        const map = { 'ROUGH': 'Rough', 'ROUGH-IN': 'Rough', 'TRIM': 'Trim', 'TRIM-OUT': 'Trim',
-          'SERVICE': 'Service Call', 'SERVICE CALL': 'Service Call', 'PUNCH': 'Punch List', 'PUNCH LIST': 'Punch List',
-          'PANEL': 'Panel', 'METER': 'Meter', 'TEMP POWER': 'Temp Power', 'INSPECTION': 'Inspection',
-          'CALLBACK': 'Callback', 'GENERAL': 'Other' };
-        return map[t.toUpperCase()] || 'Other';
-      });
-    }
-    // Date
-    if (job.date) fields['Date of Work'] = job.date;
-    // Created/Updated
-    if (job.createdAt) fields['Created At'] = job.createdAt;
-    if (job.updatedAt) fields['Updated At'] = job.updatedAt;
-    // Linked address
-    if (job.addressId && syncMap.addresses[job.addressId]) {
-      fields['Address'] = [{ id: syncMap.addresses[job.addressId] }];
-    }
-    // Linked tech
-    if (job.techId && syncMap.techs[job.techId]) {
-      fields['Assigned Tech'] = [{ id: syncMap.techs[job.techId] }];
-    }
-
-    const existingId = syncMap.jobs[job.id] || jobBySyncId[job.id];
-    if (existingId) {
-      syncMap.jobs[job.id] = existingId;
-      updateJobs.push({ id: existingId, fields });
-    } else {
-      newJobs.push({ _astraId: job.id, fields });
-    }
-  }
-  if (updateJobs.length) await atBatchUpdate(TABLES.jobs, updateJobs);
-  if (newJobs.length) {
-    const created = await atBatchCreate(TABLES.jobs, newJobs.map(r => ({ fields: r.fields })));
-    created.forEach((rec, i) => { syncMap.jobs[newJobs[i]._astraId] = rec.id; });
-  }
-
-  // 4. Sync materials
-  status('SYNCING MATERIALS...');
-  // Clear existing materials and re-push (simpler than diffing)
-  const existingMats = await atListAll(TABLES.materials);
-  if (existingMats.length) {
-    // Delete in batches of 10
-    for (let i = 0; i < existingMats.length; i += 10) {
-      const batch = existingMats.slice(i, i + 10);
-      const ids = batch.map(r => 'records[]=' + r.id).join('&');
-      await atFetch(TABLES.materials + '?' + ids, 'DELETE');
-    }
-  }
-  // Push all job materials
   const matRecords = [];
   for (const job of jobs) {
     if (!job.materials || !job.materials.length) continue;
-    const jobAtId = syncMap.jobs[job.id];
-    if (!jobAtId) continue;
     for (const m of job.materials) {
-      const fields = {
-        'Material': m.name || '',
-        'Item ID': m.itemId || '',
-        'Qty': m.qty || 0,
-        'Unit': m.unit || '',
-        'Job': [{ id: jobAtId }]
-      };
-      if (m.variant) fields['Variant'] = m.variant;
-      if (m.partRef) fields['Part Ref'] = m.partRef;
-      matRecords.push({ fields });
+      matRecords.push({
+        job_id: job.id,
+        item_id: m.itemId || '',
+        name: m.name || '',
+        qty: m.qty || 1,
+        unit: m.unit || 'EA',
+        variant: m.variant || null,
+        part_ref: m.partRef || null
+      });
     }
   }
-  if (matRecords.length) await atBatchCreate(TABLES.materials, matRecords);
+  if (matRecords.length) {
+    const CHUNK = 500;
+    for (let i = 0; i < matRecords.length; i += CHUNK) {
+      const batch = matRecords.slice(i, i + CHUNK);
+      const { error } = await sb.from('materials').insert(batch);
+      if (error) throw new Error('MATERIAL INSERT FAILED: ' + error.message);
+    }
+  }
 
-  saveSyncMap(syncMap);
+  setLastSync();
   return { jobs: jobs.length, addresses: addresses.length, techs: techs.length, materials: matRecords.length };
 }
 
-// ── PULL: Airtable → Astra ──
-async function syncFromAirtable(statusCallback) {
-  const syncMap = getSyncMap();
-  if (!syncMap.addresses) syncMap.addresses = {};
-  if (!syncMap.jobs) syncMap.jobs = {};
-  if (!syncMap.techs) syncMap.techs = {};
+// ═══════════════════════════════════════════
+// PULL: Cloud → Local
+// ═══════════════════════════════════════════
+async function syncFromCloud(statusCallback) {
+  const status = (msg) => { if (statusCallback) statusCallback(0, 3, msg); };
+  const sb = getClient();
 
-  // Reverse maps: airtable ID → astra ID
-  const atToAstraAddr = {};
-  Object.entries(syncMap.addresses).forEach(([k, v]) => { atToAstraAddr[v] = k; });
-  const atToAstraTech = {};
-  Object.entries(syncMap.techs).forEach(([k, v]) => { atToAstraTech[v] = k; });
-  const atToAstraJob = {};
-  Object.entries(syncMap.jobs).forEach(([k, v]) => { atToAstraJob[v] = k; });
-
-  let step = 0;
-  const totalSteps = 3;
-  const status = (msg) => { step++; if (statusCallback) statusCallback(step, totalSteps, msg); };
+  let newAddresses = 0, newJobs = 0, updatedJobs = 0;
 
   // 1. Pull addresses
   status('PULLING ADDRESSES...');
-  const atAddrs = await atListAll(TABLES.addresses);
+  const { data: cloudAddrs, error: addrErr } = await sb.from('addresses').select('*');
+  if (addrErr) throw new Error('ADDRESS PULL FAILED: ' + addrErr.message);
+
   const localAddrs = A.loadAddresses();
-  for (const rec of atAddrs) {
-    const f = rec.fields;
-    const astraId = atToAstraAddr[rec.id];
-    if (astraId) {
-      // Update existing
-      A.updateAddress(astraId, {
-        address: f['Street Address'] || '',
-        city: f['City'] || '',
-        builder: f['Builder/Client'] || '',
-        subdivision: f['Subdivision'] || '',
-        notes: f['Notes'] || ''
-      });
+  const localAddrMap = {};
+  localAddrs.forEach(a => { localAddrMap[a.id] = a; });
+
+  for (const r of cloudAddrs) {
+    const local = localAddrMap[r.id];
+    if (local) {
+      A.updateAddress(r.id, addrFromCloud(r));
+    } else {
+      A.addAddress({ ...addrFromCloud(r) });
+      newAddresses++;
     }
-    // Don't create new addresses from Airtable yet — too risky without full field mapping
   }
 
-  // 2. Pull jobs
+  // 2. Pull techs
+  status('PULLING TECHS...');
+  const { data: cloudTechs, error: techErr } = await sb.from('techs').select('*');
+  if (techErr) throw new Error('TECH PULL FAILED: ' + techErr.message);
+
+  const localTechs = A.loadTechs();
+  const localTechMap = {};
+  localTechs.forEach(t => { localTechMap[t.id] = t; });
+
+  for (const r of cloudTechs) {
+    if (!localTechMap[r.id]) {
+      // addTech not exposed yet — push into techs array manually
+      const tech = techFromCloud(r);
+      A.loadTechs().push(tech);
+    }
+  }
+
+  // 3. Pull jobs + materials
   status('PULLING JOBS...');
-  const atJobs = await atListAll(TABLES.jobs);
-  for (const rec of atJobs) {
-    const f = rec.fields;
-    const syncId = f['Sync ID'];
-    if (!syncId) continue;
-    const job = A.getJob(syncId);
-    if (!job) continue; // Only update existing jobs, don't create from Airtable
+  const { data: cloudJobs, error: jobErr } = await sb.from('jobs').select('*');
+  if (jobErr) throw new Error('JOB PULL FAILED: ' + jobErr.message);
 
-    const updates = {};
-    if (f['Status'] && f['Status'] !== job.status) updates.status = f['Status'];
-    if (f['Notes'] !== undefined && f['Notes'] !== job.notes) updates.notes = f['Notes'];
-    if (f['Tech Notes'] !== undefined && f['Tech Notes'] !== job.techNotes) updates.techNotes = f['Tech Notes'];
-    if (f['Archived'] !== undefined && f['Archived'] !== !!job.archived) updates.archived = f['Archived'];
-    if (f['Date of Work'] && f['Date of Work'] !== job.date) updates.date = f['Date of Work'];
+  // Pull all materials and group by job_id
+  const { data: cloudMats, error: matErr } = await sb.from('materials').select('*');
+  if (matErr) throw new Error('MATERIAL PULL FAILED: ' + matErr.message);
 
-    if (Object.keys(updates).length > 0) {
-      updates.updatedAt = new Date().toISOString();
-      A.updateJob(syncId, updates);
-    }
-  }
-
-  // 3. Pull materials
-  status('PULLING MATERIALS...');
-  const atMats = await atListAll(TABLES.materials);
-  // Group materials by job airtable ID
   const matsByJob = {};
-  for (const rec of atMats) {
-    const f = rec.fields;
-    const jobLinks = f['Job'];
-    if (!jobLinks || !jobLinks.length) continue;
-    const jobAtId = jobLinks[0];
-    if (!matsByJob[jobAtId]) matsByJob[jobAtId] = [];
-    matsByJob[jobAtId].push({
-      itemId: f['Item ID'] || '',
-      name: f['Material'] || '',
-      qty: f['Qty'] || 1,
-      unit: f['Unit'] || 'EA',
-      variant: f['Variant'] || undefined,
-      partRef: f['Part Ref'] || undefined
+  for (const m of cloudMats) {
+    if (!matsByJob[m.job_id]) matsByJob[m.job_id] = [];
+    matsByJob[m.job_id].push({
+      itemId: m.item_id || '',
+      name: m.name || '',
+      qty: m.qty || 1,
+      unit: m.unit || 'EA',
+      variant: m.variant || undefined,
+      partRef: m.part_ref || undefined
     });
   }
-  // Apply materials to jobs
-  let matsUpdated = 0;
-  for (const [jobAtId, mats] of Object.entries(matsByJob)) {
-    const astraId = atToAstraJob[jobAtId];
-    if (!astraId) continue;
-    const job = A.getJob(astraId);
-    if (!job) continue;
-    // Only update if material counts differ (simple conflict avoidance)
-    if (!job.materials || job.materials.length !== mats.length) {
-      A.updateJob(astraId, { materials: mats, updatedAt: new Date().toISOString() });
-      matsUpdated++;
+
+  for (const r of cloudJobs) {
+    const local = A.getJob(r.id);
+    const cloudJob = jobFromCloud(r);
+    cloudJob.materials = matsByJob[r.id] || [];
+
+    if (local) {
+      // Update existing — merge cloud data but keep local media blobs
+      const updates = {
+        address: cloudJob.address,
+        addressId: cloudJob.addressId,
+        types: cloudJob.types,
+        status: cloudJob.status,
+        notes: cloudJob.notes,
+        techNotes: cloudJob.techNotes,
+        date: cloudJob.date,
+        archived: cloudJob.archived,
+        techId: cloudJob.techId,
+        techName: cloudJob.techName,
+        materials: cloudJob.materials,
+        updatedAt: cloudJob.updatedAt
+      };
+      A.updateJob(r.id, updates);
+      updatedJobs++;
+    } else {
+      // New job from cloud — local photos/drawings/videos will be empty (blobs are device-local)
+      cloudJob.photos = cloudJob.photos || [];
+      cloudJob.drawings = cloudJob.drawings || [];
+      cloudJob.videos = cloudJob.videos || [];
+      A.addJob(cloudJob);
+      newJobs++;
     }
   }
 
-  return { jobs: atJobs.length, addresses: atAddrs.length, materialsUpdated: matsUpdated };
+  setLastSync();
+  return {
+    jobs: cloudJobs.length,
+    addresses: cloudAddrs.length,
+    techs: cloudTechs.length,
+    newJobs, newAddresses, updatedJobs
+  };
+}
+
+// ═══════════════════════════════════════════
+// REALTIME — Live sync across devices
+// ═══════════════════════════════════════════
+let _channel = null;
+
+function startRealtime() {
+  if (!isConfigured()) return;
+  if (_channel) return; // already subscribed
+  try {
+    const sb = getClient();
+    _channel = sb.channel('astra-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs' }, payload => {
+        _handleRemoteChange('jobs', payload);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'addresses' }, payload => {
+        _handleRemoteChange('addresses', payload);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'techs' }, payload => {
+        _handleRemoteChange('techs', payload);
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('ASTRA REALTIME: CONNECTED');
+        }
+      });
+  } catch (e) {
+    console.warn('Realtime subscribe failed:', e);
+  }
+}
+
+function stopRealtime() {
+  if (_channel) {
+    try { getClient().removeChannel(_channel); } catch (e) {}
+    _channel = null;
+  }
+}
+
+function _handleRemoteChange(table, payload) {
+  const { eventType, new: newRec, old: oldRec } = payload;
+  if (!newRec) return;
+
+  if (table === 'jobs') {
+    const local = A.getJob(newRec.id);
+    const cloudJob = jobFromCloud(newRec);
+    if (local) {
+      A.updateJob(newRec.id, {
+        status: cloudJob.status,
+        notes: cloudJob.notes,
+        techNotes: cloudJob.techNotes,
+        date: cloudJob.date,
+        archived: cloudJob.archived,
+        types: cloudJob.types,
+        techId: cloudJob.techId,
+        techName: cloudJob.techName,
+        updatedAt: cloudJob.updatedAt
+      });
+    } else if (eventType === 'INSERT') {
+      cloudJob.photos = []; cloudJob.drawings = []; cloudJob.videos = [];
+      A.addJob(cloudJob);
+    }
+    A.showToast('SYNCED: ' + (cloudJob.address || 'JOB').substring(0, 30));
+  } else if (table === 'addresses') {
+    const localAddrs = A.loadAddresses();
+    const exists = localAddrs.find(a => a.id === newRec.id);
+    if (exists) {
+      A.updateAddress(newRec.id, addrFromCloud(newRec));
+    } else if (eventType === 'INSERT') {
+      A.addAddress(addrFromCloud(newRec));
+    }
+  }
 }
 
 // ── Public API ──
-Object.assign(window, { syncToAirtable, syncFromAirtable });
-window.Astra.getAirtableKey = getAirtableKey;
-window.Astra.saveAirtableKey = saveAirtableKey;
+Object.assign(window, { syncToCloud, syncFromCloud, startRealtime, stopRealtime });
+window.Astra.getSupabaseUrl = getSupabaseUrl;
+window.Astra.saveSupabaseUrl = saveSupabaseUrl;
+window.Astra.getSupabaseKey = getSupabaseKey;
+window.Astra.saveSupabaseKey = saveSupabaseKey;
+window.Astra.isSyncConfigured = isConfigured;
+
+// Auto-connect realtime if configured
+if (isConfigured()) {
+  try { startRealtime(); } catch (e) { console.warn('Realtime auto-start failed:', e); }
+}
 
 })();

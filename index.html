@@ -858,13 +858,19 @@ textarea.prop-input { resize: vertical; }
 
     <div class="section-title">CLOUD SYNC</div>
     <div class="dash-card" style="margin-bottom:16px;padding:14px;">
-      <div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">AIRTABLE — VIEW AND EDIT DATA IN THE CLOUD</div>
+      <div style="font-size:12px;color:#FF6B00;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">SUPABASE — ONE DB, EVERY DEVICE</div>
+      <div class="field" style="margin-bottom:10px;">
+        <label>PROJECT URL</label>
+        <input type="text" id="supabase-url" name="astra-xsurl" autocomplete="nope" placeholder="https://xyz.supabase.co" style="font-size:13px;"
+          value="" onblur="Astra.saveSupabaseUrl(this.value)">
+      </div>
       <div class="field" style="margin-bottom:12px;">
-        <input type="text" id="airtable-key" name="astra-xatkey" autocomplete="nope" placeholder="AIRTABLE PERSONAL ACCESS TOKEN" style="font-size:14px;"
-          value="" onblur="Astra.saveAirtableKey(this.value)">
+        <label>ANON KEY</label>
+        <input type="text" id="supabase-key" name="astra-xskey" autocomplete="nope" placeholder="eyJhbGciOi..." style="font-size:13px;"
+          value="" onblur="Astra.saveSupabaseKey(this.value)">
       </div>
       <div id="sync-status" style="font-size:12px;color:#555;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;display:none;"></div>
-      <button class="btn btn-primary" style="margin-bottom:10px;background:#FF6B00;" id="sync-push-btn" onclick="runSyncPush()">SYNC TO CLOUD</button>
+      <button class="btn btn-primary" style="margin-bottom:10px;background:#FF6B00;" id="sync-push-btn" onclick="runSyncPush()">PUSH TO CLOUD</button>
       <button class="btn btn-secondary" style="margin-bottom:0;" id="sync-pull-btn" onclick="runSyncPull()">PULL FROM CLOUD</button>
     </div>
 
@@ -925,6 +931,7 @@ textarea.prop-input { resize: vertical; }
 <script src="app.js"></script>
 <script src="astra-materials.js"></script>
 <script src="astra-maps.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="astra-sync.js"></script>
 </body>
 </html>
