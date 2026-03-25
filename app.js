@@ -845,8 +845,8 @@ async function renderDetail(jobId) {
       <span>MATERIALS${(j.materials||[]).length ? ' (' + (j.materials||[]).length + ')' : ''}</span>
       <span id="mat-section-arrow" style="font-size:14px;color:#555;transition:transform 0.2s;">▼</span>
     </div>
+    <button class="upload-btn" onclick="openMatPicker('${jobId}')">ADD MATERIALS</button>
     <div id="mat-section-collapsible">
-      <button class="upload-btn" onclick="openMatPicker('${jobId}')">ADD MATERIALS</button>
       <div id="job-materials-list"></div>
     </div>
 
