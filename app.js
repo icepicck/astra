@@ -1832,6 +1832,7 @@ function filterMatPicker(jobId, query) {
   const lib = loadMaterialLibrary();
   if (!lib) return;
   const el = document.getElementById('mat-picker-list');
+  if (!el) return;
   const q = query.trim().toLowerCase();
   const existing = getJobMaterials(jobId).map(m => m.itemId);
   let html = '';
