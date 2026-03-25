@@ -849,7 +849,7 @@ async function renderDetail(jobId) {
       </div>
       <div class="detail-row"><span>DUE DATE</span><span>${dateFormatted}</span></div>
       <div class="detail-row"><span>TECH</span>
-        <select style="background:#1a1a1a;color:#e0e0e0;border:1px solid #333;border-radius:8px;padding:6px 10px;font-size:14px;min-height:36px;" onchange="updateJob('${jobId}',{techId:this.value,techName:this.options[this.selectedIndex].text})">
+        <select class="select-dark" onchange="updateJob('${jobId}',{techId:this.value,techName:this.options[this.selectedIndex].text})">
           <option value="">UNASSIGNED</option>
           ${techs.map(t => `<option value="${t.id}" ${t.id===j.techId?'selected':''}>${esc(t.name)}</option>`).join('')}
         </select>
@@ -859,7 +859,7 @@ async function renderDetail(jobId) {
     <button class="${vectorBtnClass}" onclick="toggleVector('${jobId}')">${vectorBtnText}</button>
 
     <div class="section-title">JOB NOTES</div>
-    <div style="background:#222;border-radius:10px;padding:14px;font-size:14px;color:#888;line-height:1.5;min-height:48px;white-space:pre-wrap;border:1px solid #2a2a2a;">${esc(j.notes) || '<span style="color:#333;">NO JOB NOTES.</span>'}</div>
+    <div class="notes-box">${esc(j.notes) || '<span style="color:#333;">NO JOB NOTES.</span>'}</div>
 
     <div class="section-title">TECH NOTES</div>
     <div class="field" style="margin-bottom:0;">
@@ -891,7 +891,7 @@ async function renderDetail(jobId) {
       ? `<button class="btn btn-restore" onclick="unarchiveJob('${jobId}')">RESTORE</button>`
       : `<button class="btn btn-danger" onclick="archiveJob('${jobId}')">ARCHIVE</button>`
     }
-    <div style="height:24px;"></div>
+    <div class="spacer"></div>
   `;
   renderJobMaterials(jobId);
 }
@@ -1043,7 +1043,7 @@ function renderAddrDetail(addrId) {
         <span style="font-size:12px;color:#555;">${dateStr}</span>
       </div>
     </div>`;
-  }).join('') : '<div style="color:#333;font-size:13px;padding:12px;text-transform:uppercase;letter-spacing:0.5px;">NO TICKETS FOR THIS PROPERTY.</div>';
+  }).join('') : '<div class="empty-msg">NO TICKETS FOR THIS PROPERTY.</div>';
 
   document.getElementById('addr-detail-body').innerHTML = `
     <div class="detail-header">
@@ -1055,7 +1055,7 @@ function renderAddrDetail(addrId) {
     ${renderAddrMaterialRollup(addrId)}
     <div class="section-title">WORK HISTORY (${jobs.length})</div>
     ${ticketList}
-    <div style="height:24px;"></div>
+    <div class="spacer"></div>
   `;
   document.querySelectorAll('#addr-detail-body .auto-expand').forEach(el => autoExpand(el));
 }
@@ -1147,10 +1147,10 @@ function renderDashboard() {
 
   document.getElementById('dashboard-body').innerHTML = `
     <div class="dash-grid">
-      <div class="dash-stat"><div class="dash-stat-num" style="color:#FF6B00;">${active.length}</div><div class="dash-stat-label">ACTIVE</div></div>
-      <div class="dash-stat"><div class="dash-stat-num" style="color:#2d8a4e;">${archived.length}</div><div class="dash-stat-label">ARCHIVED</div></div>
-      <div class="dash-stat"><div class="dash-stat-num" style="color:#c9a800;">${completionPct}%</div><div class="dash-stat-label">COMPLETION</div></div>
-      <div class="dash-stat"><div class="dash-stat-num" style="color:#e0e0e0;">${totalPhotos + totalDrawings + totalVideos}</div><div class="dash-stat-label">FILES</div></div>
+      <div class="dash-stat"><div class="dash-stat-num stat-active">${active.length}</div><div class="dash-stat-label">ACTIVE</div></div>
+      <div class="dash-stat"><div class="dash-stat-num stat-archived">${archived.length}</div><div class="dash-stat-label">ARCHIVED</div></div>
+      <div class="dash-stat"><div class="dash-stat-num stat-completion">${completionPct}%</div><div class="dash-stat-label">COMPLETION</div></div>
+      <div class="dash-stat"><div class="dash-stat-num">${totalPhotos + totalDrawings + totalVideos}</div><div class="dash-stat-label">FILES</div></div>
     </div>
     <div class="dash-card" style="margin-top:10px;">
       <div class="dash-card-title">STATUS BREAKDOWN</div>
@@ -1196,14 +1196,14 @@ function renderDashboard() {
         return `<div class="dash-activity" onclick="goTo('screen-detail','${j.id}')" style="cursor:pointer;">
           <div class="dash-activity-dot" style="background:${statusColors[j.status] || '#444'};"></div>
           <div style="flex:1;overflow:hidden;">
-            <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#888;font-weight:600;">${esc(j.address)}</div>
-            <div style="font-size:11px;color:#444;">${esc(j.status).toUpperCase()}${j.archived ? ' · ARCHIVED' : ''}</div>
+            <div class="activity-addr">${esc(j.address)}</div>
+            <div class="activity-meta">${esc(j.status).toUpperCase()}${j.archived ? ' · ARCHIVED' : ''}</div>
           </div>
-          <div style="font-size:11px;color:#444;white-space:nowrap;">${ago}</div>
+          <div class="activity-meta">${ago}</div>
         </div>`;
       }).join('')}
     </div>` : ''}
-    <div style="height:24px;"></div>
+    <div class="spacer"></div>
   `;
 }
 
@@ -1782,7 +1782,7 @@ function renderMaterials() {
       <button class="btn" style="background:none;border:1px solid #333;color:#555;font-size:11px;" onclick="document.getElementById('mat-reimport-input').click()">IMPORT LIBRARY</button>
       <input type="file" id="mat-reimport-input" accept=".json" style="display:none" onchange="importMaterialLibrary(this)">
     </div>
-    <div style="height:24px;"></div>`;
+    <div class="spacer"></div>`;
   filterMaterials('');
 }
 
@@ -1843,19 +1843,18 @@ function renderJobMaterials(jobId) {
   }
   let html = '';
   for (const [cat, items] of Object.entries(grouped)) {
-    html += `<div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;margin-top:8px;margin-bottom:4px;">${esc(cat)}</div>`;
+    html += `<div class="cat-label">${esc(cat)}</div>`;
     for (const m of items) {
-      html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #2a2a2a;gap:8px;">
-        <span style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${esc(m.name)}${m.variant ? ' <span style="color:#FF6B00;font-size:11px;">(' + esc(m.variant) + ')</span>' : ''}${m.partRef ? ' <span style="color:#444;font-size:10px;">#' + esc(m.partRef) + '</span>' : ''}</span>
-        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-          <button onclick="adjustMatQty('${jobId}','${m.itemId}',-1)" style="background:none;border:1px solid #333;color:#e0e0e0;width:40px;height:40px;border-radius:10px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;">−</button>
-          <input type="number" inputmode="numeric" value="${m.qty}" min="1"
+      html += `<div class="mat-row">
+        <span class="mat-name">${esc(m.name)}${m.variant ? ' <span style="color:#FF6B00;font-size:11px;">(' + esc(m.variant) + ')</span>' : ''}${m.partRef ? ' <span style="color:#444;font-size:10px;">#' + esc(m.partRef) + '</span>' : ''}</span>
+        <div class="mat-controls">
+          <button class="qty-btn" onclick="adjustMatQty('${jobId}','${m.itemId}',-1)">−</button>
+          <input type="number" inputmode="numeric" class="qty-input" value="${m.qty}" min="1"
             onchange="setMatQty('${jobId}','${m.itemId}',this.value)"
             onblur="setMatQty('${jobId}','${m.itemId}',this.value)"
-            style="width:56px;height:40px;background:#1a1a1a;border:1px solid #333;border-radius:10px;color:#FF6B00;font-size:16px;font-weight:800;text-align:center;font-family:inherit;outline:none;"
             onfocus="this.select()">
-          <span style="font-size:10px;color:#555;min-width:24px;">${esc(m.unit)}</span>
-          <button onclick="removeMatFromJob('${jobId}','${m.itemId}')" style="background:none;border:none;color:#c0392b;cursor:pointer;font-size:16px;width:32px;height:40px;display:flex;align-items:center;justify-content:center;">✕</button>
+          <span class="qty-unit">${esc(m.unit)}</span>
+          <button class="remove-btn" onclick="removeMatFromJob('${jobId}','${m.itemId}')">✕</button>
         </div>
       </div>`;
     }
@@ -1943,20 +1942,16 @@ function _matQtyRow(jobId, itemId, escapedName, escapedUnit, defaultQty, color, 
   const variantLabel = _matPickerActiveVariant ? ' <span style="color:' + color + ';font-size:11px;font-weight:800;">' + esc(_matPickerActiveVariant) + '</span>' : '';
   return `<div style="background:#2a2a2a;border-radius:10px;padding:12px;margin:4px 0;border:1px solid ${color};">
     <div style="font-size:13px;font-weight:700;margin-bottom:8px;">${escapedName}${variantLabel} <span style="color:#555;font-size:11px;">${escapedUnit}</span></div>
-    <div style="display:flex;align-items:center;gap:8px;">
-      <button onclick="_matStepQty(-1)"
-        style="width:48px;height:48px;background:#1a1a1a;border:2px solid ${color};border-radius:10px;color:#e0e0e0;font-size:22px;font-weight:800;cursor:pointer;flex-shrink:0;"
+    <div class="picker-qty-group">
+      <button class="picker-qty-btn" style="border:2px solid ${color};" onclick="_matStepQty(-1)"
         onpointerdown="_matLongPress(this,-1)" onpointerup="_matLongStop()" onpointerleave="_matLongStop()">−</button>
       <input type="number" id="mat-qty-input" inputmode="numeric" pattern="[0-9]*" min="1" value="${defaultQty}"
-        style="flex:1;height:48px;background:#1a1a1a;border:2px solid ${color};border-radius:10px;color:#e0e0e0;font-size:20px;font-weight:800;text-align:center;font-family:inherit;outline:none;"
+        class="picker-qty-input" style="border:2px solid ${color};"
         onkeydown="if(event.key==='Enter'){_matAddFromPicker('${jobId}','${itemId}');event.preventDefault();}">
-      <button onclick="_matStepQty(1)"
-        style="width:48px;height:48px;background:#1a1a1a;border:2px solid ${color};border-radius:10px;color:#e0e0e0;font-size:22px;font-weight:800;cursor:pointer;flex-shrink:0;"
+      <button class="picker-qty-btn" style="border:2px solid ${color};" onclick="_matStepQty(1)"
         onpointerdown="_matLongPress(this,1)" onpointerup="_matLongStop()" onpointerleave="_matLongStop()">+</button>
-      <button onclick="_matAddFromPicker('${jobId}','${itemId}')"
-        style="height:48px;min-width:72px;background:${color};border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:1px;">ADD</button>
-      <button onclick="_matPickerActiveItem=null;_matPickerActiveVariant=null;filterMatPicker('${jobId}',document.getElementById('mat-picker-search')?document.getElementById('mat-picker-search').value:'')"
-        style="height:48px;width:48px;background:none;border:1px solid #333;border-radius:10px;color:#666;font-size:18px;cursor:pointer;">✕</button>
+      <button class="picker-add-btn" style="background:${color};" onclick="_matAddFromPicker('${jobId}','${itemId}')">ADD</button>
+      <button class="picker-qty-btn" style="border:1px solid #333;color:#666;" onclick="_matPickerActiveItem=null;_matPickerActiveVariant=null;filterMatPicker('${jobId}',document.getElementById('mat-picker-search')?document.getElementById('mat-picker-search').value:'')">✕</button>
     </div>
   </div>`;
 }
@@ -1989,9 +1984,9 @@ function _matAddFromPicker(jobId, itemId) {
 }
 
 function _matPickerRow(jobId, itemId, escapedName, added, rightText, rightColor) {
-  return `<div onclick="${added ? '' : "showMatQtyInput('" + jobId + "','" + itemId + "')"}"
-    style="display:flex;justify-content:space-between;align-items:center;padding:12px 8px;border-bottom:1px solid #2a2a2a;cursor:${added ? 'default' : 'pointer'};min-height:48px;${added ? 'opacity:0.4;' : ''}">
-    <span style="font-size:13px;font-weight:600;">${escapedName}</span>
+  return `<div class="picker-row${added ? ' added' : ''}" onclick="${added ? '' : "showMatQtyInput('" + jobId + "','" + itemId + "')"}"
+    style="cursor:${added ? 'default' : 'pointer'};min-height:48px;">
+    <span class="picker-item-name" style="font-weight:600;">${escapedName}</span>
     <span style="font-size:11px;color:${rightColor};">${rightText}</span>
   </div>`;
 }
@@ -2026,11 +2021,11 @@ function filterMatPicker(jobId, query) {
 
   // Bulk templates (only when not searching and no materials added yet)
   if (!q && existing.length === 0) {
-    html += `<div style="font-size:10px;color:#9b59b6;font-weight:800;letter-spacing:1px;margin:4px 0 6px;">QUICK START</div>`;
-    html += `<button onclick="applyBulkTemplate('${jobId}','rough')" style="display:block;width:100%;padding:14px;margin:4px 0;background:#2a2a2a;border:1px solid #9b59b6;border-radius:10px;color:#e0e0e0;font-size:13px;font-weight:700;cursor:pointer;text-align:left;">
+    html += `<div class="cat-label" style="color:#9b59b6;margin:4px 0 6px;">QUICK START</div>`;
+    html += `<button class="template-btn" style="border:1px solid #9b59b6;" onclick="applyBulkTemplate('${jobId}','rough')">
       <span style="color:#9b59b6;font-weight:800;">ROUGH-IN STARTER</span><br><span style="color:#555;font-size:11px;">15 common items — boxes, wire, panels, ground rod, bushings</span>
     </button>`;
-    html += `<button onclick="applyBulkTemplate('${jobId}','trim')" style="display:block;width:100%;padding:14px;margin:4px 0;background:#2a2a2a;border:1px solid #2d8a4e;border-radius:10px;color:#e0e0e0;font-size:13px;font-weight:700;cursor:pointer;text-align:left;">
+    html += `<button class="template-btn" style="border:1px solid #2d8a4e;" onclick="applyBulkTemplate('${jobId}','trim')">
       <span style="color:#2d8a4e;font-weight:800;">TRIM-OUT STARTER</span><br><span style="color:#555;font-size:11px;">12 common items — receptacles, switches, plates, breakers, smoke detectors</span>
     </button>`;
     html += `<div style="height:1px;background:#333;margin:12px 0;"></div>`;
@@ -2051,7 +2046,7 @@ function filterMatPicker(jobId, query) {
       });
       const prevList = Object.values(prevMats);
       if (prevList.length > 0) {
-        html += `<div style="font-size:10px;color:#2d8a4e;font-weight:800;letter-spacing:1px;margin:4px 0 6px;">PREVIOUSLY AT THIS ADDRESS</div>`;
+        html += `<div class="cat-label" style="color:#2d8a4e;margin:4px 0 6px;">PREVIOUSLY AT THIS ADDRESS</div>`;
         for (const item of prevList) {
           const added = existing.includes(item.itemId);
           const isActive = _matPickerActiveItem === item.itemId;
@@ -2072,7 +2067,7 @@ function filterMatPicker(jobId, query) {
   if (!q) {
     const frequent = getFrequentMats(lib, 10);
     if (frequent.length > 0) {
-      html += `<div style="font-size:10px;color:#FF6B00;font-weight:800;letter-spacing:1px;margin:4px 0 6px;">FREQUENT</div>`;
+      html += `<div class="cat-label" style="color:#FF6B00;margin:4px 0 6px;">FREQUENT</div>`;
       for (const item of frequent) {
         const added = existing.includes(item.id);
         const isActive = _matPickerActiveItem === item.id;
@@ -2090,7 +2085,7 @@ function filterMatPicker(jobId, query) {
   for (const cat of lib.categories) {
     const items = q ? cat.items.filter(i => i.name.toLowerCase().includes(q)) : cat.items;
     if (!items.length) continue;
-    html += `<div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;margin:12px 0 6px;">${esc(cat.label)}</div>`;
+    html += `<div class="cat-label" style="margin:12px 0 6px;">${esc(cat.label)}</div>`;
     for (const item of items) {
       const added = existing.includes(item.id);
       const isActive = _matPickerActiveItem === item.id;
@@ -2254,11 +2249,11 @@ function renderAddrMaterialRollup(addrId) {
   }
   let html = `<div class="section-title">MATERIALS TOTAL (${rollup.length})</div><div class="dash-card" style="padding:8px 14px;">`;
   for (const [cat, items] of Object.entries(grouped)) {
-    html += `<div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;margin-top:8px;margin-bottom:4px;">${esc(cat)}</div>`;
+    html += `<div class="cat-label">${esc(cat)}</div>`;
     for (const m of items) {
-      html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #2a2a2a;">
-        <span style="font-size:13px;">${esc(m.name)}</span>
-        <span style="font-size:13px;font-weight:800;color:#FF6B00;">${m.qty} ${esc(m.unit)}</span>
+      html += `<div class="rollup-row">
+        <span class="rollup-name">${esc(m.name)}</span>
+        <span class="rollup-qty">${m.qty} ${esc(m.unit)}</span>
       </div>`;
     }
   }
