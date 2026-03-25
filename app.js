@@ -112,7 +112,7 @@ async function initDataLayer() {
   let changed = false;
   _cache.jobs.forEach(j => {
     if (!j.date) {
-      j.date = j.createdAt ? j.createdAt.split('T')[0] : new Date().toISOString().split('T')[0];
+      j.date = j.createdAt ? j.createdAt.split('T')[0] : todayStr();
       changed = true;
     }
     if (!j.videos) { j.videos = []; changed = true; }
@@ -444,7 +444,10 @@ function getWeekRange(year, week) {
   return months[mon.getUTCMonth()] + ' ' + mon.getUTCDate() + '–' + (sun.getUTCMonth() !== mon.getUTCMonth() ? months[sun.getUTCMonth()] + ' ' : '') + sun.getUTCDate();
 }
 
-function todayStr() { return new Date().toISOString().split('T')[0]; }
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
 
 // ═══════════════════════════════════════════
 // HOME SCREEN — DAILY / WEEKLY
@@ -1967,7 +1970,7 @@ async function importData(input) {
         if (!j.videos) j.videos = [];
         if (!j.status) j.status = 'Not Started';
         if (!j.types) j.types = ['GENERAL'];
-        if (!j.date) j.date = j.createdAt ? j.createdAt.split('T')[0] : new Date().toISOString().split('T')[0];
+        if (!j.date) j.date = j.createdAt ? j.createdAt.split('T')[0] : todayStr();
         if (j.techNotes === undefined) j.techNotes = '';
         if (j.manually_added_to_vector === undefined) j.manually_added_to_vector = false;
       });
