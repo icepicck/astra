@@ -276,6 +276,7 @@ if (navigator.storage && navigator.storage.persist) {
 
 // Init — data layer must be ready before any rendering
 initDataLayer()
+  .then(() => autoLoadBuiltInLibraries())
   .then(() => openMediaDB())
   .then(() => migrateLegacyMedia())
   .then(() => { renderJobList(); cleanOrphanedMedia(); })
@@ -1623,10 +1624,25 @@ function clearRoute() {
 // MATERIALS
 // ═══════════════════════════════════════════
 const MAT_LIB_KEY = 'astra_material_library_rough';
+const MAT_LIB_TRIM_KEY = 'astra_material_library_trim';
 
 function loadMaterialLibrary() {
-  try { return JSON.parse(localStorage.getItem(MAT_LIB_KEY)) || null; }
-  catch { return null; }
+  // Merge rough + trim into one unified library
+  let rough = null, trim = null;
+  try { rough = JSON.parse(localStorage.getItem(MAT_LIB_KEY)) || null; } catch {}
+  try { trim = JSON.parse(localStorage.getItem(MAT_LIB_TRIM_KEY)) || null; } catch {}
+  if (!rough && !trim) return null;
+  const cats = [];
+  if (rough && rough.categories) cats.push(...rough.categories);
+  if (trim && trim.categories) cats.push(...trim.categories);
+  return { categories: cats };
+}
+
+function loadRoughLibrary() {
+  try { return JSON.parse(localStorage.getItem(MAT_LIB_KEY)) || null; } catch { return null; }
+}
+function loadTrimLibrary() {
+  try { return JSON.parse(localStorage.getItem(MAT_LIB_TRIM_KEY)) || null; } catch { return null; }
 }
 
 function importMaterialLibrary(input) {
@@ -1639,8 +1655,11 @@ function importMaterialLibrary(input) {
         alert('INVALID MATERIAL JSON.');
         return;
       }
-      localStorage.setItem(MAT_LIB_KEY, JSON.stringify(data));
-      alert('IMPORTED: ROUGH (' + data.categories.length + ' CATEGORIES, ' + data.categories.reduce((s,c) => s + c.items.length, 0) + ' ITEMS)');
+      const phase = (data.phase || 'ROUGH').toUpperCase();
+      const key = phase === 'TRIM' ? MAT_LIB_TRIM_KEY : MAT_LIB_KEY;
+      localStorage.setItem(key, JSON.stringify(data));
+      const count = data.categories.reduce((s,c) => s + c.items.length, 0);
+      alert('IMPORTED: ' + phase + ' (' + data.categories.length + ' CATEGORIES, ' + count + ' ITEMS)');
       renderMaterials();
     } catch (e) {
       alert('IMPORT FAILED: ' + e.message);
@@ -1650,28 +1669,64 @@ function importMaterialLibrary(input) {
   reader.readAsText(input.files[0]);
 }
 
+async function autoLoadBuiltInLibraries() {
+  // Auto-load rough and trim from bundled JSON files if not already imported
+  if (!localStorage.getItem(MAT_LIB_KEY)) {
+    try {
+      const res = await fetch('rough_materials.json');
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem(MAT_LIB_KEY, JSON.stringify(data));
+      }
+    } catch {}
+  }
+  if (!localStorage.getItem(MAT_LIB_TRIM_KEY)) {
+    try {
+      const res = await fetch('trim_materials.json');
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem(MAT_LIB_TRIM_KEY, JSON.stringify(data));
+      }
+    } catch {}
+  }
+}
+
 function renderMaterials() {
   const body = document.getElementById('materials-body');
   const lib = loadMaterialLibrary();
+  const rough = loadRoughLibrary();
+  const trim = loadTrimLibrary();
   if (!lib) {
     body.innerHTML = `
       <div class="empty-state">
         <div>☰</div>
         <div>NO MATERIAL LIBRARY LOADED</div>
-        <button class="btn" style="margin-top:16px;" onclick="document.getElementById('mat-import-input').click()">IMPORT ROUGH JSON</button>
+        <button class="btn" style="margin-top:16px;" onclick="document.getElementById('mat-import-input').click()">IMPORT MATERIAL JSON</button>
         <input type="file" id="mat-import-input" accept=".json" style="display:none" onchange="importMaterialLibrary(this)">
       </div>`;
     return;
   }
+  const roughCount = rough ? rough.categories.reduce((s,c) => s + c.items.length, 0) : 0;
+  const trimCount = trim ? trim.categories.reduce((s,c) => s + c.items.length, 0) : 0;
   const allItems = lib.categories.flatMap(c => c.items.map(i => ({ ...i, catLabel: c.label, catId: c.id })));
-  body.innerHTML = `
+  let statusHtml = '<div style="display:flex;gap:8px;margin-bottom:12px;">';
+  statusHtml += `<div style="flex:1;background:#2a2a2a;border-radius:10px;padding:10px;text-align:center;">
+    <div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;">ROUGH</div>
+    <div style="font-size:18px;font-weight:900;color:${rough ? '#FF6B00' : '#333'};">${rough ? roughCount : '—'}</div>
+  </div>`;
+  statusHtml += `<div style="flex:1;background:#2a2a2a;border-radius:10px;padding:10px;text-align:center;">
+    <div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;">TRIM</div>
+    <div style="font-size:18px;font-weight:900;color:${trim ? '#2d8a4e' : '#333'};">${trim ? trimCount : '—'}</div>
+  </div>`;
+  statusHtml += '</div>';
+  body.innerHTML = statusHtml + `
     <div class="search-bar" style="margin-bottom:12px;">
       <span class="search-icon">⌕</span>
       <input type="text" id="mat-search" name="astra-xmatsearch" autocomplete="nope" placeholder="SEARCH ${allItems.length} ITEMS..." oninput="filterMaterials(this.value)">
     </div>
     <div id="mat-list"></div>
     <div style="padding:12px;text-align:center;">
-      <button class="btn" style="background:none;border:1px solid #333;color:#555;font-size:11px;" onclick="document.getElementById('mat-reimport-input').click()">RE-IMPORT LIBRARY</button>
+      <button class="btn" style="background:none;border:1px solid #333;color:#555;font-size:11px;" onclick="document.getElementById('mat-reimport-input').click()">IMPORT LIBRARY</button>
       <input type="file" id="mat-reimport-input" accept=".json" style="display:none" onchange="importMaterialLibrary(this)">
     </div>
     <div style="height:24px;"></div>`;
@@ -1734,7 +1789,7 @@ function renderJobMaterials(jobId) {
     html += `<div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;margin-top:8px;margin-bottom:4px;">${esc(cat)}</div>`;
     for (const m of items) {
       html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #2a2a2a;gap:8px;">
-        <span style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${esc(m.name)}</span>
+        <span style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${esc(m.name)}${m.variant ? ' <span style="color:#FF6B00;font-size:11px;">(' + esc(m.variant) + ')</span>' : ''}${m.partRef ? ' <span style="color:#444;font-size:10px;">#' + esc(m.partRef) + '</span>' : ''}</span>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
           <button onclick="adjustMatQty('${jobId}','${m.itemId}',-1)" style="background:none;border:1px solid #333;color:#e0e0e0;width:40px;height:40px;border-radius:10px;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;">−</button>
           <input type="number" inputmode="numeric" value="${m.qty}" min="1"
@@ -1808,20 +1863,72 @@ function closeMatPicker() {
 }
 
 let _matPickerActiveItem = null;
+let _matPickerActiveVariant = null;
 
-function _matQtyRow(jobId, itemId, escapedName, escapedUnit, defaultQty, color) {
+function _matQtyRow(jobId, itemId, escapedName, escapedUnit, defaultQty, color, variants) {
+  let variantHtml = '';
+  if (variants && variants.length > 0 && !_matPickerActiveVariant) {
+    // Show variant selection buttons
+    variantHtml = `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">`;
+    for (const v of variants) {
+      variantHtml += `<button onclick="_matPickerActiveVariant='${v.replace(/'/g,"\\'")}';showMatQtyInput('${jobId}','${itemId}')"
+        style="height:40px;padding:0 14px;background:#1a1a1a;border:1px solid ${color};border-radius:8px;color:#e0e0e0;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:0.5px;">${esc(v)}</button>`;
+    }
+    variantHtml += `</div>`;
+    return `<div style="background:#2a2a2a;border-radius:10px;padding:12px;margin:4px 0;border:1px solid ${color};">
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px;">${escapedName} <span style="color:#555;font-size:11px;">${escapedUnit}</span></div>
+      <div style="font-size:10px;color:${color};font-weight:800;letter-spacing:1px;margin-bottom:6px;">SELECT STYLE:</div>
+      ${variantHtml}
+      <button onclick="_matPickerActiveItem=null;_matPickerActiveVariant=null;filterMatPicker('${jobId}',document.getElementById('mat-picker-search')?document.getElementById('mat-picker-search').value:'')"
+        style="height:36px;width:100%;background:none;border:1px solid #333;border-radius:8px;color:#666;font-size:12px;cursor:pointer;margin-top:4px;">CANCEL</button>
+    </div>`;
+  }
+  const variantLabel = _matPickerActiveVariant ? ' <span style="color:' + color + ';font-size:11px;font-weight:800;">' + esc(_matPickerActiveVariant) + '</span>' : '';
   return `<div style="background:#2a2a2a;border-radius:10px;padding:12px;margin:4px 0;border:1px solid ${color};">
-    <div style="font-size:13px;font-weight:700;margin-bottom:8px;">${escapedName} <span style="color:#555;font-size:11px;">${escapedUnit}</span></div>
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px;">${escapedName}${variantLabel} <span style="color:#555;font-size:11px;">${escapedUnit}</span></div>
     <div style="display:flex;align-items:center;gap:8px;">
+      <button onclick="_matStepQty(-1)"
+        style="width:48px;height:48px;background:#1a1a1a;border:2px solid ${color};border-radius:10px;color:#e0e0e0;font-size:22px;font-weight:800;cursor:pointer;flex-shrink:0;"
+        onpointerdown="_matLongPress(this,-1)" onpointerup="_matLongStop()" onpointerleave="_matLongStop()">−</button>
       <input type="number" id="mat-qty-input" inputmode="numeric" pattern="[0-9]*" min="1" value="${defaultQty}"
         style="flex:1;height:48px;background:#1a1a1a;border:2px solid ${color};border-radius:10px;color:#e0e0e0;font-size:20px;font-weight:800;text-align:center;font-family:inherit;outline:none;"
-        onkeydown="if(event.key==='Enter'){addMatToJob('${jobId}','${itemId}','','',this.value);event.preventDefault();}">
-      <button onclick="addMatToJob('${jobId}','${itemId}','','',document.getElementById('mat-qty-input').value)"
+        onkeydown="if(event.key==='Enter'){_matAddFromPicker('${jobId}','${itemId}');event.preventDefault();}">
+      <button onclick="_matStepQty(1)"
+        style="width:48px;height:48px;background:#1a1a1a;border:2px solid ${color};border-radius:10px;color:#e0e0e0;font-size:22px;font-weight:800;cursor:pointer;flex-shrink:0;"
+        onpointerdown="_matLongPress(this,1)" onpointerup="_matLongStop()" onpointerleave="_matLongStop()">+</button>
+      <button onclick="_matAddFromPicker('${jobId}','${itemId}')"
         style="height:48px;min-width:72px;background:${color};border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:1px;">ADD</button>
-      <button onclick="_matPickerActiveItem=null;filterMatPicker('${jobId}',document.getElementById('mat-picker-search')?document.getElementById('mat-picker-search').value:'')"
+      <button onclick="_matPickerActiveItem=null;_matPickerActiveVariant=null;filterMatPicker('${jobId}',document.getElementById('mat-picker-search')?document.getElementById('mat-picker-search').value:'')"
         style="height:48px;width:48px;background:none;border:1px solid #333;border-radius:10px;color:#666;font-size:18px;cursor:pointer;">✕</button>
     </div>
   </div>`;
+}
+
+// +/- stepper helpers with long-press acceleration
+let _matLongTimer = null;
+let _matLongInterval = null;
+
+function _matStepQty(delta) {
+  const inp = document.getElementById('mat-qty-input');
+  if (!inp) return;
+  inp.value = Math.max(1, (parseInt(inp.value) || 1) + delta);
+}
+
+function _matLongPress(btn, delta) {
+  _matLongStop();
+  _matLongTimer = setTimeout(() => {
+    _matLongInterval = setInterval(() => _matStepQty(delta), 80);
+  }, 400);
+}
+
+function _matLongStop() {
+  if (_matLongTimer) { clearTimeout(_matLongTimer); _matLongTimer = null; }
+  if (_matLongInterval) { clearInterval(_matLongInterval); _matLongInterval = null; }
+}
+
+function _matAddFromPicker(jobId, itemId) {
+  const inp = document.getElementById('mat-qty-input');
+  addMatToJob(jobId, itemId, '', '', inp ? inp.value : '1');
 }
 
 function _matPickerRow(jobId, itemId, escapedName, added, rightText, rightColor) {
@@ -1860,6 +1967,18 @@ function filterMatPicker(jobId, query) {
   const existing = getJobMaterials(jobId).map(m => m.itemId);
   let html = '';
 
+  // Bulk templates (only when not searching and no materials added yet)
+  if (!q && existing.length === 0) {
+    html += `<div style="font-size:10px;color:#9b59b6;font-weight:800;letter-spacing:1px;margin:4px 0 6px;">QUICK START</div>`;
+    html += `<button onclick="applyBulkTemplate('${jobId}','rough')" style="display:block;width:100%;padding:14px;margin:4px 0;background:#2a2a2a;border:1px solid #9b59b6;border-radius:10px;color:#e0e0e0;font-size:13px;font-weight:700;cursor:pointer;text-align:left;">
+      <span style="color:#9b59b6;font-weight:800;">ROUGH-IN STARTER</span><br><span style="color:#555;font-size:11px;">15 common items — boxes, wire, panels, ground rod, bushings</span>
+    </button>`;
+    html += `<button onclick="applyBulkTemplate('${jobId}','trim')" style="display:block;width:100%;padding:14px;margin:4px 0;background:#2a2a2a;border:1px solid #2d8a4e;border-radius:10px;color:#e0e0e0;font-size:13px;font-weight:700;cursor:pointer;text-align:left;">
+      <span style="color:#2d8a4e;font-weight:800;">TRIM-OUT STARTER</span><br><span style="color:#555;font-size:11px;">12 common items — receptacles, switches, plates, breakers, smoke detectors</span>
+    </button>`;
+    html += `<div style="height:1px;background:#333;margin:12px 0;"></div>`;
+  }
+
   // "Previously at this address" section (only when not searching)
   if (!q) {
     const job = getJob(jobId);
@@ -1882,7 +2001,7 @@ function filterMatPicker(jobId, query) {
           const libItem = lib.categories.flatMap(c => c.items).find(i => i.id === item.itemId);
           const unit = libItem ? libItem.unit : item.unit;
           if (isActive && !added) {
-            html += _matQtyRow(jobId, item.itemId, esc(item.name), esc(unit) + ' — PREV: ' + item.qty, item.qty, '#2d8a4e');
+            html += _matQtyRow(jobId, item.itemId, esc(item.name), esc(unit) + ' — PREV: ' + item.qty, item.qty, '#2d8a4e', libItem ? libItem.variants : null);
           } else {
             html += _matPickerRow(jobId, item.itemId, esc(item.name), added, added ? '✓ ADDED' : 'PREV: ' + item.qty + ' ' + unit, added ? '#FF6B00' : '#2d8a4e');
           }
@@ -1901,9 +2020,10 @@ function filterMatPicker(jobId, query) {
         const added = existing.includes(item.id);
         const isActive = _matPickerActiveItem === item.id;
         if (isActive && !added) {
-          html += _matQtyRow(jobId, item.id, esc(item.name), esc(item.unit), 1, '#FF6B00');
+          html += _matQtyRow(jobId, item.id, esc(item.name), esc(item.unit), 1, '#FF6B00', item.variants);
         } else {
-          html += _matPickerRow(jobId, item.id, esc(item.name), added, added ? '✓ ADDED' : item.unit, added ? '#FF6B00' : '#555');
+          const badge = item.variants ? ' ▸' : '';
+          html += _matPickerRow(jobId, item.id, esc(item.name) + badge, added, added ? '✓ ADDED' : item.unit, added ? '#FF6B00' : '#555');
         }
       }
       html += `<div style="height:1px;background:#333;margin:12px 0;"></div>`;
@@ -1918,9 +2038,10 @@ function filterMatPicker(jobId, query) {
       const added = existing.includes(item.id);
       const isActive = _matPickerActiveItem === item.id;
       if (isActive && !added) {
-        html += _matQtyRow(jobId, item.id, esc(item.name), esc(item.unit), 1, '#FF6B00');
+        html += _matQtyRow(jobId, item.id, esc(item.name), esc(item.unit), 1, '#FF6B00', item.variants);
       } else {
-        html += _matPickerRow(jobId, item.id, esc(item.name), added, added ? '✓ ADDED' : item.unit, added ? '#FF6B00' : '#555');
+        const badge = item.variants ? ' ▸' : '';
+        html += _matPickerRow(jobId, item.id, esc(item.name) + badge, added, added ? '✓ ADDED' : item.unit, added ? '#FF6B00' : '#555');
       }
     }
   }
@@ -1934,6 +2055,7 @@ function filterMatPicker(jobId, query) {
 }
 
 function showMatQtyInput(jobId, itemId) {
+  if (_matPickerActiveItem !== itemId) _matPickerActiveVariant = null;
   _matPickerActiveItem = itemId;
   const search = document.getElementById('mat-picker-search');
   filterMatPicker(jobId, search ? search.value : '');
@@ -1956,15 +2078,92 @@ function addMatToJob(jobId, itemId, nameOverride, unitOverride, qtyStr) {
   const name = item ? item.name : (nameOverride || itemId);
   const unit = item ? item.unit : (unitOverride || 'EA');
   const qty = Math.max(1, parseInt(qtyStr) || 1);
-  mats.push({ itemId, name, qty, unit });
+  const entry = { itemId, name, qty, unit };
+  if (_matPickerActiveVariant) {
+    entry.variant = _matPickerActiveVariant;
+    // Attach part ref if available
+    if (item && item.part_refs && item.part_refs[_matPickerActiveVariant]) {
+      entry.partRef = item.part_refs[_matPickerActiveVariant];
+    }
+  }
+  mats.push(entry);
   setJobMaterials(jobId, mats);
   trackMatAdd(itemId);
   _matPickerActiveItem = null;
+  _matPickerActiveVariant = null;
   // Re-render picker to show checkmark
   const search = document.getElementById('mat-picker-search');
   filterMatPicker(jobId, search ? search.value : '');
   renderJobMaterials(jobId);
-  showToast(name + ' ×' + qty + ' ADDED');
+  const variantTag = entry.variant ? ' (' + entry.variant + ')' : '';
+  showToast(name + variantTag + ' ×' + qty + ' ADDED');
+}
+
+// ── Bulk templates ──
+const BULK_TEMPLATES = {
+  rough: {
+    label: 'ROUGH-IN STARTER',
+    items: [
+      { id: 'bc_003', qty: 20 },  // 1 SINGLE GANG BOX
+      { id: 'bc_004', qty: 8 },   // 2 GANG BOX
+      { id: 'bc_007', qty: 10 },  // 4/0 NAIL ON LIGHT
+      { id: 'bc_009', qty: 3 },   // PLASTIC FAN BOX
+      { id: 'bc_019', qty: 15 },  // RECESS CAN DMF
+      { id: 'wp_001', qty: 500 }, // 14/2 WG ROMEX
+      { id: 'wp_003', qty: 250 }, // 12/2 WG ROMEX
+      { id: 'wp_005', qty: 100 }, // 10/2 WG ROMEX
+      { id: 'wp_016', qty: 1 },   // CH 42 INDOOR (panel)
+      { id: 'ak_011', qty: 2 },   // GALVANIZED GROUND ROD 8'
+      { id: 'ak_001', qty: 10 },  // 3/8" POP IN BUSHINGS
+      { id: 'sm_012', qty: 1 },   // GROUND BAR
+      { id: 'sm_011', qty: 1 },   // INTERBONDING SYSTEM
+      { id: 'ak_015', qty: 20 },  // LONG NAILPLATE
+      { id: 'sm_010', qty: 1 }    // FLASH TAPE
+    ]
+  },
+  trim: {
+    label: 'TRIM-OUT STARTER',
+    items: [
+      { id: 'tr_001', qty: 20 },  // Duplex Receptacle 15A TR
+      { id: 'tr_003', qty: 4 },   // GFCI Receptacle 15A TR White
+      { id: 'tr_007', qty: 4 },   // Receptacle 20A T-Slot (Kitchen/Laundry)
+      { id: 'sw_001', qty: 15 },  // Single Pole Switch 15A
+      { id: 'sw_002', qty: 6 },   // 3-Way Switch 15A
+      { id: 'cp_001', qty: 20 },  // 1-Gang Plate Duplex Receptacle
+      { id: 'cp_002', qty: 15 },  // 1-Gang Plate Toggle Switch
+      { id: 'cp_004', qty: 4 },   // 2-Gang Plate Duplex/Duplex
+      { id: 'ls_003', qty: 6 },   // Smoke/CO Combo Detector Hardwired
+      { id: 'fh_001', qty: 2 },   // Wire Nut Assorted Pack
+      { id: 'fh_006', qty: 20 },  // Grounding Pigtail Pre-Made
+      { id: 'fh_013', qty: 2 }    // Electrical Tape 3/4" Black
+    ]
+  }
+};
+
+function applyBulkTemplate(jobId, templateKey) {
+  const tmpl = BULK_TEMPLATES[templateKey];
+  if (!tmpl) return;
+  const mats = getJobMaterials(jobId);
+  const existingIds = new Set(mats.map(m => m.itemId));
+  let added = 0;
+  for (const entry of tmpl.items) {
+    if (existingIds.has(entry.id)) continue;
+    const item = _lookupMatItem(entry.id);
+    if (!item) continue;
+    mats.push({ itemId: entry.id, name: item.name, qty: entry.qty, unit: item.unit });
+    trackMatAdd(entry.id);
+    added++;
+  }
+  if (added === 0) {
+    showToast('ALL ITEMS ALREADY ADDED', 'info');
+    return;
+  }
+  setJobMaterials(jobId, mats);
+  _matPickerActiveItem = null;
+  const search = document.getElementById('mat-picker-search');
+  filterMatPicker(jobId, search ? search.value : '');
+  renderJobMaterials(jobId);
+  showToast(tmpl.label + ' — ' + added + ' ITEMS ADDED');
 }
 
 // ── Address-level material rollup ──
@@ -2075,7 +2274,8 @@ async function exportData() {
     jobs: loadJobs(),
     techs: loadTechs(),
     addresses: loadAddresses(),
-    materialLibrary: loadMaterialLibrary(),
+    materialLibrary: loadRoughLibrary(),
+    materialLibraryTrim: loadTrimLibrary(),
     navFrequency: JSON.parse(localStorage.getItem(NAV_FREQ_KEY) || '{}'),
     homeBase: getHomeBase(),
     media: mediaBlobs
@@ -2117,6 +2317,7 @@ async function importData(input) {
       if (data.techs) saveTechs(data.techs);
       if (data.addresses) saveAddresses(data.addresses);
       if (data.materialLibrary) localStorage.setItem(MAT_LIB_KEY, JSON.stringify(data.materialLibrary));
+      if (data.materialLibraryTrim) localStorage.setItem(MAT_LIB_TRIM_KEY, JSON.stringify(data.materialLibraryTrim));
       if (data.navFrequency) localStorage.setItem(NAV_FREQ_KEY, JSON.stringify(data.navFrequency));
       if (data.homeBase) saveHomeBase(data.homeBase);
       if (data.gmapsKey) saveGmapsKey(data.gmapsKey);
