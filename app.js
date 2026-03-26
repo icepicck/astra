@@ -1823,7 +1823,7 @@ Object.assign(window, {
   // Cloud sync
   runSyncPush, runSyncPull,
   // Settings
-  saveGmapsKey, saveHomeBase,
+  saveGmapsKey, saveHomeBase, hardReload,
 });
 
 })();
