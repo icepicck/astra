@@ -390,9 +390,15 @@ let currentJobId = null;
 let homeView = 'daily';
 let archiveView = 'daily';
 
+const SVG_ATTR = ' viewBox="0 0 24 24" style="width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"';
 const SCREEN_ICONS = {
-  'screen-search': '\uD83D\uDD0D', 'screen-addresses': '\uD83D\uDCCD', 'screen-vector': '\uD83D\uDEA9',
-  'screen-materials': '\uD83D\uDD27', 'screen-archive': '\uD83D\uDCE6', 'screen-dashboard': '\uD83D\uDCCA', 'screen-settings': '\u2699\uFE0F'
+  'screen-search': '<svg' + SVG_ATTR + '><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>',
+  'screen-addresses': '<svg' + SVG_ATTR + '><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>',
+  'screen-vector': '<svg' + SVG_ATTR + '><path d="M4 15V5a1 1 0 011-1h1l9 5-9 5"/><path d="M4 15l11-1.5"/><path d="M4 21v-6"/></svg>',
+  'screen-materials': '<svg' + SVG_ATTR + '><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>',
+  'screen-archive': '<svg' + SVG_ATTR + '><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 002 2h12a2 2 0 002-2V8"/><path d="M10 12h4"/></svg>',
+  'screen-dashboard': '<svg' + SVG_ATTR + '><path d="M18 20V10M12 20V4M6 20v-6"/></svg>',
+  'screen-settings': '<svg' + SVG_ATTR + '><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>'
 };
 const SCREEN_LABELS = {
   'screen-jobs': 'HOME', 'screen-search': 'SEARCH', 'screen-addresses': 'ADDRESSES',
@@ -650,7 +656,7 @@ function renderArchiveList() {
   if (!el) return;
 
   if (allJobs.length === 0) {
-    el.innerHTML = '<div class="empty-state"><div>📦</div><div>NO ARCHIVED TICKETS</div></div>';
+    el.innerHTML = '<div class="empty-state"><div><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 002 2h12a2 2 0 002-2V8"/><path d="M10 12h4"/></svg></div><div>NO ARCHIVED TICKETS</div></div>';
     return;
   }
 
@@ -1048,7 +1054,7 @@ function renderAddressList(query) {
   if (!filtered.length) {
     el.innerHTML = q
       ? '<div class="search-hint">NO PROPERTIES MATCH "' + esc(query).toUpperCase() + '"</div>'
-      : '<div class="empty-state"><div>📍</div><div>NO PROPERTIES SAVED</div></div>';
+      : '<div class="empty-state"><div><svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg></div><div>NO PROPERTIES SAVED</div></div>';
     return;
   }
   const allJobs = loadJobs();

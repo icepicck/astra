@@ -60,7 +60,7 @@ function renderMaterials() {
   if (!lib) {
     body.innerHTML = `
       <div class="empty-state">
-        <div>🔧</div>
+        <div><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg></div>
         <div>NO MATERIAL LIBRARY LOADED</div>
         <button class="btn" style="margin-top:16px;" onclick="document.getElementById('mat-import-input').click()">IMPORT MATERIAL JSON</button>
         <input type="file" id="mat-import-input" accept=".json" style="display:none" onchange="importMaterialLibrary(this)">
@@ -82,7 +82,7 @@ function renderMaterials() {
   statusHtml += '</div>';
   body.innerHTML = statusHtml + `
     <div class="search-bar" style="margin-bottom:12px;">
-      <span class="search-icon">🔍</span>
+      <span class="search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span>
       <input type="text" id="mat-search" name="astra-xmatsearch" autocomplete="nope" placeholder="SEARCH ${allItems.length} ITEMS..." oninput="filterMaterials(this.value)">
     </div>
     <div id="mat-list"></div>
@@ -214,7 +214,7 @@ function openMatPicker(jobId) {
       <button onclick="closeMatPicker()" style="background:none;border:none;color:#e0e0e0;font-size:24px;cursor:pointer;padding:4px 8px;">✕</button>
     </div>
     <div class="search-bar" style="margin-bottom:12px;">
-      <span class="search-icon">🔍</span>
+      <span class="search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span>
       <input type="text" id="mat-picker-search" name="astra-xmatpick" autocomplete="nope" placeholder="SEARCH MATERIALS..." oninput="filterMatPicker('${jobId}',this.value)" autofocus>
     </div>
     <div id="mat-picker-list" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>`;

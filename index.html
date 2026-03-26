@@ -38,6 +38,7 @@ body {
   display: flex; align-items: center; justify-content: center;
   transition: color 0.15s, background 0.15s; line-height: 1;
 }
+.nav-shortcut svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .nav-shortcut:active { background: rgba(255,107,0,0.15); color: #FF6B00; }
 .nav-shortcut.sc-active { color: #FF6B00; }
 .nav-hamburger {
@@ -86,7 +87,8 @@ body {
 }
 .sidebar-item:active { background: rgba(255,107,0,0.1); color: #FF6B00; }
 .sidebar-item.sb-active { color: #FF6B00; }
-.sidebar-icon { font-size: 20px; width: 28px; text-align: center; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
+.sidebar-icon { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sidebar-icon svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ── Layout ── */
 .screen {
@@ -408,10 +410,11 @@ input[type="number"] { -moz-appearance: textfield; }
 .search-bar input::placeholder { color: #444; }
 .search-icon {
   position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
-  font-size: 18px; color: #444; pointer-events: none;
-  line-height: 1; display: flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px;
+  color: #444; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px;
 }
+.search-icon svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .search-divider {
   font-size: 12px; font-weight: 800; color: #444; text-transform: uppercase;
   letter-spacing: 1.5px; padding: 14px 0 6px;
@@ -504,7 +507,8 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
 
 /* ── Empty state ── */
 .empty-state { text-align: center; padding: 60px 20px; color: #333; }
-.empty-state div:first-child { font-size: 48px; margin-bottom: 16px; opacity: 0.6; line-height: 1; }
+.empty-state div:first-child { font-size: 48px; margin-bottom: 16px; opacity: 0.4; line-height: 1; display: flex; align-items: center; justify-content: center; }
+.empty-state div:first-child svg { width: 48px; height: 48px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .empty-state div:last-child { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
 
 /* ── Sync/storage ── */
@@ -650,28 +654,28 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
     <button class="sidebar-close" onclick="closeSidebar()">✕</button>
   </div>
   <button class="sidebar-item" data-screen="screen-jobs" onclick="goTo('screen-jobs');closeSidebar()">
-    <span class="sidebar-icon">🏠</span> HOME
+    <span class="sidebar-icon"><svg viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1m-2 0h2"/></svg></span> HOME
   </button>
   <button class="sidebar-item" data-screen="screen-search" onclick="goTo('screen-search');closeSidebar()">
-    <span class="sidebar-icon">🔍</span> SEARCH
+    <span class="sidebar-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span> SEARCH
   </button>
   <button class="sidebar-item" data-screen="screen-addresses" onclick="goTo('screen-addresses');closeSidebar()">
-    <span class="sidebar-icon">📍</span> ADDRESSES
+    <span class="sidebar-icon"><svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg></span> ADDRESSES
   </button>
   <button class="sidebar-item" data-screen="screen-vector" onclick="goTo('screen-vector');closeSidebar()">
-    <span class="sidebar-icon">🚩</span> VECTOR
+    <span class="sidebar-icon"><svg viewBox="0 0 24 24"><path d="M4 15V5a1 1 0 011-1h1l9 5-9 5"/><path d="M4 15l11-1.5"/><path d="M4 21v-6"/></svg></span> VECTOR
   </button>
   <button class="sidebar-item" data-screen="screen-materials" onclick="goTo('screen-materials');closeSidebar()">
-    <span class="sidebar-icon">🔧</span> MATERIALS
+    <span class="sidebar-icon"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg></span> MATERIALS
   </button>
   <button class="sidebar-item" data-screen="screen-archive" onclick="goTo('screen-archive');closeSidebar()">
-    <span class="sidebar-icon">📦</span> ARCHIVE
+    <span class="sidebar-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 002 2h12a2 2 0 002-2V8"/><path d="M10 12h4"/></svg></span> ARCHIVE
   </button>
   <button class="sidebar-item" data-screen="screen-dashboard" onclick="goTo('screen-dashboard');closeSidebar()">
-    <span class="sidebar-icon">📊</span> DASHBOARD
+    <span class="sidebar-icon"><svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg></span> DASHBOARD
   </button>
   <button class="sidebar-item" data-screen="screen-settings" onclick="goTo('screen-settings');closeSidebar()">
-    <span class="sidebar-icon">⚙️</span> SETTINGS
+    <span class="sidebar-icon"><svg viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span> SETTINGS
   </button>
 </div>
 
@@ -691,7 +695,7 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
 <div id="screen-search" class="screen">
   <div class="screen-body">
     <div class="search-bar">
-      <span class="search-icon">🔍</span>
+      <span class="search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span>
       <input type="text" id="search-input" name="astra-xsearch" autocomplete="nope" placeholder="ADDRESS, TECH, TYPE, NOTES..." oninput="debouncedSearch(this.value)">
     </div>
     <div id="search-results">
@@ -808,7 +812,7 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
 <div id="screen-addresses" class="screen">
   <div style="position:sticky;top:0;z-index:10;padding:16px 16px 0;background:#1a1a1a;">
     <div class="search-bar">
-      <span class="search-icon">🔍</span>
+      <span class="search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span>
       <input type="text" id="addr-search" name="astra-xaddrsearch" autocomplete="nope" placeholder="SEARCH PROPERTIES..." oninput="renderAddressList(this.value)">
     </div>
   </div>
