@@ -1032,7 +1032,7 @@ const ADDR_FIELDS = [
   { key: 'ampRating', label: 'AMP RATING', options: ['100A','125A','150A','200A','250A','300A','400A','600A'] },
   { key: 'breakerType', label: 'BREAKER TYPE', options: ['SQD','CH','BR','SIEM'] },
   { key: 'serviceType', label: 'SERVICE TYPE', options: ['Underground','Overhead'] },
-  { key: 'panelLocation', label: 'PANEL LOCATION' },
+  { key: 'panelLocation', label: 'PANEL LOCATION', options: ['Indoor','Outdoor'] },
   { key: 'notes', label: 'PROPERTY NOTES', textarea: true }
 ];
 
