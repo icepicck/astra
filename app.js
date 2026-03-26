@@ -725,11 +725,10 @@ function resetCreateForm() {
 }
 
 function dismissGmapsBanner() {
-  // Purge any Google error banners
-  document.querySelectorAll('.dismissButton, .gm-err-container').forEach(el => el.closest('div[style]')?.remove() || el.remove());
-  // Nuclear: find the white overlay Google injects
-  document.querySelectorAll('div[style*="background-color: white"], div[style*="background-color: rgb(255, 255, 255)"]').forEach(el => {
-    if (el.textContent.includes('Google Maps') || el.textContent.includes('Do you own')) el.remove();
+  // Remove Google Maps error overlays using their stable class names
+  document.querySelectorAll('.gm-err-container, .gm-err-message, .dismissButton').forEach(el => {
+    const parent = el.closest('.gm-err-container') || el;
+    parent.remove();
   });
 }
 
@@ -755,8 +754,8 @@ function attachPlacesAutocomplete() {
   if (!input || !window.google || !window.google.maps || !window.google.maps.places) return;
   // Remove autocomplete="off" so Google widget can work
   input.removeAttribute('autocomplete');
-  // Clean up old pac-containers
-  document.querySelectorAll('.pac-container').forEach(el => el.remove());
+  // Don't remove pac-containers here — Google manages them internally.
+  // Removing them mid-selection kills the dropdown.
   gPlacesAutocomplete = new google.maps.places.Autocomplete(input, {
     types: ['address'],
     componentRestrictions: { country: 'us' },
@@ -1029,11 +1028,11 @@ function runSearch(query) {
 const ADDR_FIELDS = [
   { key: 'builder', label: 'BUILDER' },
   { key: 'subdivision', label: 'SUBDIVISION' },
-  { key: 'panelType', label: 'PANEL TYPE' },
-  { key: 'ampRating', label: 'AMP RATING', options: ['100A','150A','200A','250A','300A','400A','600A'] },
+  { key: 'panelType', label: 'PANEL TYPE', options: ['Main Breaker','Main Lug','Sub Panel'] },
+  { key: 'ampRating', label: 'AMP RATING', options: ['100A','125A','150A','200A','250A','300A','400A','600A'] },
   { key: 'breakerType', label: 'BREAKER TYPE', options: ['SQD','CH','BR','SIEM'] },
   { key: 'serviceType', label: 'SERVICE TYPE', options: ['Underground','Overhead'] },
-  { key: 'panelLocation', label: 'PANEL LOCATION', options: ['Indoor','Outdoor'] },
+  { key: 'panelLocation', label: 'PANEL LOCATION' },
   { key: 'notes', label: 'PROPERTY NOTES', textarea: true }
 ];
 
@@ -1132,9 +1131,15 @@ function renderAddrDetail(addrId) {
   document.querySelectorAll('#addr-detail-body .auto-expand').forEach(el => autoExpand(el));
 }
 
+function _normalizeStreet(str) {
+  // Extract street portion (before first comma), lowercase, collapse whitespace
+  return (str || '').split(',')[0].trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 function findOrCreateAddress(addressText, components) {
   const addrs = loadAddresses();
-  const existing = addrs.find(a => a.address.toLowerCase() === addressText.toLowerCase());
+  const needle = _normalizeStreet(addressText);
+  const existing = addrs.find(a => _normalizeStreet(a.address) === needle);
   if (existing) return existing.id;
   const newAddr = { id: crypto.randomUUID(), address: addressText };
   if (components) {
@@ -1739,26 +1744,36 @@ updateSidebarActive();
 })();
 
 if ('serviceWorker' in navigator) {
+  let _swUpdateReady = false;
   navigator.serviceWorker.register('sw.js').then(reg => {
     // Check for updates every 30 seconds
     setInterval(() => reg.update(), 30000);
-    // When a new SW is waiting, it will skipWaiting automatically,
-    // then controllerchange fires and we reload
     reg.addEventListener('updatefound', () => {
       const newSW = reg.installing;
       if (!newSW) return;
       newSW.addEventListener('statechange', () => {
-        if (newSW.state === 'activated') {
-          showToast('UPDATED — RELOADING...');
-          setTimeout(() => window.location.reload(), 500);
+        if (newSW.state === 'activated' && !_swUpdateReady) {
+          _swUpdateReady = true;
+          _showUpdateBanner();
         }
       });
     });
   }).catch(() => {});
-  // Also catch controller changes (covers edge cases)
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    window.location.reload();
+    if (!_swUpdateReady) {
+      _swUpdateReady = true;
+      _showUpdateBanner();
+    }
   });
+}
+
+function _showUpdateBanner() {
+  // Persistent banner — user chooses when to reload. Never auto-reload mid-typing.
+  const banner = document.createElement('div');
+  banner.id = 'sw-update-banner';
+  banner.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:#e8a100;color:#000;padding:10px 18px;border-radius:8px;font-weight:bold;font-size:13px;z-index:9999;display:flex;align-items:center;gap:12px;box-shadow:0 4px 12px rgba(0,0,0,0.4);';
+  banner.innerHTML = 'UPDATE READY <button onclick="window.location.reload()" style="background:#000;color:#e8a100;border:none;padding:6px 14px;border-radius:6px;font-weight:bold;font-size:13px;cursor:pointer;">RELOAD NOW</button>';
+  document.body.appendChild(banner);
 }
 
 // ── Shared namespace for sub-modules (maps, materials) ──

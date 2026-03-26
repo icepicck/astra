@@ -12,47 +12,77 @@ INSERT INTO techs (id, name, phone, license, active) VALUES
   ('b1a2c3d4-0001-4000-a000-000000000002', 'Jesse Garza', '281-555-0233', 'TECL-31205', true);
 
 -- ───────────────────────────────────────────
--- ADDRESSES
+-- ADDRESSES (with full electrical property details)
 -- ───────────────────────────────────────────
-INSERT INTO addresses (id, address, city, builder, subdivision, notes, lat, lng) VALUES
-  ('a0a0a0a0-0001-4000-b000-000000000001', '1247 Maple Ridge Dr', 'Katy', '', 'Maple Ridge Estates',
-   'Gate code 4421. Dog in backyard (friendly). Panel: 200A Square D Homeline, Main Breaker, Plug-on, Garage — left wall. Panel recently upgraded by us.',
+INSERT INTO addresses (id, address, street, suite, city, state, zip, builder, subdivision, panel_type, amp_rating, breaker_type, service_type, panel_location, notes, lat, lng) VALUES
+  ('a0a0a0a0-0001-4000-b000-000000000001',
+   '1247 Maple Ridge Dr', '1247 Maple Ridge Dr', '', 'Katy', 'TX', '77494',
+   '', 'Maple Ridge Estates',
+   'Main Breaker', '200A', 'SQD', 'Underground', 'Garage — left wall',
+   'Gate code 4421. Dog in backyard (friendly). Panel recently upgraded by us.',
    29.7858, -95.7575),
 
-  ('a0a0a0a0-0001-4000-b000-000000000002', '892 Cottonwood Ln', 'Cypress', '', 'Cottonwood Creek',
-   'Irrigation lines on west side of yard. Call before trenching. Panel: 200A Eaton BR, Main Breaker, BR Series, Exterior — south side. Service: Overhead.',
+  ('a0a0a0a0-0001-4000-b000-000000000002',
+   '892 Cottonwood Ln', '892 Cottonwood Ln', '', 'Cypress', 'TX', '77433',
+   '', 'Cottonwood Creek',
+   'Main Breaker', '200A', 'BR', 'Overhead', 'Exterior — south side',
+   'Irrigation lines on west side of yard. Call before trenching.',
    29.9691, -95.6970),
 
-  ('a0a0a0a0-0001-4000-b000-000000000003', '3401 Birch Hollow Ct', 'Sugar Land', 'Perry Homes', 'Birch Hollow',
-   '2019 build. Good access. Homeowner is an engineer, asks a lot of questions. Panel: 200A Siemens QP, Main Breaker, Garage — back wall.',
+  ('a0a0a0a0-0001-4000-b000-000000000003',
+   '3401 Birch Hollow Ct', '3401 Birch Hollow Ct', '', 'Sugar Land', 'TX', '77479',
+   'Perry Homes', 'Birch Hollow',
+   'Main Breaker', '200A', 'SIEM', 'Underground', 'Garage — back wall',
+   '2019 build. Good access. Homeowner is an engineer, asks a lot of questions.',
    29.5936, -95.6197),
 
-  ('a0a0a0a0-0001-4000-b000-000000000004', '710 Sycamore Blvd, Unit B', 'Houston', 'Greystar Development', '',
-   'Multi-family new construction. GC is Greystar. Super is Danny — call him not the office. Panel: 125A Eaton CH, Main Lug, Utility closet — hallway.',
+  ('a0a0a0a0-0001-4000-b000-000000000004',
+   '710 Sycamore Blvd, Unit B', '710 Sycamore Blvd', 'Unit B', 'Houston', 'TX', '77004',
+   'Greystar Development', '',
+   'Main Lug', '125A', 'CH', 'Underground', 'Utility closet — hallway',
+   'Multi-family new construction. GC is Greystar. Super is Danny — call him not the office.',
    29.7604, -95.3698),
 
-  ('a0a0a0a0-0001-4000-b000-000000000005', '2200 Elm Creek Pkwy', 'Pearland', '', 'Elm Creek',
-   '1978 build. Zinsco panel — known fire hazard. Full rip and replace scheduled. May need POCO for meter reseat. Panel: 100A Zinsco (obsolete), Main Breaker, Interior — master closet. Service: Overhead.',
+  ('a0a0a0a0-0001-4000-b000-000000000005',
+   '2200 Elm Creek Pkwy', '2200 Elm Creek Pkwy', '', 'Pearland', 'TX', '77584',
+   '', 'Elm Creek',
+   'Main Breaker', '100A', 'SQD', 'Overhead', 'Interior — master closet',
+   '1978 build. Zinsco panel — known fire hazard. Full rip and replace scheduled. May need POCO for meter reseat.',
    29.5636, -95.2860),
 
-  ('a0a0a0a0-0001-4000-b000-000000000006', '445 Pecan Grove Way', 'Richmond', 'Lennar', 'Pecan Grove',
-   '2021 Lennar build. Decent wiring. Outdoor receptacles are all weather-rated but the in-use covers are builder grade junk. Panel: 200A Square D QO, Main Breaker, Garage — right wall.',
+  ('a0a0a0a0-0001-4000-b000-000000000006',
+   '445 Pecan Grove Way', '445 Pecan Grove Way', '', 'Richmond', 'TX', '77406',
+   'Lennar', 'Pecan Grove',
+   'Main Breaker', '200A', 'SQD', 'Underground', 'Garage — right wall',
+   '2021 Lennar build. Decent wiring. Outdoor receptacles are all weather-rated but the in-use covers are builder grade junk.',
    29.5805, -95.7560),
 
-  ('a0a0a0a0-0001-4000-b000-000000000007', '1580 Magnolia Ranch Rd', 'Tomball', 'Castlerock Homes', 'Magnolia Ranch',
-   'New construction. Slab on grade. Working with Castlerock — they''re good to work with. Plans revision C is current. Panel: 200A Square D Homeline, Plug-on, Garage — left wall (planned).',
+  ('a0a0a0a0-0001-4000-b000-000000000007',
+   '1580 Magnolia Ranch Rd', '1580 Magnolia Ranch Rd', '', 'Tomball', 'TX', '77375',
+   'Castlerock Homes', 'Magnolia Ranch',
+   'Main Breaker', '200A', 'SQD', 'Underground', 'Garage — left wall (planned)',
+   'New construction. Slab on grade. Working with Castlerock — they''re good to work with. Plans revision C is current.',
    30.0972, -95.6161),
 
-  ('a0a0a0a0-0001-4000-b000-000000000008', '330 Juniper Springs Dr', 'Spring', 'Ashton Woods', 'Juniper Springs',
-   'Spec home. Ashton Woods standard package. All LED throughout. Panel: 200A Eaton BR, Main Breaker, Garage — back wall.',
+  ('a0a0a0a0-0001-4000-b000-000000000008',
+   '330 Juniper Springs Dr', '330 Juniper Springs Dr', '', 'Spring', 'TX', '77389',
+   'Ashton Woods', 'Juniper Springs',
+   'Main Breaker', '200A', 'BR', 'Underground', 'Garage — back wall',
+   'Spec home. Ashton Woods standard package. All LED throughout.',
    30.0799, -95.4172),
 
-  ('a0a0a0a0-0001-4000-b000-000000000009', '5612 Westheimer Rd', 'Houston', '', 'Galleria Area',
-   'Strip mall tenant finish-out. Suite 104 — new nail salon. Landlord is MidTown Properties, contact Brenda. Existing 400A main, pulling from sub-panel #3.',
+  ('a0a0a0a0-0001-4000-b000-000000000009',
+   '5612 Westheimer Rd', '5612 Westheimer Rd', 'Suite 104', 'Houston', 'TX', '77056',
+   '', 'Galleria Area',
+   'Main Breaker', '400A', 'SQD', 'Underground', 'Electrical room — rear',
+   'Strip mall tenant finish-out. New nail salon. Landlord is MidTown Properties, contact Brenda. Pulling from sub-panel #3.',
    29.7388, -95.4610),
 
-  ('a0a0a0a0-0001-4000-b000-000000000010', '18922 Timber Forest Dr', 'Humble', 'David Weekley', 'Atascocita Shores',
-   '2023 David Weekley build. Smart home pre-wire done. Panel: 200A Square D Homeline, Garage — left wall. Attic access is tight on the east side.',
+  ('a0a0a0a0-0001-4000-b000-000000000010',
+   '18922 Timber Forest Dr', '18922 Timber Forest Dr', '', 'Humble', 'TX', '77346',
+   'David Weekley', 'Atascocita Shores',
+   'Main Breaker', '200A', 'SQD', 'Underground', 'Garage — left wall',
+   '2023 David Weekley build. Smart home pre-wire done. Attic access is tight on the east side.',
    29.9546, -95.1726);
 
 -- ───────────────────────────────────────────
