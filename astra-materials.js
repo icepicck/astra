@@ -433,7 +433,8 @@ function _lookupMatItem(itemId) {
 
 function addMatToJob(jobId, itemId, nameOverride, unitOverride, qtyStr) {
   const mats = getJobMaterials(jobId);
-  if (mats.find(m => m.itemId === itemId)) return;
+  const variant = _matPickerActiveVariant || null;
+  if (mats.find(m => m.itemId === itemId && (m.variant || null) === variant)) return;
   const item = _lookupMatItem(itemId);
   const name = item ? item.name : (nameOverride || itemId);
   const unit = item ? item.unit : (unitOverride || 'EA');
@@ -528,7 +529,7 @@ function applyBulkTemplate(jobId, templateKey) {
 
 // ── Address-level material rollup ──
 function getAddrMaterialRollup(addrId) {
-  const jobs = A.loadJobs().filter(j => j.addressId === addrId && !j.archived);
+  const jobs = A.loadJobs().filter(j => j.addressId === addrId);
   const rollup = {};
   for (const j of jobs) {
     if (!j.materials) continue;

@@ -266,13 +266,20 @@ async function syncFromCloud(statusCallback) {
     });
   }
 
+  let skippedJobs = 0;
+
   for (const r of cloudJobs) {
     const local = A.getJob(r.id);
     const cloudJob = jobFromCloud(r);
     cloudJob.materials = matsByJob[r.id] || [];
 
     if (local) {
-      // Update existing — merge cloud data but keep local media blobs
+      // LOCAL WINS if local is newer — never silently overwrite field work
+      const localTime = new Date(local.updatedAt || 0).getTime();
+      const cloudTime = new Date(cloudJob.updatedAt || 0).getTime();
+      if (localTime > cloudTime) { skippedJobs++; continue; }
+
+      // Cloud is newer or equal — safe to update, but keep local media blobs
       const updates = {
         address: cloudJob.address,
         addressId: cloudJob.addressId,
@@ -304,7 +311,7 @@ async function syncFromCloud(statusCallback) {
     jobs: cloudJobs.length,
     addresses: cloudAddrs.length,
     techs: cloudTechs.length,
-    newJobs, newAddresses, updatedJobs
+    newJobs, newAddresses, updatedJobs, skippedJobs
   };
 }
 
@@ -355,6 +362,11 @@ function _handleRemoteChange(table, payload) {
     const local = A.getJob(newRec.id);
     const cloudJob = jobFromCloud(newRec);
     if (local) {
+      // Local wins if newer — don't overwrite field work
+      const localTime = new Date(local.updatedAt || 0).getTime();
+      const cloudTime = new Date(cloudJob.updatedAt || 0).getTime();
+      if (localTime > cloudTime) return;
+
       A.updateJob(newRec.id, {
         status: cloudJob.status,
         notes: cloudJob.notes,

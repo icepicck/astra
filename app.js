@@ -450,9 +450,9 @@ function closeSidebar() {
 
 let skipPushState = false;
 
-function goTo(screenId, jobId) {
+async function goTo(screenId, jobId) {
   closeSidebar();
-  initScreen(screenId, jobId);
+  await initScreen(screenId, jobId);
 
   // Transition
   const prev = document.getElementById(currentScreen);
@@ -476,7 +476,7 @@ function goTo(screenId, jobId) {
   updateSidebarActive();
 }
 
-function initScreen(screenId, jobId) {
+async function initScreen(screenId, jobId) {
   if (screenId === 'screen-jobs') renderJobList();
   if (screenId === 'screen-archive') renderArchiveList();
   if (screenId === 'screen-dashboard') renderDashboard();
@@ -495,20 +495,20 @@ function initScreen(screenId, jobId) {
   }
   if (screenId === 'screen-detail' && jobId !== undefined) {
     currentJobId = jobId;
-    renderDetail(jobId);
+    await renderDetail(jobId);
   }
   if (screenId === 'screen-create') resetCreateForm();
 }
 
 // Browser back/forward button support
-window.addEventListener('popstate', function(e) {
+window.addEventListener('popstate', async function(e) {
   if (e.state && e.state.screen) {
     skipPushState = true;
-    goTo(e.state.screen, e.state.jobId);
+    await goTo(e.state.screen, e.state.jobId);
     skipPushState = false;
   } else {
     skipPushState = true;
-    goTo('screen-jobs');
+    await goTo('screen-jobs');
     skipPushState = false;
   }
 });
@@ -1666,6 +1666,7 @@ async function runSyncPull() {
     const parts = [];
     if (result.newJobs) parts.push(result.newJobs + ' NEW TICKETS');
     if (result.newAddresses) parts.push(result.newAddresses + ' NEW ADDRESSES');
+    if (result.skippedJobs) parts.push(result.skippedJobs + ' KEPT LOCAL (NEWER)');
     parts.push(result.jobs + ' TOTAL SYNCED');
     showToast(parts.join(', '));
     btn.textContent = 'PULLED ✓';
