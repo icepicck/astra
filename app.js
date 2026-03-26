@@ -1813,7 +1813,7 @@ function _showUpdateBanner() {
   const banner = document.createElement('div');
   banner.id = 'sw-update-banner';
   banner.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:#e8a100;color:#000;padding:10px 18px;border-radius:8px;font-weight:bold;font-size:13px;z-index:9999;display:flex;align-items:center;gap:12px;box-shadow:0 4px 12px rgba(0,0,0,0.4);';
-  banner.innerHTML = 'UPDATE READY <button onclick="window.location.reload()" style="background:#000;color:#e8a100;border:none;padding:6px 14px;border-radius:6px;font-weight:bold;font-size:13px;cursor:pointer;">RELOAD NOW</button>';
+  banner.innerHTML = 'UPDATE READY <button onclick="window.hardReload ? window.hardReload() : window.location.reload(true)" style="background:#000;color:#e8a100;border:none;padding:6px 14px;border-radius:6px;font-weight:bold;font-size:13px;cursor:pointer;">RELOAD NOW</button>';
   document.body.appendChild(banner);
 }
 
