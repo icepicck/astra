@@ -34,9 +34,9 @@ body {
 }
 .nav-shortcut {
   width: 48px; height: 48px; border: none; background: none;
-  color: #666; font-size: 18px; border-radius: 10px; cursor: pointer;
+  color: #666; font-size: 20px; border-radius: 10px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  transition: color 0.15s, background 0.15s;
+  transition: color 0.15s, background 0.15s; line-height: 1;
 }
 .nav-shortcut:active { background: rgba(255,107,0,0.15); color: #FF6B00; }
 .nav-shortcut.sc-active { color: #FF6B00; }
@@ -86,7 +86,7 @@ body {
 }
 .sidebar-item:active { background: rgba(255,107,0,0.1); color: #FF6B00; }
 .sidebar-item.sb-active { color: #FF6B00; }
-.sidebar-icon { font-size: 18px; width: 24px; text-align: center; }
+.sidebar-icon { font-size: 20px; width: 28px; text-align: center; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
 
 /* ── Layout ── */
 .screen {
@@ -190,7 +190,12 @@ body {
   border: 2px solid #333; background: #1a1a1a; color: #e0e0e0;
   font-size: 16px; font-family: inherit;
   transition: border-color 0.15s;
-  min-height: 48px;
+  min-height: 48px; vertical-align: middle;
+}
+.field select { appearance: none; -webkit-appearance: none; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23666' stroke-width='2' fill='none'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 14px center;
+  padding-right: 36px;
 }
 .field input:focus, .field textarea:focus, .field select:focus {
   outline: none; border-color: #FF6B00;
@@ -264,10 +269,12 @@ input[type="number"] { -moz-appearance: textfield; }
 .detail-address { font-size: 18px; font-weight: 800; margin-bottom: 10px; }
 .detail-row {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 6px 0; font-size: 13px; color: #666;
+  padding: 8px 0; font-size: 13px; color: #666;
   text-transform: uppercase; letter-spacing: 0.5px;
+  min-height: 36px;
 }
-.detail-row span:last-child { color: #e0e0e0; font-weight: 600; text-transform: none; letter-spacing: 0; }
+.detail-row span:first-child { flex-shrink: 0; }
+.detail-row span:last-child { color: #e0e0e0; font-weight: 600; text-transform: none; letter-spacing: 0; text-align: right; }
 .section-title {
   font-size: 12px; font-weight: 800; color: #888;
   text-transform: uppercase; letter-spacing: 1.5px;
@@ -400,10 +407,10 @@ input[type="number"] { -moz-appearance: textfield; }
 .search-bar input:focus { outline: none; border-color: #FF6B00; }
 .search-bar input::placeholder { color: #444; }
 .search-icon {
-  position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
-  font-size: 16px; color: #444; pointer-events: none;
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  font-size: 18px; color: #444; pointer-events: none;
   line-height: 1; display: flex; align-items: center; justify-content: center;
-  width: 20px; height: 20px;
+  width: 24px; height: 24px;
 }
 .search-divider {
   font-size: 12px; font-weight: 800; color: #444; text-transform: uppercase;
@@ -441,11 +448,13 @@ input[type="number"] { -moz-appearance: textfield; }
 .addr-suggest-new { color: #FF6B00; font-weight: 700; }
 
 /* ── Property fields ── */
-.prop-field { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #2a2a2a; }
+.prop-field { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #2a2a2a; min-height: 48px; }
 .prop-field:last-child { border-bottom: none; }
-.prop-label { font-size: 12px; color: #555; min-width: 90px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
-.prop-input { background: none; border: none; color: #e0e0e0; font-size: 14px; text-align: right; font-family: inherit; padding: 4px 0; flex: 1; min-height: 32px; }
+.prop-label { font-size: 12px; color: #555; min-width: 100px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; flex-shrink: 0; }
+.prop-input { background: none; border: none; color: #e0e0e0; font-size: 14px; text-align: right; font-family: inherit; padding: 8px 0; flex: 1; min-height: 36px; }
 textarea.prop-input { resize: vertical; }
+select.prop-input { appearance: none; -webkit-appearance: none; cursor: pointer; background: none; border: none; direction: rtl; padding-right: 0; }
+select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; }
 .prop-input:focus { outline: none; color: #FF6B00; }
 
 /* ── Navigate button ── */
@@ -495,7 +504,7 @@ textarea.prop-input { resize: vertical; }
 
 /* ── Empty state ── */
 .empty-state { text-align: center; padding: 60px 20px; color: #333; }
-.empty-state div:first-child { font-size: 42px; margin-bottom: 12px; opacity: 0.5; }
+.empty-state div:first-child { font-size: 48px; margin-bottom: 16px; opacity: 0.6; line-height: 1; }
 .empty-state div:last-child { font-size: 14px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
 
 /* ── Sync/storage ── */
@@ -641,28 +650,28 @@ textarea.prop-input { resize: vertical; }
     <button class="sidebar-close" onclick="closeSidebar()">✕</button>
   </div>
   <button class="sidebar-item" data-screen="screen-jobs" onclick="goTo('screen-jobs');closeSidebar()">
-    <span class="sidebar-icon">⌂</span> HOME
+    <span class="sidebar-icon">🏠</span> HOME
   </button>
   <button class="sidebar-item" data-screen="screen-search" onclick="goTo('screen-search');closeSidebar()">
-    <span class="sidebar-icon">⌕</span> SEARCH
+    <span class="sidebar-icon">🔍</span> SEARCH
   </button>
   <button class="sidebar-item" data-screen="screen-addresses" onclick="goTo('screen-addresses');closeSidebar()">
-    <span class="sidebar-icon">◎</span> ADDRESSES
+    <span class="sidebar-icon">📍</span> ADDRESSES
   </button>
   <button class="sidebar-item" data-screen="screen-vector" onclick="goTo('screen-vector');closeSidebar()">
-    <span class="sidebar-icon">▷</span> VECTOR
+    <span class="sidebar-icon">🚩</span> VECTOR
   </button>
   <button class="sidebar-item" data-screen="screen-materials" onclick="goTo('screen-materials');closeSidebar()">
-    <span class="sidebar-icon">☰</span> MATERIALS
+    <span class="sidebar-icon">🔧</span> MATERIALS
   </button>
   <button class="sidebar-item" data-screen="screen-archive" onclick="goTo('screen-archive');closeSidebar()">
-    <span class="sidebar-icon">▣</span> ARCHIVE
+    <span class="sidebar-icon">📦</span> ARCHIVE
   </button>
   <button class="sidebar-item" data-screen="screen-dashboard" onclick="goTo('screen-dashboard');closeSidebar()">
-    <span class="sidebar-icon">◧</span> DASHBOARD
+    <span class="sidebar-icon">📊</span> DASHBOARD
   </button>
   <button class="sidebar-item" data-screen="screen-settings" onclick="goTo('screen-settings');closeSidebar()">
-    <span class="sidebar-icon">⚙</span> SETTINGS
+    <span class="sidebar-icon">⚙️</span> SETTINGS
   </button>
 </div>
 
@@ -682,7 +691,7 @@ textarea.prop-input { resize: vertical; }
 <div id="screen-search" class="screen">
   <div class="screen-body">
     <div class="search-bar">
-      <span class="search-icon">⌕</span>
+      <span class="search-icon">🔍</span>
       <input type="text" id="search-input" name="astra-xsearch" autocomplete="nope" placeholder="ADDRESS, TECH, TYPE, NOTES..." oninput="debouncedSearch(this.value)">
     </div>
     <div id="search-results">
@@ -799,7 +808,7 @@ textarea.prop-input { resize: vertical; }
 <div id="screen-addresses" class="screen">
   <div style="position:sticky;top:0;z-index:10;padding:16px 16px 0;background:#1a1a1a;">
     <div class="search-bar">
-      <span class="search-icon">⌕</span>
+      <span class="search-icon">🔍</span>
       <input type="text" id="addr-search" name="astra-xaddrsearch" autocomplete="nope" placeholder="SEARCH PROPERTIES..." oninput="renderAddressList(this.value)">
     </div>
   </div>

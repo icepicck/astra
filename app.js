@@ -391,8 +391,8 @@ let homeView = 'daily';
 let archiveView = 'daily';
 
 const SCREEN_ICONS = {
-  'screen-search': '⌕', 'screen-addresses': '◎', 'screen-vector': '▷',
-  'screen-materials': '☰', 'screen-archive': '▣', 'screen-dashboard': '◧', 'screen-settings': '⚙'
+  'screen-search': '\uD83D\uDD0D', 'screen-addresses': '\uD83D\uDCCD', 'screen-vector': '\uD83D\uDEA9',
+  'screen-materials': '\uD83D\uDD27', 'screen-archive': '\uD83D\uDCE6', 'screen-dashboard': '\uD83D\uDCCA', 'screen-settings': '\u2699\uFE0F'
 };
 const SCREEN_LABELS = {
   'screen-jobs': 'HOME', 'screen-search': 'SEARCH', 'screen-addresses': 'ADDRESSES',
@@ -650,7 +650,7 @@ function renderArchiveList() {
   if (!el) return;
 
   if (allJobs.length === 0) {
-    el.innerHTML = '<div class="empty-state"><div>▣</div><div>NO ARCHIVED TICKETS</div></div>';
+    el.innerHTML = '<div class="empty-state"><div>📦</div><div>NO ARCHIVED TICKETS</div></div>';
     return;
   }
 
@@ -1048,7 +1048,7 @@ function renderAddressList(query) {
   if (!filtered.length) {
     el.innerHTML = q
       ? '<div class="search-hint">NO PROPERTIES MATCH "' + esc(query).toUpperCase() + '"</div>'
-      : '<div class="empty-state"><div>◎</div><div>NO PROPERTIES SAVED</div></div>';
+      : '<div class="empty-state"><div>📍</div><div>NO PROPERTIES SAVED</div></div>';
     return;
   }
   const allJobs = loadJobs();
@@ -1090,7 +1090,7 @@ function renderAddrDetail(addrId) {
       const opts = f.options.map(o => `<option value="${o}"${val === o ? ' selected' : ''}>${o}</option>`).join('');
       return `<div class="prop-field">
         <span class="prop-label">${f.label}</span>
-        <select class="prop-input" style="appearance:none;cursor:pointer;background:none;border:none;"
+        <select class="prop-input"
           onchange="updateAddress('${addrId}',{${f.key}:this.value})">
           <option value=""${!val ? ' selected' : ''}>—</option>${opts}
         </select>
