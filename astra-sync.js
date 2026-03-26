@@ -348,6 +348,8 @@ function stopRealtime() {
 function _handleRemoteChange(table, payload) {
   const { eventType, new: newRec, old: oldRec } = payload;
   if (!newRec) return;
+  // Skip realtime updates while a sync operation is in progress
+  if (window._syncInProgress) return;
 
   if (table === 'jobs') {
     const local = A.getJob(newRec.id);

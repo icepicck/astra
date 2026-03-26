@@ -83,12 +83,40 @@ function _openAstraDB() {
 }
 
 // Granular IDB operations — no more nuke-and-rebuild
+// All writes detect failures and alert the user. No silent data loss.
+
 function _idbPut(storeName, item) {
   if (!_astraDB) return;
   try {
     const tx = _astraDB.transaction(storeName, 'readwrite');
     tx.objectStore(storeName).put(item);
-  } catch (e) { console.error('IDB put error (' + storeName + '):', e); }
+    tx.onabort = tx.onerror = function() {
+      console.error('IDB put FAILED (' + storeName + '):', tx.error);
+      showToast('SAVE FAILED — RETRYING...', 'error');
+      _idbPutRetry(storeName, item);
+    };
+  } catch (e) {
+    console.error('IDB put error (' + storeName + '):', e);
+    showToast('SAVE FAILED — CHECK STORAGE', 'error');
+  }
+}
+
+function _idbPutRetry(storeName, item) {
+  if (!_astraDB) return;
+  setTimeout(function() {
+    try {
+      const tx = _astraDB.transaction(storeName, 'readwrite');
+      tx.objectStore(storeName).put(item);
+      tx.oncomplete = function() { showToast('SAVE RECOVERED'); };
+      tx.onabort = tx.onerror = function() {
+        console.error('IDB retry FAILED (' + storeName + '):', tx.error);
+        showToast('SAVE FAILED — DATA NOT SAVED. DO NOT CLOSE APP.', 'error');
+      };
+    } catch (e) {
+      console.error('IDB retry error (' + storeName + '):', e);
+      showToast('SAVE FAILED — DATA NOT SAVED. DO NOT CLOSE APP.', 'error');
+    }
+  }, 500);
 }
 
 function _idbDelete(storeName, id) {
@@ -96,6 +124,10 @@ function _idbDelete(storeName, id) {
   try {
     const tx = _astraDB.transaction(storeName, 'readwrite');
     tx.objectStore(storeName).delete(id);
+    tx.onabort = tx.onerror = function() {
+      console.error('IDB delete FAILED (' + storeName + '):', tx.error);
+      showToast('DELETE FAILED — TRY AGAIN', 'error');
+    };
   } catch (e) { console.error('IDB delete error (' + storeName + '):', e); }
 }
 
@@ -106,7 +138,14 @@ function _idbReplaceAll(storeName, items) {
     const store = tx.objectStore(storeName);
     store.clear();
     items.forEach(item => store.put(item));
-  } catch (e) { console.error('IDB replaceAll error (' + storeName + '):', e); }
+    tx.onabort = tx.onerror = function() {
+      console.error('IDB replaceAll FAILED (' + storeName + '):', tx.error);
+      showToast('BULK SAVE FAILED — DATA NOT SAVED. DO NOT CLOSE APP.', 'error');
+    };
+  } catch (e) {
+    console.error('IDB replaceAll error (' + storeName + '):', e);
+    showToast('BULK SAVE FAILED — CHECK STORAGE', 'error');
+  }
 }
 
 function _cleanJobForStorage(j) {
@@ -842,19 +881,19 @@ async function renderDetail(jobId) {
       if (item.type === 'pdf') {
         parts.push(`<div class="media-thumb" onclick="openMedia('${jobId}','${type}',${i})" style="display:flex;align-items:center;justify-content:center;background:#2a2a2a;">
           <div style="text-align:center;"><div style="font-size:28px;">📄</div><div style="font-size:10px;color:#888;margin-top:4px;">PDF</div></div>
-          <button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}',${i})">✕</button>
+          <button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}','${item.id}')">✕</button>
           <div class="media-thumb-label">${esc(item.name)}</div>
         </div>`);
       } else if (item.type === 'video') {
         parts.push(`<div class="media-thumb" onclick="openMedia('${jobId}','${type}',${i})">
           <video src="${src}" muted preload="metadata"></video>
           <div class="video-badge">▶</div>
-          <button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}',${i})">✕</button>
+          <button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}','${item.id}')">✕</button>
         </div>`);
       } else {
         parts.push(`<div class="media-thumb" onclick="openMedia('${jobId}','${type}',${i})">
           <img src="${src}" alt="${esc(item.name)}">
-          <button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}',${i})">✕</button>
+          <button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}','${item.id}')">✕</button>
           ${type === 'drawings' ? '<div class="media-thumb-label">' + esc(item.name) + '</div>' : ''}
         </div>`);
       }
@@ -1287,13 +1326,14 @@ document.getElementById('photo-input').addEventListener('change', async function
   if (!currentJobId || !this.files.length) return;
   const j = getJob(currentJobId);
   if (!j) return;
+  const photos = [...(j.photos || [])];
   for (const f of this.files) {
     const id = crypto.randomUUID();
     const data = await compressImage(f, 1200, 0.7);
     await saveMediaBlob(id, data);
-    j.photos.push({ id, name: f.name, type: 'image', addedAt: new Date().toISOString() });
+    photos.push({ id, name: f.name, type: 'image', addedAt: new Date().toISOString() });
   }
-  updateJob(currentJobId, { photos: j.photos });
+  updateJob(currentJobId, { photos });
   renderDetail(currentJobId);
   this.value = '';
 });
@@ -1302,19 +1342,20 @@ document.getElementById('drawing-input').addEventListener('change', async functi
   if (!currentJobId || !this.files.length) return;
   const j = getJob(currentJobId);
   if (!j) return;
+  const drawings = [...(j.drawings || [])];
   for (const f of this.files) {
     const id = crypto.randomUUID();
     const isPDF = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
     if (isPDF) {
       await saveMediaBlob(id, f.slice(0, f.size, f.type));
-      j.drawings.push({ id, name: f.name, type: 'pdf', mimeType: f.type, addedAt: new Date().toISOString() });
+      drawings.push({ id, name: f.name, type: 'pdf', mimeType: f.type, addedAt: new Date().toISOString() });
     } else {
       const data = await compressImage(f, 1600, 0.8);
       await saveMediaBlob(id, data);
-      j.drawings.push({ id, name: f.name, type: 'image', addedAt: new Date().toISOString() });
+      drawings.push({ id, name: f.name, type: 'image', addedAt: new Date().toISOString() });
     }
   }
-  updateJob(currentJobId, { drawings: j.drawings });
+  updateJob(currentJobId, { drawings });
   renderDetail(currentJobId);
   this.value = '';
 });
@@ -1325,7 +1366,7 @@ document.getElementById('video-input').addEventListener('change', async function
   if (!currentJobId || !this.files.length) return;
   const j = getJob(currentJobId);
   if (!j) return;
-  if (!j.videos) j.videos = [];
+  const videos = [...(j.videos || [])];
   for (const f of this.files) {
     if (f.size > VIDEO_MAX_BYTES) {
       alert('VIDEO TOO LARGE: ' + f.name + ' (' + (f.size / (1024*1024)).toFixed(0) + ' MB). MAX 50 MB.');
@@ -1334,21 +1375,21 @@ document.getElementById('video-input').addEventListener('change', async function
     const id = crypto.randomUUID();
     const blob = f.slice(0, f.size, f.type);
     await saveMediaBlob(id, blob);
-    j.videos.push({ id, name: f.name, type: 'video', mimeType: f.type, addedAt: new Date().toISOString() });
+    videos.push({ id, name: f.name, type: 'video', mimeType: f.type, addedAt: new Date().toISOString() });
   }
-  updateJob(currentJobId, { videos: j.videos });
+  updateJob(currentJobId, { videos });
   renderDetail(currentJobId);
   this.value = '';
 });
 
-async function deleteMedia(jobId, type, idx) {
+async function deleteMedia(jobId, type, mediaId) {
   if (!confirm('DELETE THIS FILE?')) return;
   const j = getJob(jobId);
   if (!j) return;
-  const item = j[type][idx];
-  if (item && item.id) await deleteMediaBlob(item.id);
-  j[type].splice(idx, 1);
-  updateJob(jobId, { [type]: j[type] });
+  const item = (j[type] || []).find(m => m.id === mediaId);
+  if (item) await deleteMediaBlob(item.id);
+  const updated = (j[type] || []).filter(m => m.id !== mediaId);
+  updateJob(jobId, { [type]: updated });
   renderDetail(jobId);
 }
 
@@ -1575,12 +1616,20 @@ function _syncStatus(msg) {
   el.textContent = msg || '';
 }
 
+// Sync mutex — only one sync operation at a time
+// On window so astra-sync.js realtime handler can check it
+window._syncInProgress = false;
+
 async function runSyncPush() {
   if (!window.Astra.isSyncConfigured || !window.Astra.isSyncConfigured()) {
     showToast('ADD SUPABASE URL AND KEY IN SETTINGS', 'error'); return;
   }
+  if (window._syncInProgress) { showToast('SYNC ALREADY IN PROGRESS — WAIT', 'error'); return; }
+  window._syncInProgress = true;
   const btn = document.getElementById('sync-push-btn');
+  const pullBtn = document.getElementById('sync-pull-btn');
   btn.disabled = true; btn.textContent = 'PUSHING...';
+  if (pullBtn) pullBtn.disabled = true;
   _syncStatus('STARTING...');
   try {
     const result = await window.syncToCloud((step, total, msg) => _syncStatus(msg));
@@ -1593,6 +1642,9 @@ async function runSyncPush() {
     _syncStatus('FAILED: ' + e.message);
     showToast('PUSH FAILED: ' + e.message, 'error');
     btn.textContent = 'PUSH TO CLOUD'; btn.disabled = false;
+  } finally {
+    window._syncInProgress = false;
+    if (pullBtn) pullBtn.disabled = false;
   }
 }
 
@@ -1600,9 +1652,13 @@ async function runSyncPull() {
   if (!window.Astra.isSyncConfigured || !window.Astra.isSyncConfigured()) {
     showToast('ADD SUPABASE URL AND KEY IN SETTINGS', 'error'); return;
   }
+  if (window._syncInProgress) { showToast('SYNC ALREADY IN PROGRESS — WAIT', 'error'); return; }
   if (!confirm('PULL DATA FROM CLOUD? THIS WILL UPDATE LOCAL TICKETS WITH CLOUD CHANGES.')) return;
+  window._syncInProgress = true;
   const btn = document.getElementById('sync-pull-btn');
+  const pushBtn = document.getElementById('sync-push-btn');
   btn.disabled = true; btn.textContent = 'PULLING...';
+  if (pushBtn) pushBtn.disabled = true;
   _syncStatus('STARTING...');
   try {
     const result = await window.syncFromCloud((step, total, msg) => _syncStatus(msg));
@@ -1620,6 +1676,9 @@ async function runSyncPull() {
     _syncStatus('FAILED: ' + e.message);
     showToast('PULL FAILED: ' + e.message, 'error');
     btn.textContent = 'PULL FROM CLOUD'; btn.disabled = false;
+  } finally {
+    window._syncInProgress = false;
+    if (pushBtn) pushBtn.disabled = false;
   }
 }
 
