@@ -1550,6 +1550,17 @@ async function renderSettings() {
   `;
 }
 
+async function hardReload() {
+  showToast('RELOADING APP...', 'info');
+  if ('caches' in window) {
+    const names = await caches.keys();
+    await Promise.all(names.map(n => caches.delete(n)));
+  }
+  const regs = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(regs.map(r => r.unregister()));
+  location.reload(true);
+}
+
 async function exportData() {
   const mediaBlobs = await getAllMediaBlobs();
   const data = {
