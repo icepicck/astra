@@ -1771,7 +1771,7 @@ if ('serviceWorker' in navigator) {
       newSW.addEventListener('statechange', () => {
         if (newSW.state === 'activated' && !_swUpdateReady) {
           _swUpdateReady = true;
-          _showUpdateBanner();
+          _handleUpdate();
         }
       });
     });
@@ -1779,13 +1779,37 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!_swUpdateReady) {
       _swUpdateReady = true;
-      _showUpdateBanner();
+      _handleUpdate();
     }
   });
 }
 
+function _isAppIdle() {
+  // Idle = on home screen, no overlays/pickers open, no active input focus
+  const onHome = document.getElementById('screen-jobs') &&
+                 document.getElementById('screen-jobs').classList.contains('active');
+  const hasOverlay = document.querySelector('.overlay.active');
+  const hasPicker = document.querySelector('.status-picker.active');
+  const hasMatPicker = document.getElementById('mat-picker-overlay');
+  const sidebarOpen = document.querySelector('.sidebar.open');
+  const activeInput = document.activeElement &&
+    (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT');
+  return onHome && !hasOverlay && !hasPicker && !hasMatPicker && !sidebarOpen && !activeInput;
+}
+
+function _handleUpdate() {
+  if (_isAppIdle()) {
+    // Silent auto-reload — user won't notice
+    console.log('[ASTRA] Idle auto-update — reloading silently');
+    window.location.reload();
+  } else {
+    // Busy — show the yellow banner, let them choose when
+    _showUpdateBanner();
+  }
+}
+
 function _showUpdateBanner() {
-  // Persistent banner — user chooses when to reload. Never auto-reload mid-typing.
+  if (document.getElementById('sw-update-banner')) return;
   const banner = document.createElement('div');
   banner.id = 'sw-update-banner';
   banner.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:#e8a100;color:#000;padding:10px 18px;border-radius:8px;font-weight:bold;font-size:13px;z-index:9999;display:flex;align-items:center;gap:12px;box-shadow:0 4px 12px rgba(0,0,0,0.4);';
