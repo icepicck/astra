@@ -1,6 +1,6 @@
-const CACHE_NAME = 'astra-v41';
+const CACHE_NAME = 'astra-v42';
 const ASSETS = [
-  'index.html', 'app.js', 'astra-materials.js', 'astra-maps.js', 'astra-sync.js',
+  'index.html', 'app.js', 'astra-materials.js', 'astra-maps.js', 'astra-sync.js', 'astra-estimates.js',
   'manifest.json', 'rough_materials.json', 'trim_materials.json',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js'
 ];
