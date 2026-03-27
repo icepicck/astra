@@ -157,40 +157,115 @@ function _estPickMat(idx, itemId) {
 }
 
 // ══════════════════════════════════════════
-// ADDRESS AUTOCOMPLETE
+// ADDRESS AUTOCOMPLETE (Google Places + ASTRA)
 // ══════════════════════════════════════════
 
+let _estPlacesAC = null;
+
+function _initEstPlaces() {
+  _estPlacesAC = null;
+  const input = document.getElementById('est-address');
+  if (!input) return;
+  if (!window.google || !window.google.maps || !window.google.maps.places) {
+    // Try loading Google Maps if key exists
+    const key = A.getGmapsKey();
+    if (!key) return;
+    // Maps may already be loading from Vector — poll for it
+    var tries = 0;
+    var poll = setInterval(function() {
+      tries++;
+      if (window.google && window.google.maps && window.google.maps.places) {
+        clearInterval(poll);
+        _attachEstPlaces();
+      } else if (tries > 20) {
+        clearInterval(poll);
+      }
+    }, 500);
+    return;
+  }
+  _attachEstPlaces();
+}
+
+function _attachEstPlaces() {
+  const input = document.getElementById('est-address');
+  if (!input || !window.google || !window.google.maps || !window.google.maps.places) return;
+  input.removeAttribute('autocomplete');
+  _estPlacesAC = new google.maps.places.Autocomplete(input, {
+    types: ['address'],
+    componentRestrictions: { country: 'us' },
+    fields: ['address_components', 'formatted_address']
+  });
+  // Bias toward Houston
+  var houstonBounds = new google.maps.LatLngBounds(
+    new google.maps.LatLng(29.5, -95.8),
+    new google.maps.LatLng(30.2, -95.0)
+  );
+  _estPlacesAC.setBounds(houstonBounds);
+  _estPlacesAC.addListener('place_changed', function() {
+    var place = _estPlacesAC.getPlace();
+    if (!place || !place.address_components) return;
+    var streetNum = '', route = '', city = '', state = '', zip = '';
+    for (var c of place.address_components) {
+      var t = c.types[0];
+      if (t === 'street_number') streetNum = c.long_name;
+      else if (t === 'route') route = c.short_name;
+      else if (t === 'locality') city = c.long_name;
+      else if (t === 'administrative_area_level_1') state = c.short_name;
+      else if (t === 'postal_code') zip = c.long_name;
+    }
+    var fullAddr = (streetNum + ' ' + route).trim();
+    if (city) fullAddr += ', ' + city;
+    if (state) fullAddr += ', ' + state;
+    if (zip) fullAddr += ' ' + zip;
+    var est = _state.currentEstimate;
+    if (est) {
+      est.address = fullAddr;
+      // Check if this address exists in ASTRA
+      var match = A.loadAddresses().find(function(a) {
+        return a.address.toLowerCase() === fullAddr.toLowerCase();
+      });
+      est.addressId = match ? match.id : null;
+    }
+    input.value = fullAddr;
+    // Hide ASTRA dropdown if open
+    var dd = document.getElementById('est-addr-suggest');
+    if (dd) dd.style.display = 'none';
+  });
+}
+
 function _estAddrSearch(query) {
-  const dropdown = document.getElementById('est-addr-suggest');
+  // ASTRA address matches (shown below Google suggestions)
+  var dropdown = document.getElementById('est-addr-suggest');
   if (!dropdown) return;
-  const q = query.trim().toLowerCase();
+  var q = query.trim().toLowerCase();
   if (q.length < 2) { dropdown.style.display = 'none'; return; }
 
-  const addrs = A.loadAddresses().filter(function(a) {
+  var addrs = A.loadAddresses().filter(function(a) {
     return a.address.toLowerCase().includes(q);
   }).slice(0, 5);
 
   if (!addrs.length) { dropdown.style.display = 'none'; return; }
 
   dropdown.style.display = 'block';
-  dropdown.innerHTML = addrs.map(function(a) {
-    return '<div class="addr-suggest-item" onmousedown="window._estPickAddr(\'' + a.id + '\')">' + A.esc(a.address) + '</div>';
-  }).join('');
+  dropdown.innerHTML = '<div style="font-size:10px;color:#FF6B00;font-weight:800;letter-spacing:1px;padding:8px 14px 4px;text-transform:uppercase;">ASTRA ADDRESSES</div>'
+    + addrs.map(function(a) {
+      return '<div class="addr-suggest-item" onmousedown="window._estPickAddr(\'' + a.id + '\')">' + A.esc(a.address) + '</div>';
+    }).join('');
 }
 
 function _estPickAddr(addrId) {
-  const est = _state.currentEstimate;
+  var est = _state.currentEstimate;
   if (!est) return;
-  const addr = A.loadAddresses().find(function(a) { return a.id === addrId; });
+  var addr = A.loadAddresses().find(function(a) { return a.id === addrId; });
   if (!addr) return;
 
   _captureFormState();
   est.address = addr.address;
   est.addressId = addr.id;
 
-  const input = document.getElementById('est-address');
+  var input = document.getElementById('est-address');
   if (input) input.value = addr.address;
-  const dropdown = document.getElementById('est-addr-suggest');
+  var dropdown = document.getElementById('est-addr-suggest');
   if (dropdown) dropdown.style.display = 'none';
 }
 
@@ -408,6 +483,9 @@ function renderEstimateBuilder(estId) {
 
   // ── Attach blur listeners for auto-recalc ──
   _attachBlurListeners();
+
+  // ── Attach Google Places autocomplete ──
+  _initEstPlaces();
 }
 
 // ── Attach blur handlers to all inputs so math recalcs automatically ──
