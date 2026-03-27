@@ -157,6 +157,44 @@ function _estPickMat(idx, itemId) {
 }
 
 // ══════════════════════════════════════════
+// ADDRESS AUTOCOMPLETE
+// ══════════════════════════════════════════
+
+function _estAddrSearch(query) {
+  const dropdown = document.getElementById('est-addr-suggest');
+  if (!dropdown) return;
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) { dropdown.style.display = 'none'; return; }
+
+  const addrs = A.loadAddresses().filter(function(a) {
+    return a.address.toLowerCase().includes(q);
+  }).slice(0, 5);
+
+  if (!addrs.length) { dropdown.style.display = 'none'; return; }
+
+  dropdown.style.display = 'block';
+  dropdown.innerHTML = addrs.map(function(a) {
+    return '<div class="addr-suggest-item" onmousedown="window._estPickAddr(\'' + a.id + '\')">' + A.esc(a.address) + '</div>';
+  }).join('');
+}
+
+function _estPickAddr(addrId) {
+  const est = _state.currentEstimate;
+  if (!est) return;
+  const addr = A.loadAddresses().find(function(a) { return a.id === addrId; });
+  if (!addr) return;
+
+  _captureFormState();
+  est.address = addr.address;
+  est.addressId = addr.id;
+
+  const input = document.getElementById('est-address');
+  if (input) input.value = addr.address;
+  const dropdown = document.getElementById('est-addr-suggest');
+  if (dropdown) dropdown.style.display = 'none';
+}
+
+// ══════════════════════════════════════════
 // CAPTURE FORM STATE — read all DOM inputs
 // into _state.currentEstimate before re-render
 // ══════════════════════════════════════════
@@ -293,7 +331,8 @@ function renderEstimateBuilder(estId) {
   // ── Job Info ──
   html += '<div class="est-section-title">JOB INFO</div>';
   html += '<div class="field"><label>ADDRESS</label>';
-  html += '<input type="text" id="est-address" name="astra-xestaddr" autocomplete="nope" placeholder="STREET ADDRESS" value="' + A.esc(est.address) + '">';
+  html += '<input type="text" id="est-address" name="astra-xestaddr" autocomplete="nope" placeholder="STREET ADDRESS" value="' + A.esc(est.address) + '" oninput="window._estAddrSearch(this.value)">';
+  html += '<div id="est-addr-suggest" class="addr-suggest" style="display:none;"></div>';
   html += '</div>';
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
   html += '<div class="field"><label>CUSTOMER</label><input type="text" id="est-cname" name="astra-xestcname" autocomplete="nope" placeholder="NAME" value="' + A.esc(est.customerName) + '"></div>';
@@ -544,6 +583,8 @@ Object.assign(window, {
   _estSave: _estSave,
   _estMatSearch: _estMatSearch,
   _estPickMat: _estPickMat,
+  _estAddrSearch: _estAddrSearch,
+  _estPickAddr: _estPickAddr,
   _pbSave: _pbSave,
 });
 
