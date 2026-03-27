@@ -403,13 +403,13 @@ function renderEstimateBuilder(estId) {
   const body = document.getElementById('estimate-builder-body');
   if (!body) return;
 
-  // Load or create — reuse in-memory estimate if IDs match
+  // Load or create — always fetch fresh from cache to pick up sync changes
   if (estId && typeof estId === 'string') {
-    if (_state.currentEstimate && _state.currentEstimate.id === estId) {
-      // Already editing — keep in-memory state
+    var fresh = A.getEstimate(estId);
+    if (fresh) {
+      _state.currentEstimate = fresh;
     } else {
-      _state.currentEstimate = A.getEstimate(estId);
-      if (!_state.currentEstimate) _state.currentEstimate = newEstimate();
+      _state.currentEstimate = newEstimate();
     }
   } else {
     _state.currentEstimate = newEstimate();
