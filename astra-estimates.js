@@ -16,7 +16,6 @@ function defaultPricebook() {
     overheadPercent: 15,
     profitPercent: 15,
     materialMarkup: 40,
-    serviceCallFee: 99,
     permitFee: 0,
     taxRate: 8.25
   };
@@ -77,7 +76,7 @@ function recalc(est) {
   est.materialMarkupTotal = 0;
   est.materials.forEach(function(m) {
     const cost = (parseFloat(m.unitCost) || 0) * (parseFloat(m.qty) || 0);
-    const markupPct = parseFloat(m.markup);
+    const markupPct = parseFloat(m.markup) || 0;
     m.lineTotal = cost + (cost * markupPct / 100);
     est.materialSubtotal += cost;
     est.materialMarkupTotal += cost * markupPct / 100;
@@ -439,9 +438,9 @@ function renderEstimateBuilder(estId) {
       html += '<div style="font-size:11px;color:#555;margin:4px 0 2px;text-transform:uppercase;letter-spacing:0.5px;">' + A.esc(m.unit) + '</div>';
     }
     html += '<div class="est-mat-fields">';
-    html += '<div class="est-mat-field"><label>QTY</label><input type="number" inputmode="decimal" data-field="qty" data-idx="' + i + '" value="' + (m.qty || '') + '"></div>';
-    html += '<div class="est-mat-field"><label>COST</label><input type="number" inputmode="decimal" step="0.01" data-field="unitCost" data-idx="' + i + '" value="' + (m.unitCost || '') + '"></div>';
-    html += '<div class="est-mat-field"><label>MKUP%</label><input type="number" inputmode="decimal" data-field="markup" data-idx="' + i + '" value="' + (m.markup != null ? m.markup : pb.materialMarkup) + '"></div>';
+    html += '<div class="est-mat-field"><label>QTY</label><input type="number" inputmode="decimal" min="0" data-field="qty" data-idx="' + i + '" value="' + (m.qty || '') + '"></div>';
+    html += '<div class="est-mat-field"><label>COST</label><input type="number" inputmode="decimal" min="0" step="0.01" data-field="unitCost" data-idx="' + i + '" value="' + (m.unitCost || '') + '"></div>';
+    html += '<div class="est-mat-field"><label>MKUP%</label><input type="number" inputmode="decimal" min="0" data-field="markup" data-idx="' + i + '" value="' + (m.markup != null ? m.markup : pb.materialMarkup) + '"></div>';
     html += '<div class="est-mat-field"><label>TOTAL</label><input type="text" value="' + _fmt(m.lineTotal || 0) + '" readonly style="color:#FF6B00;font-weight:700;background:none;border:none;"></div>';
     html += '</div>';
     html += '</div>';
@@ -452,19 +451,19 @@ function renderEstimateBuilder(estId) {
   // ── Labor ──
   html += '<div class="est-section-title">LABOR</div>';
   html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
-  html += '<div class="field"><label>HOURS</label><input type="number" inputmode="decimal" id="est-labor-hrs" value="' + (est.laborHours || '') + '"></div>';
-  html += '<div class="field"><label>$/HR</label><input type="number" inputmode="decimal" id="est-labor-rate" value="' + (est.laborRate || '') + '"></div>';
+  html += '<div class="field"><label>HOURS</label><input type="number" inputmode="decimal" min="0" id="est-labor-hrs" value="' + (est.laborHours || '') + '"></div>';
+  html += '<div class="field"><label>$/HR</label><input type="number" inputmode="decimal" min="0" id="est-labor-rate" value="' + (est.laborRate || '') + '"></div>';
   html += '<div class="field"><label>TOTAL</label><input type="text" id="est-labor-total" value="' + _fmt(est.laborTotal) + '" readonly style="color:#FF6B00;font-weight:700;"></div>';
   html += '</div>';
 
   // ── Adjustments ──
   html += '<div class="est-section-title">ADJUSTMENTS</div>';
   html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
-  html += '<div class="field"><label>OVERHEAD %</label><input type="number" inputmode="decimal" id="est-overhead" value="' + (est.overheadPercent || '') + '"></div>';
-  html += '<div class="field"><label>PROFIT %</label><input type="number" inputmode="decimal" id="est-profit" value="' + (est.profitPercent || '') + '"></div>';
-  html += '<div class="field"><label>TAX %</label><input type="number" inputmode="decimal" id="est-tax" value="' + (est.taxRate || '') + '"></div>';
+  html += '<div class="field"><label>OVERHEAD %</label><input type="number" inputmode="decimal" min="0" id="est-overhead" value="' + (est.overheadPercent || '') + '"></div>';
+  html += '<div class="field"><label>PROFIT %</label><input type="number" inputmode="decimal" min="0" id="est-profit" value="' + (est.profitPercent || '') + '"></div>';
+  html += '<div class="field"><label>TAX %</label><input type="number" inputmode="decimal" min="0" id="est-tax" value="' + (est.taxRate || '') + '"></div>';
   html += '</div>';
-  html += '<div class="field"><label>PERMIT FEE</label><input type="number" inputmode="decimal" step="0.01" id="est-permit" value="' + (est.permitFee || '') + '"></div>';
+  html += '<div class="field"><label>PERMIT FEE</label><input type="number" inputmode="decimal" min="0" step="0.01" id="est-permit" value="' + (est.permitFee || '') + '"></div>';
 
   // ── Summary ──
   html += _renderSummary(est);
@@ -489,19 +488,20 @@ function renderEstimateBuilder(estId) {
 }
 
 // ── Attach blur handlers to all inputs so math recalcs automatically ──
+let _blurAttached = false;
 function _attachBlurListeners() {
+  if (_blurAttached) return;
   const body = document.getElementById('estimate-builder-body');
   if (!body) return;
-
-  // All numeric/text inputs — on blur, capture state + recalc + refresh summary
+  _blurAttached = true;
   body.addEventListener('blur', function(e) {
-    const el = e.target;
+    var el = e.target;
     if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
     if (el.readOnly) return;
     _captureFormState();
     recalc(_state.currentEstimate);
     _refreshComputedFields();
-  }, true); // useCapture so blur (which doesn't bubble) gets caught
+  }, true);
 }
 
 // ── Refresh only the computed/readonly fields without full re-render ──
@@ -618,7 +618,6 @@ function renderPricebook() {
     { key: 'overheadPercent', label: 'OVERHEAD %', step: '0.1' },
     { key: 'profitPercent', label: 'PROFIT MARGIN %', step: '0.1' },
     { key: 'materialMarkup', label: 'DEFAULT MATERIAL MARKUP %', step: '0.1' },
-    { key: 'serviceCallFee', label: 'SERVICE CALL FEE', step: '0.01' },
     { key: 'permitFee', label: 'DEFAULT PERMIT FEE', step: '0.01' },
     { key: 'taxRate', label: 'TAX RATE %', step: '0.01' }
   ];
@@ -627,7 +626,7 @@ function renderPricebook() {
 
   fields.forEach(function(f) {
     html += '<div class="field"><label>' + f.label + '</label>';
-    html += '<input type="number" inputmode="decimal" step="' + f.step + '" id="pb-' + f.key + '" value="' + (pb[f.key] || 0) + '" onblur="window._pbSave()">';
+    html += '<input type="number" inputmode="decimal" min="0" step="' + f.step + '" id="pb-' + f.key + '" value="' + (pb[f.key] || 0) + '" onblur="window._pbSave()">';
     html += '</div>';
   });
 
@@ -640,7 +639,7 @@ function renderPricebook() {
 
 function _pbSave() {
   const pb = loadPricebook();
-  const fields = ['laborRate', 'overheadPercent', 'profitPercent', 'materialMarkup', 'serviceCallFee', 'permitFee', 'taxRate'];
+  const fields = ['laborRate', 'overheadPercent', 'profitPercent', 'materialMarkup', 'permitFee', 'taxRate'];
   fields.forEach(function(key) {
     const el = document.getElementById('pb-' + key);
     if (el) pb[key] = parseFloat(el.value) || 0;
