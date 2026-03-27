@@ -1,4 +1,4 @@
-const CACHE_NAME = 'astra-v46';
+const CACHE_NAME = 'astra-v47';
 const ASSETS = [
   'index.html', 'app.js', 'astra-materials.js', 'astra-maps.js', 'astra-sync.js', 'astra-estimates.js',
   'manifest.json', 'rough_materials.json', 'trim_materials.json',
@@ -10,6 +10,10 @@ self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())
   );
+});
+
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {

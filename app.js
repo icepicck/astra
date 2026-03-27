@@ -1789,7 +1789,8 @@ if ('serviceWorker' in navigator) {
       const newSW = reg.installing;
       if (!newSW) return;
       newSW.addEventListener('statechange', () => {
-        if (newSW.state === 'activated' && !_swUpdateReady) {
+        // Trigger on installed (waiting) — don't wait for activated
+        if (newSW.state === 'installed' && navigator.serviceWorker.controller && !_swUpdateReady) {
           _swUpdateReady = true;
           _handleUpdate();
         }
@@ -1797,9 +1798,9 @@ if ('serviceWorker' in navigator) {
     });
   }).catch(() => {});
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!_swUpdateReady) {
-      _swUpdateReady = true;
-      _handleUpdate();
+    if (_swUpdateReady) {
+      // New SW took control — reload to use fresh files
+      window.location.reload();
     }
   });
 }
@@ -1820,20 +1821,30 @@ function _isAppIdle() {
 function _handleUpdate() {
   if (_isAppIdle()) {
     // Silent auto-reload — user won't notice
-    console.log('[ASTRA] Idle auto-update — reloading silently');
-    window.location.reload();
+    console.log('[ASTRA] Idle auto-update — reloading');
+    _applyUpdate();
   } else {
-    // Busy — show the yellow banner, let them choose when
+    // Busy — show banner, let them choose when
     _showUpdateBanner();
   }
+}
+
+function _applyUpdate() {
+  navigator.serviceWorker.getRegistration().then(function(reg) {
+    if (reg && reg.waiting) {
+      reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    } else {
+      window.location.reload();
+    }
+  });
 }
 
 function _showUpdateBanner() {
   if (document.getElementById('sw-update-banner')) return;
   const banner = document.createElement('div');
   banner.id = 'sw-update-banner';
-  banner.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:#e8a100;color:#000;padding:10px 18px;border-radius:8px;font-weight:bold;font-size:13px;z-index:9999;display:flex;align-items:center;gap:12px;box-shadow:0 4px 12px rgba(0,0,0,0.4);';
-  banner.innerHTML = 'UPDATE READY <button onclick="window.hardReload ? window.hardReload() : window.location.reload(true)" style="background:#000;color:#e8a100;border:none;padding:6px 14px;border-radius:6px;font-weight:bold;font-size:13px;cursor:pointer;">RELOAD NOW</button>';
+  banner.style.cssText = 'position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:#FF6B00;color:#fff;padding:10px 18px;border-radius:10px;font-weight:800;font-size:12px;z-index:9999;display:flex;align-items:center;gap:12px;box-shadow:0 4px 16px rgba(255,107,0,0.4);letter-spacing:1px;text-transform:uppercase;';
+  banner.innerHTML = 'UPDATE READY <button onclick="_applyUpdate()" style="background:#fff;color:#FF6B00;border:none;padding:6px 14px;border-radius:6px;font-weight:800;font-size:12px;cursor:pointer;letter-spacing:1px;">RELOAD</button>';
   document.body.appendChild(banner);
 }
 
@@ -1868,7 +1879,7 @@ Object.assign(window, {
   // Cloud sync
   runSyncPush, runSyncPull,
   // Settings
-  saveGmapsKey, saveHomeBase, hardReload,
+  saveGmapsKey, saveHomeBase, hardReload, _applyUpdate,
 });
 
 })();
