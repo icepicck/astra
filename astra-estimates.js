@@ -424,6 +424,9 @@ function renderEstimateBuilder(estId) {
 
   html += '<div class="field"><label>DESCRIPTION</label><textarea id="est-desc" rows="2" placeholder="SCOPE OF WORK...">' + A.esc(est.description) + '</textarea></div>';
 
+  // ── Intelligence Section (Phase B) ──
+  html += _renderIntelSection(est);
+
   // ── Materials ──
   html += '<div class="est-section-title">MATERIALS</div>';
 
@@ -647,6 +650,246 @@ function _pbSave() {
   savePricebook(pb);
 }
 
+// ══════════════════════════════════════════
+// PHASE B: INTELLIGENCE ENGINE
+// ══════════════════════════════════════════
+
+// ── Query: Similar Jobs by Type ──
+function _querySimilarJobs(jobType) {
+  if (!jobType) return { materials: [], jobCount: 0 };
+  var jobs = A.loadJobs().filter(function(j) {
+    return j.types && j.types.indexOf(jobType) !== -1 && j.materials && j.materials.length > 0;
+  });
+  if (!jobs.length) return { materials: [], jobCount: 0 };
+
+  // Aggregate materials across all matching jobs
+  var matMap = {};
+  jobs.forEach(function(j) {
+    j.materials.forEach(function(m) {
+      var key = m.itemId || m.name;
+      if (!matMap[key]) {
+        matMap[key] = { itemId: m.itemId, name: m.name, unit: m.unit || 'EA', totalQty: 0, jobCount: 0 };
+      }
+      matMap[key].totalQty += (m.qty || 1);
+      matMap[key].jobCount += 1;
+    });
+  });
+
+  // Convert to array with averages, sorted by frequency
+  var materials = Object.values(matMap).map(function(m) {
+    m.avgQty = Math.ceil(m.totalQty / m.jobCount);
+    return m;
+  }).sort(function(a, b) { return b.jobCount - a.jobCount; });
+
+  return { materials: materials, jobCount: jobs.length };
+}
+
+// ── Query: Jobs at Address ──
+function _queryAddressJobs(addressId) {
+  if (!addressId) return { materials: [], jobCount: 0, jobs: [] };
+  var jobs = A.loadJobs().filter(function(j) {
+    return j.addressId === addressId && j.materials && j.materials.length > 0;
+  });
+  if (!jobs.length) return { materials: [], jobCount: 0, jobs: [] };
+
+  // Collect all unique materials used at this address
+  var matMap = {};
+  jobs.forEach(function(j) {
+    j.materials.forEach(function(m) {
+      var key = m.itemId || m.name;
+      if (!matMap[key]) {
+        matMap[key] = { itemId: m.itemId, name: m.name, unit: m.unit || 'EA', lastQty: m.qty || 1, uses: 0 };
+      }
+      matMap[key].lastQty = m.qty || 1;
+      matMap[key].uses += 1;
+    });
+  });
+
+  return {
+    materials: Object.values(matMap).sort(function(a, b) { return b.uses - a.uses; }),
+    jobCount: jobs.length,
+    jobs: jobs
+  };
+}
+
+// ── Query: Property Intelligence ──
+function _getPropertyIntel(addressId) {
+  if (!addressId) return null;
+  var addrs = A.loadAddresses();
+  var addr = addrs.find(function(a) { return a.id === addressId; });
+  if (!addr) return null;
+  var fields = [];
+  if (addr.panelType) fields.push({ label: 'PANEL', value: addr.panelType });
+  if (addr.ampRating) fields.push({ label: 'AMPS', value: addr.ampRating });
+  if (addr.breakerType) fields.push({ label: 'BREAKER', value: addr.breakerType });
+  if (addr.serviceType) fields.push({ label: 'SERVICE', value: addr.serviceType });
+  if (addr.panelLocation) fields.push({ label: 'LOCATION', value: addr.panelLocation });
+  if (addr.builder) fields.push({ label: 'BUILDER', value: addr.builder });
+  if (addr.subdivision) fields.push({ label: 'SUBDIVISION', value: addr.subdivision });
+  if (addr.notes) fields.push({ label: 'NOTES', value: addr.notes });
+  if (!fields.length) return null;
+  return { address: addr.address, fields: fields };
+}
+
+// ── Render: Intelligence Section (inside builder) ──
+function _renderIntelSection(est) {
+  var html = '';
+
+  // Property Intelligence
+  var intel = _getPropertyIntel(est.addressId);
+  if (intel) {
+    html += '<div class="est-intel-card">';
+    html += '<div class="est-intel-header"><span class="est-intel-icon">⚡</span> PROPERTY INTEL</div>';
+    html += '<div class="est-intel-chips">';
+    intel.fields.forEach(function(f) {
+      if (f.label === 'NOTES') {
+        html += '<div class="est-intel-note">' + A.esc(f.value) + '</div>';
+      } else {
+        html += '<span class="est-intel-chip"><span class="est-intel-chip-label">' + f.label + '</span> ' + A.esc(f.value) + '</span>';
+      }
+    });
+    html += '</div></div>';
+  }
+
+  // Load from Similar Jobs
+  if (est.jobType) {
+    var similar = _querySimilarJobs(est.jobType);
+    if (similar.materials.length > 0) {
+      html += '<div class="est-intel-card">';
+      html += '<div class="est-intel-header"><span class="est-intel-icon">📊</span> SIMILAR ' + A.esc(est.jobType) + ' JOBS <span class="est-intel-count">' + similar.jobCount + ' JOB' + (similar.jobCount !== 1 ? 'S' : '') + '</span></div>';
+      html += '<div class="est-intel-mats">';
+      similar.materials.slice(0, 10).forEach(function(m) {
+        var alreadyAdded = est.materials.some(function(em) { return (em.itemId === m.itemId) || (em.name === m.name); });
+        html += '<div class="est-intel-mat-row' + (alreadyAdded ? ' added' : '') + '">';
+        html += '<span class="est-intel-mat-name">' + A.esc(m.name) + '</span>';
+        html += '<span class="est-intel-mat-qty">AVG ' + m.avgQty + ' ' + A.esc(m.unit) + '</span>';
+        if (!alreadyAdded) {
+          html += '<button class="est-intel-add-btn" onclick="window._estImportMat(\'' + A.esc(m.itemId) + '\',\'' + A.esc(m.name) + '\',\'' + A.esc(m.unit) + '\',' + m.avgQty + ')">+</button>';
+        } else {
+          html += '<span class="est-intel-added">✓</span>';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+      if (similar.materials.length > 0) {
+        var unadded = similar.materials.filter(function(m) {
+          return !est.materials.some(function(em) { return (em.itemId === m.itemId) || (em.name === m.name); });
+        });
+        if (unadded.length > 0) {
+          html += '<button class="btn btn-secondary" style="width:100%;margin-top:8px;font-size:12px;" onclick="window._estImportAllSimilar()">LOAD ALL ' + unadded.length + ' MATERIALS</button>';
+        }
+      }
+      html += '</div>';
+    }
+  }
+
+  // Load from Address History
+  if (est.addressId) {
+    var addrData = _queryAddressJobs(est.addressId);
+    if (addrData.materials.length > 0) {
+      html += '<div class="est-intel-card">';
+      html += '<div class="est-intel-header"><span class="est-intel-icon">📍</span> PREVIOUSLY AT ADDRESS <span class="est-intel-count">' + addrData.jobCount + ' JOB' + (addrData.jobCount !== 1 ? 'S' : '') + '</span></div>';
+      html += '<div class="est-intel-mats">';
+      addrData.materials.slice(0, 10).forEach(function(m) {
+        var alreadyAdded = est.materials.some(function(em) { return (em.itemId === m.itemId) || (em.name === m.name); });
+        html += '<div class="est-intel-mat-row' + (alreadyAdded ? ' added' : '') + '">';
+        html += '<span class="est-intel-mat-name">' + A.esc(m.name) + '</span>';
+        html += '<span class="est-intel-mat-qty">LAST: ' + m.lastQty + ' ' + A.esc(m.unit) + '</span>';
+        if (!alreadyAdded) {
+          html += '<button class="est-intel-add-btn" onclick="window._estImportMat(\'' + A.esc(m.itemId) + '\',\'' + A.esc(m.name) + '\',\'' + A.esc(m.unit) + '\',' + m.lastQty + ')">+</button>';
+        } else {
+          html += '<span class="est-intel-added">✓</span>';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+      var unaddedAddr = addrData.materials.filter(function(m) {
+        return !est.materials.some(function(em) { return (em.itemId === m.itemId) || (em.name === m.name); });
+      });
+      if (unaddedAddr.length > 0) {
+        html += '<button class="btn btn-secondary" style="width:100%;margin-top:8px;font-size:12px;" onclick="window._estImportAllAddress()">LOAD ALL ' + unaddedAddr.length + ' MATERIALS</button>';
+      }
+      html += '</div>';
+    }
+  }
+
+  return html;
+}
+
+// ── Import helpers ──
+
+function _estImportMat(itemId, name, unit, qty) {
+  if (!_state.currentEstimate) return;
+  _captureFormState();
+  var pb = loadPricebook();
+  _state.currentEstimate.materials.push({
+    itemId: itemId,
+    name: name,
+    qty: qty,
+    unit: unit,
+    unitCost: 0,
+    markup: pb.materialMarkup,
+    lineTotal: 0
+  });
+  recalc(_state.currentEstimate);
+  renderEstimateBuilder(_state.currentEstimate.id);
+  A.showToast('ADDED: ' + name);
+}
+
+function _estImportAllSimilar() {
+  if (!_state.currentEstimate) return;
+  _captureFormState();
+  var est = _state.currentEstimate;
+  var similar = _querySimilarJobs(est.jobType);
+  var pb = loadPricebook();
+  var count = 0;
+  similar.materials.forEach(function(m) {
+    var alreadyAdded = est.materials.some(function(em) { return (em.itemId === m.itemId) || (em.name === m.name); });
+    if (!alreadyAdded) {
+      est.materials.push({
+        itemId: m.itemId,
+        name: m.name,
+        qty: m.avgQty,
+        unit: m.unit,
+        unitCost: 0,
+        markup: pb.materialMarkup,
+        lineTotal: 0
+      });
+      count++;
+    }
+  });
+  recalc(est);
+  renderEstimateBuilder(est.id);
+  A.showToast(count + ' MATERIAL' + (count !== 1 ? 'S' : '') + ' LOADED');
+}
+
+function _estImportAllAddress() {
+  if (!_state.currentEstimate) return;
+  _captureFormState();
+  var est = _state.currentEstimate;
+  var addrData = _queryAddressJobs(est.addressId);
+  var pb = loadPricebook();
+  var count = 0;
+  addrData.materials.forEach(function(m) {
+    var alreadyAdded = est.materials.some(function(em) { return (em.itemId === m.itemId) || (em.name === m.name); });
+    if (!alreadyAdded) {
+      est.materials.push({
+        itemId: m.itemId,
+        name: m.name,
+        qty: m.lastQty,
+        unit: m.unit,
+        unitCost: 0,
+        markup: pb.materialMarkup,
+        lineTotal: 0
+      });
+      count++;
+    }
+  });
+  recalc(est);
+  renderEstimateBuilder(est.id);
+  A.showToast(count + ' MATERIAL' + (count !== 1 ? 'S' : '') + ' LOADED');
+}
+
 // ── Public API ──
 Object.assign(window, {
   renderEstimates: renderEstimatesList,
@@ -663,6 +906,9 @@ Object.assign(window, {
   _estAddrSearch: _estAddrSearch,
   _estPickAddr: _estPickAddr,
   _pbSave: _pbSave,
+  _estImportMat: _estImportMat,
+  _estImportAllSimilar: _estImportAllSimilar,
+  _estImportAllAddress: _estImportAllAddress,
 });
 
 })();

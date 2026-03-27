@@ -721,6 +721,45 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
 }
 .est-settings-btn:active { background: rgba(255,107,0,0.1); }
 .est-settings-btn svg { width: 24px; height: 24px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ── Phase B: Intelligence Cards ── */
+.est-intel-card {
+  background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px;
+  padding: 14px; margin-bottom: 12px;
+}
+.est-intel-header {
+  font-size: 12px; font-weight: 800; color: #FF6B00; letter-spacing: 1.5px;
+  text-transform: uppercase; margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+}
+.est-intel-icon { font-size: 14px; }
+.est-intel-count {
+  margin-left: auto; font-size: 11px; color: #555; font-weight: 700;
+}
+.est-intel-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.est-intel-chip {
+  display: inline-block; font-size: 12px; font-weight: 700; color: #e0e0e0;
+  background: #222; padding: 5px 10px; border-radius: 6px;
+}
+.est-intel-chip-label { color: #666; font-size: 10px; letter-spacing: 0.5px; margin-right: 2px; }
+.est-intel-note {
+  font-size: 12px; color: #888; line-height: 1.4; padding: 4px 0; width: 100%;
+}
+.est-intel-mats { display: flex; flex-direction: column; gap: 2px; }
+.est-intel-mat-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px 0;
+  border-bottom: 1px solid #222;
+}
+.est-intel-mat-row.added { opacity: 0.5; }
+.est-intel-mat-name { flex: 1; font-size: 13px; font-weight: 600; color: #ccc; }
+.est-intel-mat-qty { font-size: 11px; color: #666; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+.est-intel-add-btn {
+  width: 32px; height: 32px; border: none; border-radius: 8px;
+  background: rgba(255,107,0,0.15); color: #FF6B00; font-size: 18px; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: background 0.15s;
+}
+.est-intel-add-btn:active { background: rgba(255,107,0,0.3); }
+.est-intel-added { color: #2d8a4e; font-size: 14px; font-weight: 700; width: 32px; text-align: center; flex-shrink: 0; }
 </style>
 </head>
 <body>

@@ -1,0 +1,148 @@
+{
+  "version": "0.4",
+  "exportedAt": "2026-03-22T12:00:00.000Z",
+  "jobs": [
+    {
+      "id": "j-001", "syncId": "s-001", "address": "1247 Maple Ridge Dr", "addressId": "a-001",
+      "types": ["Panel Upgrade"], "status": "Complete",
+      "date": "2026-03-15", "techId": "t-001", "techName": "Mike Torres",
+      "notes": "200A panel upgrade. Old Federal Pacific swapped for Square D Homeline. Permit #2026-0412. Inspector passed first try. Drywall patch needed on south wall.",
+      "photos": [], "drawings": [], "videos": [],
+      "archived": true, "createdAt": "2026-03-10T08:00:00Z", "updatedAt": "2026-03-15T16:30:00Z"
+    },
+    {
+      "id": "j-002", "syncId": "s-002", "address": "892 Cottonwood Ln", "addressId": "a-002",
+      "types": ["EV Charger", "Trenching"], "status": "In Progress",
+      "date": "2026-03-22", "techId": "t-001", "techName": "Mike Torres",
+      "notes": "Tesla Wall Connector Gen 3. 60A circuit from panel. 40ft trench from panel to detached garage. Customer wants conduit buried 18in. Call before digging — irrigation lines on west side.",
+      "photos": [], "drawings": [], "videos": [],
+      "archived": false, "createdAt": "2026-03-18T07:15:00Z", "updatedAt": "2026-03-22T09:00:00Z"
+    },
+    {
+      "id": "j-003", "syncId": "s-003", "address": "3401 Birch Hollow Ct", "addressId": "a-003",
+      "types": ["Service Call"], "status": "Complete",
+      "date": "2026-03-14", "techId": "t-001", "techName": "Mike Torres",
+      "notes": "Intermittent tripping on kitchen 20A. Found loose neutral at panel bus. Torqued to spec and tested under load. Ran for 30 min with microwave + dishwasher no trip.",
+      "photos": [], "drawings": [], "videos": [],
+      "archived": true, "createdAt": "2026-03-14T06:45:00Z", "updatedAt": "2026-03-14T11:00:00Z"
+    },
+    {
+      "id": "j-004", "syncId": "s-004", "address": "710 Sycamore Blvd, Unit B", "addressId": "a-004",
+      "types": ["Rough-In", "Fixture Install"], "status": "Needs Callback",
+      "date": "2026-03-20", "techId": "t-001", "techName": "Mike Torres",
+      "notes": "Rough-in complete for 3BR/2BA unit. 22 circuits. Waiting on GC for fixture selections — they keep changing the kitchen island layout. Callback scheduled for Thursday.",
+      "photos": [], "drawings": [], "videos": [],
+      "archived": false, "createdAt": "2026-03-16T07:00:00Z", "updatedAt": "2026-03-20T14:00:00Z"
+    },
+    {
+      "id": "j-005", "syncId": "s-005", "address": "2200 Elm Creek Pkwy", "addressId": "a-005",
+      "types": ["Panel Upgrade", "EV Charger"], "status": "Not Started",
+      "date": "2026-03-25", "techId": "t-001", "techName": "Mike Torres",
+      "notes": "Customer wants 200A upgrade from 100A AND a Tesla charger. Need to pull permit first. Existing panel is Zinsco — full rip and replace. Meter socket looks rough, may need POCO coordination.",
+      "photos": [], "drawings": [], "videos": [],
+      "archived": false, "createdAt": "2026-03-21T10:00:00Z", "updatedAt": "2026-03-21T10:00:00Z"
+    },
+    {
+      "id": "j-006", "syncId": "s-006", "address": "445 Pecan Grove Way", "addressId": "a-006",
+      "types": ["Service Call"], "status": "Waiting on Materials",
+      "date": "2026-03-19", "techId": "t-001", "techName": "Mike Torres",
+      "notes": "GFCI keeps tripping on outdoor receptacle. Found water intrusion in the in-use cover — cracked. Ordered Intermatic WP5220 from supply house. Should be in Monday.",
+      "photos": [], "drawings": [], "videos": [],
+      "archived": false, "createdAt": "2026-03-19T08:30:00Z", "updatedAt": "2026-03-19T15:00:00Z"
+    },
+    {
+      "id": "j-007", "syncId": "s-007", "address": "1247 Maple Ridge Dr", "addressId": "a-001",
+      "types": ["Service Call"], "status": "Not Started",
+      "date": "2026-03-26", "techId": "t-001", "techName": "Mike Torres",
+      "notes": "Callback from panel upgrade job. Customer says one bedroom circuit feels warm at the outlet. Probably a backstab connection in the old wiring. Need to check.",
+      "photos": [], "drawings": [], "videos": [],
+      "archived": false, "createdAt": "2026-03-22T11:00:00Z", "updatedAt": "2026-03-22T11:00:00Z"
+    },
+    {
+      "id": "j-008", "syncId": "s-008", "address": "3401 Birch Hollow Ct", "addressId": "a-003",
+      "types": ["EV Charger"], "status": "Not Started",
+      "date": "2026-03-28", "techId": "t-001", "techName": "Mike Torres",
+      "notes": "Same customer from the kitchen breaker fix. Wants a ChargePoint Home Flex now. Panel has space. 50A circuit, about 25ft run to garage. Easy job.",
+      "photos": [], "drawings": [], "videos": [],
+      "archived": false, "createdAt": "2026-03-22T13:00:00Z", "updatedAt": "2026-03-22T13:00:00Z"
+    },
+    {
+      "id": "j-009", "syncId": "s-009", "address": "1580 Magnolia Ranch Rd", "addressId": "a-007",
+      "types": ["Rough-In"], "status": "In Progress",
+      "date": "2026-03-21", "techId": "t-001", "techName": "Mike Torres",
+      "notes": "New construction 4BR/3BA. 32 circuits. Working with Castlerock Homes. Slab is poured, framing complete. Running all home runs today and tomorrow. Low voltage rough-in scheduled for Wednesday.",
+      "photos": [], "drawings": [], "videos": [],
+      "archived": false, "createdAt": "2026-03-17T06:30:00Z", "updatedAt": "2026-03-21T17:00:00Z"
+    },
+    {
+      "id": "j-010", "syncId": "s-010", "address": "330 Juniper Springs Dr", "addressId": "a-008",
+      "types": ["Fixture Install"], "status": "Complete",
+      "date": "2026-03-13", "techId": "t-001", "techName": "Mike Torres",
+      "notes": "Trim out on spec home. 14 recessed lights, 3 ceiling fans, 2 bath fans, kitchen pendant over island. All LED retrofit cans. Done in 5 hours.",
+      "photos": [], "drawings": [], "videos": [],
+      "archived": true, "createdAt": "2026-03-13T07:00:00Z", "updatedAt": "2026-03-13T14:00:00Z"
+    }
+  ],
+  "techs": [
+    { "id": "t-001", "name": "Mike Torres" }
+  ],
+  "addresses": [
+    {
+      "id": "a-001", "address": "1247 Maple Ridge Dr",
+      "builder": "", "subdivision": "Maple Ridge Estates",
+      "panelType": "Main Breaker", "panelBrand": "Square D Homeline",
+      "ampRating": "200", "breakerType": "Plug-on", "serviceType": "Underground",
+      "panelLocation": "Garage — left wall", "notes": "Gate code 4421. Dog in backyard (friendly). Panel recently upgraded by us."
+    },
+    {
+      "id": "a-002", "address": "892 Cottonwood Ln",
+      "builder": "", "subdivision": "Cottonwood Creek",
+      "panelType": "Main Breaker", "panelBrand": "Eaton BR",
+      "ampRating": "200", "breakerType": "BR Series", "serviceType": "Overhead",
+      "panelLocation": "Exterior — south side", "notes": "Irrigation lines on west side of yard. Call before trenching."
+    },
+    {
+      "id": "a-003", "address": "3401 Birch Hollow Ct",
+      "builder": "Perry Homes", "subdivision": "Birch Hollow",
+      "panelType": "Main Breaker", "panelBrand": "Siemens",
+      "ampRating": "200", "breakerType": "QP Series", "serviceType": "Underground",
+      "panelLocation": "Garage — back wall", "notes": "2019 build. Good access. Homeowner is an engineer, asks a lot of questions."
+    },
+    {
+      "id": "a-004", "address": "710 Sycamore Blvd, Unit B",
+      "builder": "Greystar Development", "subdivision": "",
+      "panelType": "Main Lug", "panelBrand": "Eaton CH",
+      "ampRating": "125", "breakerType": "CH Series", "serviceType": "Underground",
+      "panelLocation": "Utility closet — hallway", "notes": "Multi-family new construction. GC is Greystar. Super is Danny — call him not the office."
+    },
+    {
+      "id": "a-005", "address": "2200 Elm Creek Pkwy",
+      "builder": "", "subdivision": "Elm Creek",
+      "panelType": "Main Breaker", "panelBrand": "Zinsco (REPLACE)",
+      "ampRating": "100", "breakerType": "Zinsco (obsolete)", "serviceType": "Overhead",
+      "panelLocation": "Interior — master closet", "notes": "1978 build. Zinsco panel — known fire hazard. Full rip and replace scheduled. May need POCO for meter reseat."
+    },
+    {
+      "id": "a-006", "address": "445 Pecan Grove Way",
+      "builder": "Lennar", "subdivision": "Pecan Grove",
+      "panelType": "Main Breaker", "panelBrand": "Square D QO",
+      "ampRating": "200", "breakerType": "QO Series", "serviceType": "Underground",
+      "panelLocation": "Garage — right wall", "notes": "2021 Lennar build. Decent wiring. Outdoor receptacles are all weather-rated but the in-use covers are builder grade junk."
+    },
+    {
+      "id": "a-007", "address": "1580 Magnolia Ranch Rd",
+      "builder": "Castlerock Homes", "subdivision": "Magnolia Ranch",
+      "panelType": "Main Breaker", "panelBrand": "Square D Homeline",
+      "ampRating": "200", "breakerType": "Plug-on", "serviceType": "Underground",
+      "panelLocation": "Garage — left wall (planned)", "notes": "New construction. Slab on grade. Working with Castlerock — they're good to work with. Plans revision C is current."
+    },
+    {
+      "id": "a-008", "address": "330 Juniper Springs Dr",
+      "builder": "Ashton Woods", "subdivision": "Juniper Springs",
+      "panelType": "Main Breaker", "panelBrand": "Eaton BR",
+      "ampRating": "200", "breakerType": "BR Series", "serviceType": "Underground",
+      "panelLocation": "Garage — back wall", "notes": "Spec home. Ashton Woods standard package. All LED throughout."
+    }
+  ],
+  "media": []
+}
