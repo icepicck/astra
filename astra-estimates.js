@@ -102,6 +102,61 @@ function _fmt(n) {
 }
 
 // ══════════════════════════════════════════
+// MATERIAL LIBRARY SEARCH
+// ══════════════════════════════════════════
+
+function _getAllLibraryItems() {
+  const lib = A.loadMaterialLibrary();
+  if (!lib || !lib.categories) return [];
+  return lib.categories.flatMap(function(c) {
+    return c.items.map(function(item) {
+      return { id: item.id, name: item.name, unit: item.unit || 'EA', catLabel: c.label, variants: item.variants || [] };
+    });
+  });
+}
+
+function _estMatSearch(idx, query) {
+  const dropdown = document.getElementById('est-mat-suggest-' + idx);
+  if (!dropdown) return;
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) { dropdown.style.display = 'none'; return; }
+
+  const items = _getAllLibraryItems();
+  const matches = items.filter(function(item) {
+    return item.name.toLowerCase().includes(q) || item.catLabel.toLowerCase().includes(q);
+  }).slice(0, 8);
+
+  if (!matches.length) { dropdown.style.display = 'none'; return; }
+
+  dropdown.style.display = 'block';
+  dropdown.innerHTML = matches.map(function(item) {
+    return '<div class="addr-suggest-item" onmousedown="window._estPickMat(' + idx + ',\'' + item.id + '\')">'
+      + '<div style="flex:1;"><div style="font-weight:600;">' + A.esc(item.name) + '</div>'
+      + '<div style="font-size:11px;color:#666;margin-top:2px;">' + A.esc(item.catLabel) + ' — ' + A.esc(item.unit) + '</div></div></div>';
+  }).join('');
+}
+
+function _estPickMat(idx, itemId) {
+  const est = _state.currentEstimate;
+  if (!est || !est.materials[idx]) return;
+  const items = _getAllLibraryItems();
+  const item = items.find(function(i) { return i.id === itemId; });
+  if (!item) return;
+
+  _captureFormState();
+  est.materials[idx].itemId = item.id;
+  est.materials[idx].name = item.name;
+  est.materials[idx].unit = item.unit;
+
+  // Close dropdown and re-render
+  const dropdown = document.getElementById('est-mat-suggest-' + idx);
+  if (dropdown) dropdown.style.display = 'none';
+
+  recalc(est);
+  renderEstimateBuilder(est.id);
+}
+
+// ══════════════════════════════════════════
 // CAPTURE FORM STATE — read all DOM inputs
 // into _state.currentEstimate before re-render
 // ══════════════════════════════════════════
@@ -261,10 +316,14 @@ function renderEstimateBuilder(estId) {
 
   est.materials.forEach(function(m, i) {
     html += '<div class="est-mat-item">';
-    html += '<div class="est-mat-row">';
-    html += '<input type="text" class="est-mat-name" data-field="name" data-idx="' + i + '" value="' + A.esc(m.name) + '" placeholder="MATERIAL NAME" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid #333;background:#222;color:#e0e0e0;font-size:14px;font-weight:600;font-family:inherit;">';
+    html += '<div class="est-mat-row" style="position:relative;">';
+    html += '<input type="text" class="est-mat-name" data-field="name" data-idx="' + i + '" value="' + A.esc(m.name) + '" placeholder="SEARCH MATERIALS..." oninput="window._estMatSearch(' + i + ',this.value)" autocomplete="off" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid #333;background:#222;color:#e0e0e0;font-size:14px;font-weight:600;font-family:inherit;">';
     html += '<button class="est-mat-remove" onclick="window._estRemoveMat(' + i + ')">✕</button>';
     html += '</div>';
+    html += '<div id="est-mat-suggest-' + i + '" class="addr-suggest" style="display:none;position:relative;z-index:10;"></div>';
+    if (m.unit && m.unit !== 'EA') {
+      html += '<div style="font-size:11px;color:#555;margin:4px 0 2px;text-transform:uppercase;letter-spacing:0.5px;">' + A.esc(m.unit) + '</div>';
+    }
     html += '<div class="est-mat-fields">';
     html += '<div class="est-mat-field"><label>QTY</label><input type="number" inputmode="decimal" data-field="qty" data-idx="' + i + '" value="' + (m.qty || '') + '"></div>';
     html += '<div class="est-mat-field"><label>COST</label><input type="number" inputmode="decimal" step="0.01" data-field="unitCost" data-idx="' + i + '" value="' + (m.unitCost || '') + '"></div>';
@@ -483,6 +542,8 @@ Object.assign(window, {
   _estAddMat: _estAddMat,
   _estRemoveMat: _estRemoveMat,
   _estSave: _estSave,
+  _estMatSearch: _estMatSearch,
+  _estPickMat: _estPickMat,
   _pbSave: _pbSave,
 });
 
