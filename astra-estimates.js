@@ -17,7 +17,11 @@ function defaultPricebook() {
     profitPercent: 15,
     materialMarkup: 40,
     permitFee: 0,
-    taxRate: 8.25
+    taxRate: 8.25,
+    companyName: '',
+    companyPhone: '',
+    companyEmail: '',
+    companyLicense: ''
   };
 }
 
@@ -303,6 +307,8 @@ function _captureFormState() {
   if (tax) est.taxRate = tax.value;
   const permit = document.getElementById('est-permit');
   if (permit) est.permitFee = permit.value;
+  const validUntil = document.getElementById('est-valid-until');
+  if (validUntil) est.validUntil = validUntil.value;
   // Materials — read from DOM by data attributes
   const matItems = document.querySelectorAll('.est-mat-item');
   matItems.forEach(function(el, i) {
@@ -471,13 +477,34 @@ function renderEstimateBuilder(estId) {
   // ── Summary ──
   html += _renderSummary(est);
 
+  // ── Status Pipeline ──
+  html += '<div class="est-section-title">STATUS</div>';
+  var statuses = ['Draft', 'Sent', 'Accepted', 'Declined'];
+  html += '<div class="est-status-bar">';
+  statuses.forEach(function(s) {
+    var active = est.status === s;
+    var cls = 'est-status-btn est-status-' + s.toLowerCase();
+    if (active) cls += ' active';
+    html += '<button class="' + cls + '" onclick="window._estSetStatus(\'' + s + '\')">' + s.toUpperCase() + '</button>';
+  });
+  html += '</div>';
+
+  // ── Valid Until ──
+  html += '<div class="field" style="margin-top:12px;"><label>VALID UNTIL</label>';
+  html += '<input type="date" id="est-valid-until" value="' + (est.validUntil || '') + '">';
+  html += '</div>';
+
   // ── Notes ──
   html += '<div class="est-section-title">NOTES</div>';
   html += '<div class="field"><textarea id="est-notes" rows="3" placeholder="ADDITIONAL NOTES...">' + A.esc(est.notes) + '</textarea></div>';
 
   // ── Actions ──
   html += '<div class="est-actions">';
-  html += '<button class="btn btn-primary" onclick="window._estSave()">SAVE DRAFT</button>';
+  html += '<button class="btn btn-primary" onclick="window._estSave()">SAVE</button>';
+  html += '</div>';
+  html += '<div class="est-actions" style="margin-top:8px;">';
+  html += '<button class="btn btn-secondary" onclick="window._estShare()" style="flex:1;">SHARE</button>';
+  html += '<button class="btn btn-secondary" onclick="window._estPreview()" style="flex:1;">PREVIEW</button>';
   html += '</div>';
   html += '<div style="height:80px;"></div>';
 
@@ -616,7 +643,25 @@ function renderPricebook() {
   if (!body) return;
   const pb = loadPricebook();
 
-  const fields = [
+  let html = '<div style="padding-top:4px;">';
+
+  // Company info section
+  html += '<div class="est-section-title">COMPANY INFO</div>';
+  var companyFields = [
+    { key: 'companyName', label: 'COMPANY NAME', type: 'text', placeholder: 'YOUR BUSINESS NAME' },
+    { key: 'companyPhone', label: 'PHONE', type: 'tel', placeholder: '(555) 555-5555' },
+    { key: 'companyEmail', label: 'EMAIL', type: 'email', placeholder: 'YOU@EMAIL.COM' },
+    { key: 'companyLicense', label: 'LICENSE #', type: 'text', placeholder: 'STATE LICENSE NUMBER' }
+  ];
+  companyFields.forEach(function(f) {
+    html += '<div class="field"><label>' + f.label + '</label>';
+    html += '<input type="' + f.type + '" id="pb-' + f.key + '" value="' + A.esc(pb[f.key] || '') + '" placeholder="' + f.placeholder + '" onblur="window._pbSave()">';
+    html += '</div>';
+  });
+
+  // Rate fields
+  html += '<div class="est-section-title">DEFAULT RATES</div>';
+  var rateFields = [
     { key: 'laborRate', label: 'LABOR RATE ($/HR)', step: '0.01' },
     { key: 'overheadPercent', label: 'OVERHEAD %', step: '0.1' },
     { key: 'profitPercent', label: 'PROFIT MARGIN %', step: '0.1' },
@@ -624,10 +669,7 @@ function renderPricebook() {
     { key: 'permitFee', label: 'DEFAULT PERMIT FEE', step: '0.01' },
     { key: 'taxRate', label: 'TAX RATE %', step: '0.01' }
   ];
-
-  let html = '<div style="padding-top:4px;">';
-
-  fields.forEach(function(f) {
+  rateFields.forEach(function(f) {
     html += '<div class="field"><label>' + f.label + '</label>';
     html += '<input type="number" inputmode="decimal" min="0" step="' + f.step + '" id="pb-' + f.key + '" value="' + (pb[f.key] || 0) + '" onblur="window._pbSave()">';
     html += '</div>';
@@ -642,10 +684,15 @@ function renderPricebook() {
 
 function _pbSave() {
   const pb = loadPricebook();
-  const fields = ['laborRate', 'overheadPercent', 'profitPercent', 'materialMarkup', 'permitFee', 'taxRate'];
-  fields.forEach(function(key) {
+  var numFields = ['laborRate', 'overheadPercent', 'profitPercent', 'materialMarkup', 'permitFee', 'taxRate'];
+  numFields.forEach(function(key) {
     const el = document.getElementById('pb-' + key);
     if (el) pb[key] = parseFloat(el.value) || 0;
+  });
+  var textFields = ['companyName', 'companyPhone', 'companyEmail', 'companyLicense'];
+  textFields.forEach(function(key) {
+    const el = document.getElementById('pb-' + key);
+    if (el) pb[key] = el.value;
   });
   savePricebook(pb);
 }
@@ -890,6 +937,219 @@ function _estImportAllAddress() {
   A.showToast(count + ' MATERIAL' + (count !== 1 ? 'S' : '') + ' LOADED');
 }
 
+// ══════════════════════════════════════════
+// PHASE C: CUSTOMER DELIVERY
+// ══════════════════════════════════════════
+
+// ── Status Pipeline ──
+function _estSetStatus(status) {
+  if (!_state.currentEstimate) return;
+  _captureFormState();
+  _state.currentEstimate.status = status;
+  _state.currentEstimate.updatedAt = new Date().toISOString();
+  recalc(_state.currentEstimate);
+  A.saveEstimate(_state.currentEstimate);
+  renderEstimateBuilder(_state.currentEstimate.id);
+  A.showToast('STATUS: ' + status.toUpperCase());
+}
+
+// ── Generate Estimate HTML ──
+function _generateEstimateHTML(est) {
+  var pb = loadPricebook();
+  var companyName = pb.companyName || 'ELECTRICAL SERVICES';
+  var companyPhone = pb.companyPhone || '';
+  var companyEmail = pb.companyEmail || '';
+  var companyLicense = pb.companyLicense || '';
+  var dateStr = new Date(est.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  var validStr = est.validUntil ? new Date(est.validUntil + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+
+  var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
+  html += '<title>Estimate — ' + _h(est.address || 'No Address') + '</title>';
+  html += '<style>';
+  html += '*{margin:0;padding:0;box-sizing:border-box}';
+  html += 'body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;background:#fff;color:#222;font-size:14px;padding:20px;max-width:700px;margin:0 auto}';
+  html += '.header{border-bottom:3px solid #FF6B00;padding-bottom:16px;margin-bottom:20px}';
+  html += '.company{font-size:22px;font-weight:900;color:#FF6B00;letter-spacing:1px;text-transform:uppercase}';
+  html += '.company-info{font-size:12px;color:#666;margin-top:4px}';
+  html += '.est-label{font-size:11px;color:#999;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px}';
+  html += '.est-title{font-size:18px;font-weight:800;margin-bottom:16px;color:#222}';
+  html += '.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}';
+  html += '.info-box{background:#f8f8f8;border-radius:8px;padding:10px 12px}';
+  html += '.info-label{font-size:10px;color:#999;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-bottom:2px}';
+  html += '.info-value{font-size:14px;font-weight:600;color:#222}';
+  html += '.section-title{font-size:11px;font-weight:800;color:#FF6B00;letter-spacing:1.5px;text-transform:uppercase;padding:10px 0 6px;border-bottom:1px solid #eee;margin-bottom:8px}';
+  html += 'table{width:100%;border-collapse:collapse;margin-bottom:16px}';
+  html += 'th{text-align:left;font-size:10px;font-weight:800;color:#999;letter-spacing:1px;text-transform:uppercase;padding:6px 8px;border-bottom:2px solid #eee}';
+  html += 'td{padding:8px;font-size:13px;border-bottom:1px solid #f0f0f0}';
+  html += 'td.num{text-align:right;font-weight:600}';
+  html += 'th.num{text-align:right}';
+  html += '.summary{background:#f8f8f8;border-radius:10px;padding:16px;margin-bottom:16px}';
+  html += '.sum-row{display:flex;justify-content:space-between;padding:4px 0;font-size:13px;color:#666}';
+  html += '.sum-row.total{border-top:2px solid #FF6B00;margin-top:8px;padding-top:10px}';
+  html += '.sum-row.total span{font-size:20px;font-weight:900;color:#222}';
+  html += '.sum-row.total .amt{color:#FF6B00}';
+  html += '.notes{background:#fffbe6;border-radius:8px;padding:12px;font-size:13px;color:#555;line-height:1.5;margin-bottom:16px}';
+  html += '.footer{text-align:center;padding-top:20px;border-top:1px solid #eee;font-size:11px;color:#bbb}';
+  html += '.valid{font-size:12px;color:#999;font-weight:600;text-align:center;margin-bottom:16px}';
+  html += '@media print{body{padding:0}table{page-break-inside:avoid}}';
+  html += '</style></head><body>';
+
+  // Header
+  html += '<div class="header">';
+  html += '<div class="company">' + _h(companyName) + '</div>';
+  var contactParts = [];
+  if (companyPhone) contactParts.push(_h(companyPhone));
+  if (companyEmail) contactParts.push(_h(companyEmail));
+  if (companyLicense) contactParts.push('LIC# ' + _h(companyLicense));
+  if (contactParts.length) html += '<div class="company-info">' + contactParts.join(' · ') + '</div>';
+  html += '</div>';
+
+  // Title
+  html += '<div class="est-label">ESTIMATE</div>';
+  html += '<div class="est-title">' + _h(est.address || 'No Address') + '</div>';
+
+  // Info grid
+  html += '<div class="info-grid">';
+  if (est.customerName) html += '<div class="info-box"><div class="info-label">CUSTOMER</div><div class="info-value">' + _h(est.customerName) + '</div></div>';
+  if (est.customerPhone) html += '<div class="info-box"><div class="info-label">PHONE</div><div class="info-value">' + _h(est.customerPhone) + '</div></div>';
+  if (est.customerEmail) html += '<div class="info-box"><div class="info-label">EMAIL</div><div class="info-value">' + _h(est.customerEmail) + '</div></div>';
+  html += '<div class="info-box"><div class="info-label">DATE</div><div class="info-value">' + dateStr + '</div></div>';
+  if (est.jobType) html += '<div class="info-box"><div class="info-label">JOB TYPE</div><div class="info-value">' + _h(est.jobType) + '</div></div>';
+  if (est.description) html += '<div class="info-box" style="grid-column:1/-1;"><div class="info-label">SCOPE</div><div class="info-value">' + _h(est.description) + '</div></div>';
+  html += '</div>';
+
+  // Materials table
+  if (est.materials.length > 0) {
+    html += '<div class="section-title">MATERIALS</div>';
+    html += '<table><thead><tr><th>ITEM</th><th class="num">QTY</th><th class="num">COST</th><th class="num">TOTAL</th></tr></thead><tbody>';
+    est.materials.forEach(function(m) {
+      var cost = (parseFloat(m.unitCost) || 0) * (parseFloat(m.qty) || 0);
+      var markup = cost * (parseFloat(m.markup) || 0) / 100;
+      html += '<tr><td>' + _h(m.name || 'Unnamed') + (m.unit && m.unit !== 'EA' ? ' <span style="color:#999;font-size:11px;">(' + _h(m.unit) + ')</span>' : '') + '</td>';
+      html += '<td class="num">' + (m.qty || 0) + '</td>';
+      html += '<td class="num">' + _fmtClean(parseFloat(m.unitCost) || 0) + '</td>';
+      html += '<td class="num">' + _fmtClean(cost + markup) + '</td></tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  // Labor
+  if (est.laborTotal > 0) {
+    html += '<div class="section-title">LABOR</div>';
+    html += '<table><thead><tr><th>DESCRIPTION</th><th class="num">HOURS</th><th class="num">RATE</th><th class="num">TOTAL</th></tr></thead><tbody>';
+    html += '<tr><td>' + _h(est.jobType || 'Labor') + '</td><td class="num">' + (est.laborHours || 0) + '</td><td class="num">' + _fmtClean(est.laborRate) + '</td><td class="num">' + _fmtClean(est.laborTotal) + '</td></tr>';
+    html += '</tbody></table>';
+  }
+
+  // Summary
+  html += '<div class="summary">';
+  html += '<div class="sum-row"><span>Materials</span><span>' + _fmtClean(est.materialSubtotal + est.materialMarkupTotal) + '</span></div>';
+  if (est.laborTotal) html += '<div class="sum-row"><span>Labor</span><span>' + _fmtClean(est.laborTotal) + '</span></div>';
+  if (est.overheadAmount) html += '<div class="sum-row"><span>Overhead</span><span>' + _fmtClean(est.overheadAmount) + '</span></div>';
+  if (est.profitAmount) html += '<div class="sum-row"><span>Profit</span><span>' + _fmtClean(est.profitAmount) + '</span></div>';
+  if (est.permitFee) html += '<div class="sum-row"><span>Permit Fee</span><span>' + _fmtClean(est.permitFee) + '</span></div>';
+  if (est.taxAmount) html += '<div class="sum-row"><span>Tax</span><span>' + _fmtClean(est.taxAmount) + '</span></div>';
+  html += '<div class="sum-row total"><span>TOTAL</span><span class="amt">' + _fmtClean(est.grandTotal) + '</span></div>';
+  html += '</div>';
+
+  // Valid until
+  if (validStr) {
+    html += '<div class="valid">This estimate is valid until ' + validStr + '</div>';
+  }
+
+  // Notes
+  if (est.notes) {
+    html += '<div class="section-title">NOTES</div>';
+    html += '<div class="notes">' + _h(est.notes).replace(/\n/g, '<br>') + '</div>';
+  }
+
+  // Footer
+  html += '<div class="footer">Generated by ASTRA</div>';
+  html += '</body></html>';
+  return html;
+}
+
+// HTML-safe escape for output doc
+function _h(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+// Clean dollar format (no $ prefix in table cells looks cleaner)
+function _fmtClean(n) { return '$' + (n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+// ── Preview: open in new tab ──
+function _estPreview() {
+  if (!_state.currentEstimate) return;
+  _captureFormState();
+  recalc(_state.currentEstimate);
+  var html = _generateEstimateHTML(_state.currentEstimate);
+  var blob = new Blob([html], { type: 'text/html' });
+  var url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+}
+
+// ── Share: native share or fallback ──
+function _estShare() {
+  if (!_state.currentEstimate) return;
+  _captureFormState();
+  recalc(_state.currentEstimate);
+  var est = _state.currentEstimate;
+
+  // Build plain text version for sharing
+  var pb = loadPricebook();
+  var companyName = pb.companyName || 'ELECTRICAL SERVICES';
+  var lines = [];
+  lines.push('ESTIMATE — ' + companyName);
+  lines.push('');
+  if (est.address) lines.push('Address: ' + est.address);
+  if (est.customerName) lines.push('Customer: ' + est.customerName);
+  if (est.jobType) lines.push('Job Type: ' + est.jobType);
+  if (est.description) lines.push('Scope: ' + est.description);
+  lines.push('');
+
+  if (est.materials.length > 0) {
+    lines.push('MATERIALS:');
+    est.materials.forEach(function(m) {
+      var cost = (parseFloat(m.unitCost) || 0) * (parseFloat(m.qty) || 0);
+      var markup = cost * (parseFloat(m.markup) || 0) / 100;
+      lines.push('  ' + m.name + ' — Qty: ' + (m.qty || 0) + ' — ' + _fmtClean(cost + markup));
+    });
+    lines.push('');
+  }
+
+  if (est.laborTotal > 0) {
+    lines.push('LABOR: ' + (est.laborHours || 0) + ' hrs @ ' + _fmtClean(est.laborRate) + '/hr = ' + _fmtClean(est.laborTotal));
+    lines.push('');
+  }
+
+  lines.push('TOTAL: ' + _fmtClean(est.grandTotal));
+
+  if (est.validUntil) {
+    var vd = new Date(est.validUntil + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    lines.push('Valid until ' + vd);
+  }
+
+  if (est.notes) {
+    lines.push('');
+    lines.push('Notes: ' + est.notes);
+  }
+
+  var text = lines.join('\n');
+
+  // Try native share API (works great on mobile)
+  if (navigator.share) {
+    navigator.share({
+      title: 'Estimate — ' + (est.address || 'No Address'),
+      text: text
+    }).catch(function() {});
+  } else {
+    // Fallback: copy to clipboard
+    navigator.clipboard.writeText(text).then(function() {
+      A.showToast('ESTIMATE COPIED TO CLIPBOARD');
+    }).catch(function() {
+      A.showToast('SHARE NOT AVAILABLE', 'error');
+    });
+  }
+}
+
 // ── Public API ──
 Object.assign(window, {
   renderEstimates: renderEstimatesList,
@@ -898,6 +1158,7 @@ Object.assign(window, {
   deleteCurrentEstimate: deleteCurrentEstimate,
   _setEstFilter: _setEstFilter,
   _estSetJobType: _estSetJobType,
+  _estSetStatus: _estSetStatus,
   _estAddMat: _estAddMat,
   _estRemoveMat: _estRemoveMat,
   _estSave: _estSave,
@@ -909,6 +1170,8 @@ Object.assign(window, {
   _estImportMat: _estImportMat,
   _estImportAllSimilar: _estImportAllSimilar,
   _estImportAllAddress: _estImportAllAddress,
+  _estPreview: _estPreview,
+  _estShare: _estShare,
 });
 
 })();
