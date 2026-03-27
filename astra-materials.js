@@ -6,6 +6,14 @@
 
 const A = window.Astra;
 
+let _matPhase = localStorage.getItem('astra_mat_phase') || 'ROUGH';
+
+function _setMatPhase(phase) {
+  _matPhase = phase;
+  localStorage.setItem('astra_mat_phase', phase);
+  renderMaterials();
+}
+
 function importMaterialLibrary(input) {
   if (!input.files.length) return;
   const reader = new FileReader();
@@ -54,10 +62,9 @@ async function autoLoadBuiltInLibraries() {
 
 function renderMaterials() {
   const body = document.getElementById('materials-body');
-  const lib = A.loadMaterialLibrary();
   const rough = A.loadRoughLibrary();
   const trim = A.loadTrimLibrary();
-  if (!lib) {
+  if (!rough && !trim) {
     body.innerHTML = `
       <div class="empty-state">
         <div><svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg></div>
@@ -67,23 +74,19 @@ function renderMaterials() {
       </div>`;
     return;
   }
-  const roughCount = rough ? rough.categories.reduce((s,c) => s + c.items.length, 0) : 0;
-  const trimCount = trim ? trim.categories.reduce((s,c) => s + c.items.length, 0) : 0;
-  const allItems = lib.categories.flatMap(c => c.items.map(i => ({ ...i, catLabel: c.label, catId: c.id })));
-  let statusHtml = '<div style="display:flex;gap:8px;margin-bottom:12px;">';
-  statusHtml += `<div style="flex:1;background:#2a2a2a;border-radius:10px;padding:10px;text-align:center;">
-    <div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;">ROUGH</div>
-    <div style="font-size:18px;font-weight:900;color:${rough ? '#FF6B00' : '#333'};">${rough ? roughCount : '—'}</div>
-  </div>`;
-  statusHtml += `<div style="flex:1;background:#2a2a2a;border-radius:10px;padding:10px;text-align:center;">
-    <div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;">TRIM</div>
-    <div style="font-size:18px;font-weight:900;color:${trim ? '#2d8a4e' : '#333'};">${trim ? trimCount : '—'}</div>
-  </div>`;
-  statusHtml += '</div>';
-  body.innerHTML = statusHtml + `
+  const activeLib = _matPhase === 'TRIM' ? trim : rough;
+  const itemCount = activeLib ? activeLib.categories.reduce((s,c) => s + c.items.length, 0) : 0;
+
+  // Phase toggle
+  let toggleHtml = '<div class="date-toggle" style="margin-bottom:12px;">';
+  toggleHtml += '<button class="date-toggle-btn' + (_matPhase === 'ROUGH' ? ' active' : '') + '" onclick="_setMatPhase(\'ROUGH\')">ROUGH-IN</button>';
+  toggleHtml += '<button class="date-toggle-btn' + (_matPhase === 'TRIM' ? ' active' : '') + '" onclick="_setMatPhase(\'TRIM\')">TRIM-OUT</button>';
+  toggleHtml += '</div>';
+
+  body.innerHTML = toggleHtml + `
     <div class="search-bar" style="margin-bottom:12px;">
       <span class="search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span>
-      <input type="text" id="mat-search" name="astra-xmatsearch" autocomplete="nope" placeholder="SEARCH ${allItems.length} ITEMS..." oninput="filterMaterials(this.value)">
+      <input type="text" id="mat-search" name="astra-xmatsearch" autocomplete="nope" placeholder="SEARCH ${itemCount} ITEMS..." oninput="filterMaterials(this.value)">
     </div>
     <div id="mat-list"></div>
     <div style="padding:12px;text-align:center;">
@@ -95,8 +98,8 @@ function renderMaterials() {
 }
 
 function filterMaterials(query) {
-  const lib = A.loadMaterialLibrary();
-  if (!lib) return;
+  const lib = _matPhase === 'TRIM' ? A.loadTrimLibrary() : A.loadRoughLibrary();
+  if (!lib) { const el = document.getElementById('mat-list'); if (el) el.innerHTML = '<div class="search-hint">NO ' + _matPhase + ' LIBRARY LOADED</div>'; return; }
   const el = document.getElementById('mat-list');
   const q = query.trim().toLowerCase();
   let html = '';
@@ -576,7 +579,7 @@ Object.assign(window, {
   openMatPicker, closeMatPicker, filterMatPicker, showMatQtyInput,
   adjustMatQty, setMatQty, removeMatFromJob, applyBulkTemplate,
   addMatToJob, filterMaterials, importMaterialLibrary,
-  renderAddrMaterialRollup,
+  renderAddrMaterialRollup, _setMatPhase,
   _matStepQty, _matAddFromPicker, _matLongPress, _matLongStop,
 });
 Object.defineProperty(window, '_matPickerActiveItem', {
