@@ -736,7 +736,9 @@ function _pbSave(showConfirmation) {
     if (el) pb[key] = el.value;
   });
   savePricebook(pb);
-  if (showConfirmation) A.showToast('PRICE BOOK SAVED');
+  if (showConfirmation && window.Astra && window.Astra.showToast) {
+    window.Astra.showToast('PRICE BOOK SAVED');
+  }
 }
 
 // ══════════════════════════════════════════

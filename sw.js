@@ -1,4 +1,4 @@
-const CACHE_NAME = 'astra-v53';
+const CACHE_NAME = 'astra-v54';
 const ASSETS = [
   'index.html', 'app.js', 'astra-materials.js', 'astra-maps.js', 'astra-sync.js', 'astra-estimates.js',
   'manifest.json', 'rough_materials.json', 'trim_materials.json',
