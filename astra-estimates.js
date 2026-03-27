@@ -714,7 +714,7 @@ function renderPricebook() {
     html += '</div>';
   });
 
-  html += '<button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="window._pbSave();A.showToast(\'PRICE BOOK SAVED\')">SAVE</button>';
+  html += '<button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="window._pbSave();window.Astra.showToast(\'PRICE BOOK SAVED\')">SAVE</button>';
   html += '<div style="height:40px;"></div>';
   html += '</div>';
 
