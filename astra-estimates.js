@@ -447,7 +447,7 @@ function renderEstimateBuilder(estId) {
   });
   html += '</div></div>';
 
-  html += '<div class="field"><label>DESCRIPTION</label><textarea id="est-desc" rows="2" placeholder="SCOPE OF WORK...">' + A.esc(est.description) + '</textarea></div>';
+  html += '<div class="field"><label>DESCRIPTION</label><textarea id="est-desc" rows="2" placeholder="SCOPE OF WORK..." autocomplete="nope">' + A.esc(est.description) + '</textarea></div>';
 
   // ── Intelligence Section (Phase B) ──
   html += _renderIntelSection(est);
@@ -463,7 +463,7 @@ function renderEstimateBuilder(estId) {
   est.materials.forEach(function(m, i) {
     html += '<div class="est-mat-item">';
     html += '<div class="est-mat-row" style="position:relative;">';
-    html += '<input type="text" class="est-mat-name" data-field="name" data-idx="' + i + '" value="' + A.esc(m.name) + '" placeholder="SEARCH MATERIALS..." oninput="window._estMatSearch(' + i + ',this.value)" autocomplete="off" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid #333;background:#222;color:#e0e0e0;font-size:14px;font-weight:600;font-family:inherit;">';
+    html += '<input type="text" class="est-mat-name" data-field="name" data-idx="' + i + '" value="' + A.esc(m.name) + '" placeholder="SEARCH MATERIALS..." oninput="window._estMatSearch(' + i + ',this.value)" autocomplete="nope" name="astra-xestmat' + i + '" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid #333;background:#222;color:#e0e0e0;font-size:14px;font-weight:600;font-family:inherit;">';
     html += '<button class="est-mat-remove" onclick="window._estRemoveMat(' + i + ')">✕</button>';
     html += '</div>';
     html += '<div id="est-mat-suggest-' + i + '" class="addr-suggest" style="display:none;position:relative;z-index:10;"></div>';
@@ -471,9 +471,9 @@ function renderEstimateBuilder(estId) {
       html += '<div style="font-size:11px;color:#555;margin:4px 0 2px;text-transform:uppercase;letter-spacing:0.5px;">' + A.esc(m.unit) + '</div>';
     }
     html += '<div class="est-mat-fields">';
-    html += '<div class="est-mat-field"><label>QTY</label><input type="number" inputmode="decimal" min="0" data-field="qty" data-idx="' + i + '" value="' + (m.qty || '') + '"></div>';
-    html += '<div class="est-mat-field"><label>COST</label><input type="number" inputmode="decimal" min="0" step="0.01" data-field="unitCost" data-idx="' + i + '" value="' + (m.unitCost || '') + '"></div>';
-    html += '<div class="est-mat-field"><label>MKUP%</label><input type="number" inputmode="decimal" min="0" data-field="markup" data-idx="' + i + '" value="' + (m.markup != null ? m.markup : pb.materialMarkup) + '"></div>';
+    html += '<div class="est-mat-field"><label>QTY</label><input type="number" inputmode="decimal" min="0" data-field="qty" data-idx="' + i + '" autocomplete="nope" value="' + (m.qty || '') + '"></div>';
+    html += '<div class="est-mat-field"><label>COST</label><input type="number" inputmode="decimal" min="0" step="0.01" data-field="unitCost" data-idx="' + i + '" autocomplete="nope" value="' + (m.unitCost || '') + '"></div>';
+    html += '<div class="est-mat-field"><label>MKUP%</label><input type="number" inputmode="decimal" min="0" data-field="markup" data-idx="' + i + '" autocomplete="nope" value="' + (m.markup != null ? m.markup : pb.materialMarkup) + '"></div>';
     html += '<div class="est-mat-field"><label>TOTAL</label><input type="text" value="' + _fmt(m.lineTotal || 0) + '" readonly style="color:#FF6B00;font-weight:700;background:none;border:none;"></div>';
     html += '</div>';
     html += '</div>';
@@ -484,19 +484,19 @@ function renderEstimateBuilder(estId) {
   // ── Labor ──
   html += '<div class="est-section-title">LABOR</div>';
   html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
-  html += '<div class="field"><label>HOURS</label><input type="number" inputmode="decimal" min="0" id="est-labor-hrs" value="' + (est.laborHours || '') + '"></div>';
-  html += '<div class="field"><label>$/HR</label><input type="number" inputmode="decimal" min="0" id="est-labor-rate" value="' + (est.laborRate || '') + '"></div>';
-  html += '<div class="field"><label>TOTAL</label><input type="text" id="est-labor-total" value="' + _fmt(est.laborTotal) + '" readonly style="color:#FF6B00;font-weight:700;"></div>';
+  html += '<div class="field"><label>HOURS</label><input type="number" inputmode="decimal" min="0" id="est-labor-hrs" autocomplete="nope" value="' + (est.laborHours || '') + '"></div>';
+  html += '<div class="field"><label>$/HR</label><input type="number" inputmode="decimal" min="0" id="est-labor-rate" autocomplete="nope" value="' + (est.laborRate || '') + '"></div>';
+  html += '<div class="field"><label>TOTAL</label><input type="text" id="est-labor-total" autocomplete="nope" value="' + _fmt(est.laborTotal) + '" readonly style="color:#FF6B00;font-weight:700;"></div>';
   html += '</div>';
 
   // ── Adjustments ──
   html += '<div class="est-section-title">ADJUSTMENTS</div>';
   html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
-  html += '<div class="field"><label>OVERHEAD %</label><input type="number" inputmode="decimal" min="0" id="est-overhead" value="' + (est.overheadPercent || '') + '"></div>';
-  html += '<div class="field"><label>PROFIT %</label><input type="number" inputmode="decimal" min="0" id="est-profit" value="' + (est.profitPercent || '') + '"></div>';
-  html += '<div class="field"><label>TAX %</label><input type="number" inputmode="decimal" min="0" id="est-tax" value="' + (est.taxRate || '') + '"></div>';
+  html += '<div class="field"><label>OVERHEAD %</label><input type="number" inputmode="decimal" min="0" id="est-overhead" autocomplete="nope" value="' + (est.overheadPercent || '') + '"></div>';
+  html += '<div class="field"><label>PROFIT %</label><input type="number" inputmode="decimal" min="0" id="est-profit" autocomplete="nope" value="' + (est.profitPercent || '') + '"></div>';
+  html += '<div class="field"><label>TAX %</label><input type="number" inputmode="decimal" min="0" id="est-tax" autocomplete="nope" value="' + (est.taxRate || '') + '"></div>';
   html += '</div>';
-  html += '<div class="field"><label>PERMIT FEE</label><input type="number" inputmode="decimal" min="0" step="0.01" id="est-permit" value="' + (est.permitFee || '') + '"></div>';
+  html += '<div class="field"><label>PERMIT FEE</label><input type="number" inputmode="decimal" min="0" step="0.01" id="est-permit" autocomplete="nope" value="' + (est.permitFee || '') + '"></div>';
 
   // ── Summary ──
   html += _renderSummary(est);
@@ -523,7 +523,7 @@ function renderEstimateBuilder(estId) {
 
   // ── Notes ──
   html += '<div class="est-section-title">NOTES</div>';
-  html += '<div class="field"><textarea id="est-notes" rows="3" placeholder="ADDITIONAL NOTES...">' + A.esc(est.notes) + '</textarea></div>';
+  html += '<div class="field"><textarea id="est-notes" rows="3" placeholder="ADDITIONAL NOTES..." autocomplete="nope">' + A.esc(est.notes) + '</textarea></div>';
 
   // ── Actions ──
   html += '<div class="est-actions">';
@@ -696,7 +696,7 @@ function renderPricebook() {
   ];
   companyFields.forEach(function(f) {
     html += '<div class="field"><label>' + f.label + '</label>';
-    html += '<input type="' + f.type + '" id="pb-' + f.key + '" value="' + A.esc(pb[f.key] || '') + '" placeholder="' + f.placeholder + '" onblur="window._pbSave()">';
+    html += '<input type="' + f.type + '" id="pb-' + f.key + '" value="' + A.esc(pb[f.key] || '') + '" placeholder="' + f.placeholder + '" autocomplete="nope" name="astra-xpb' + f.key + '" onblur="window._pbSave()">';
     html += '</div>';
   });
 
@@ -712,7 +712,7 @@ function renderPricebook() {
   ];
   rateFields.forEach(function(f) {
     html += '<div class="field"><label>' + f.label + '</label>';
-    html += '<input type="number" inputmode="decimal" min="0" step="' + f.step + '" id="pb-' + f.key + '" value="' + (pb[f.key] || 0) + '" onblur="window._pbSave()">';
+    html += '<input type="number" inputmode="decimal" min="0" step="' + f.step + '" id="pb-' + f.key + '" value="' + (pb[f.key] || 0) + '" autocomplete="nope" name="astra-xpb' + f.key + '" onblur="window._pbSave()">';
     html += '</div>';
   });
 
