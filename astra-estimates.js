@@ -73,35 +73,82 @@ function _dateOffset(days) {
 
 function recalc(est) {
   const pb = loadPricebook();
-  // Material totals
   est.materialSubtotal = 0;
   est.materialMarkupTotal = 0;
   est.materials.forEach(function(m) {
     const cost = (parseFloat(m.unitCost) || 0) * (parseFloat(m.qty) || 0);
-    const markupPct = parseFloat(m.markup) || pb.materialMarkup;
-    m.markup = markupPct;
+    const markupPct = parseFloat(m.markup);
     m.lineTotal = cost + (cost * markupPct / 100);
     est.materialSubtotal += cost;
     est.materialMarkupTotal += cost * markupPct / 100;
   });
-  // Labor
-  est.laborTotal = (parseFloat(est.laborHours) || 0) * (parseFloat(est.laborRate) || 0);
-  // Subtotal before overhead/profit
+  est.laborHours = parseFloat(est.laborHours) || 0;
+  est.laborRate = parseFloat(est.laborRate) || 0;
+  est.laborTotal = est.laborHours * est.laborRate;
   const subtotal = est.materialSubtotal + est.materialMarkupTotal + est.laborTotal;
-  // Overhead & profit
-  est.overheadAmount = subtotal * (parseFloat(est.overheadPercent) || 0) / 100;
-  est.profitAmount = subtotal * (parseFloat(est.profitPercent) || 0) / 100;
-  // Permit
-  const permit = parseFloat(est.permitFee) || 0;
-  // Tax (on materials + markup only)
-  est.taxAmount = (est.materialSubtotal + est.materialMarkupTotal) * (parseFloat(est.taxRate) || 0) / 100;
-  // Grand total
-  est.grandTotal = subtotal + est.overheadAmount + est.profitAmount + permit + est.taxAmount;
+  est.overheadPercent = parseFloat(est.overheadPercent) || 0;
+  est.profitPercent = parseFloat(est.profitPercent) || 0;
+  est.overheadAmount = subtotal * est.overheadPercent / 100;
+  est.profitAmount = subtotal * est.profitPercent / 100;
+  est.permitFee = parseFloat(est.permitFee) || 0;
+  est.taxRate = parseFloat(est.taxRate) || 0;
+  est.taxAmount = (est.materialSubtotal + est.materialMarkupTotal) * est.taxRate / 100;
+  est.grandTotal = subtotal + est.overheadAmount + est.profitAmount + est.permitFee + est.taxAmount;
   return est;
 }
 
 function _fmt(n) {
   return '$' + (n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+// ══════════════════════════════════════════
+// CAPTURE FORM STATE — read all DOM inputs
+// into _state.currentEstimate before re-render
+// ══════════════════════════════════════════
+
+function _captureFormState() {
+  const est = _state.currentEstimate;
+  if (!est) return;
+  // Text fields
+  const addr = document.getElementById('est-address');
+  if (addr) est.address = addr.value;
+  const cname = document.getElementById('est-cname');
+  if (cname) est.customerName = cname.value;
+  const cphone = document.getElementById('est-cphone');
+  if (cphone) est.customerPhone = cphone.value;
+  const cemail = document.getElementById('est-cemail');
+  if (cemail) est.customerEmail = cemail.value;
+  const desc = document.getElementById('est-desc');
+  if (desc) est.description = desc.value;
+  const notes = document.getElementById('est-notes');
+  if (notes) est.notes = notes.value;
+  // Labor
+  const hrs = document.getElementById('est-labor-hrs');
+  if (hrs) est.laborHours = hrs.value;
+  const rate = document.getElementById('est-labor-rate');
+  if (rate) est.laborRate = rate.value;
+  // Adjustments
+  const overhead = document.getElementById('est-overhead');
+  if (overhead) est.overheadPercent = overhead.value;
+  const profit = document.getElementById('est-profit');
+  if (profit) est.profitPercent = profit.value;
+  const tax = document.getElementById('est-tax');
+  if (tax) est.taxRate = tax.value;
+  const permit = document.getElementById('est-permit');
+  if (permit) est.permitFee = permit.value;
+  // Materials — read from DOM by data attributes
+  const matItems = document.querySelectorAll('.est-mat-item');
+  matItems.forEach(function(el, i) {
+    if (!est.materials[i]) return;
+    const nameInput = el.querySelector('[data-field="name"]');
+    if (nameInput) est.materials[i].name = nameInput.value;
+    const qtyInput = el.querySelector('[data-field="qty"]');
+    if (qtyInput) est.materials[i].qty = parseFloat(qtyInput.value) || 0;
+    const costInput = el.querySelector('[data-field="unitCost"]');
+    if (costInput) est.materials[i].unitCost = parseFloat(costInput.value) || 0;
+    const mkupInput = el.querySelector('[data-field="markup"]');
+    if (mkupInput) est.materials[i].markup = parseFloat(mkupInput.value) || 0;
+  });
 }
 
 // ═══════════════════════════════════════════
@@ -115,7 +162,6 @@ function renderEstimatesList() {
   if (!body) return;
   const estimates = A.loadEstimates();
 
-  // Filter bar
   const filters = ['all', 'draft', 'sent', 'accepted', 'declined'];
   let filterHtml = '<div class="est-filter-bar">';
   filters.forEach(function(f) {
@@ -123,7 +169,6 @@ function renderEstimatesList() {
   });
   filterHtml += '</div>';
 
-  // Filter estimates
   const filtered = _estFilter === 'all' ? estimates : estimates.filter(function(e) {
     return e.status.toLowerCase() === _estFilter;
   });
@@ -169,23 +214,23 @@ function renderEstimateBuilder(estId) {
   // Load or create — reuse in-memory estimate if IDs match
   if (estId && typeof estId === 'string') {
     if (_state.currentEstimate && _state.currentEstimate.id === estId) {
-      // Already editing this one — keep in-memory state
+      // Already editing — keep in-memory state
     } else {
       _state.currentEstimate = A.getEstimate(estId);
       if (!_state.currentEstimate) _state.currentEstimate = newEstimate();
     }
   } else {
-    // No ID = new estimate (from FAB +)
     _state.currentEstimate = newEstimate();
   }
+
   const est = _state.currentEstimate;
+  recalc(est);
   const pb = loadPricebook();
 
   // Show/hide delete button
   const delBtn = document.getElementById('est-delete-btn');
   if (delBtn) delBtn.style.display = A.getEstimate(est.id) ? 'flex' : 'none';
 
-  // Job types for chips
   const JOB_TYPES = ['SERVICE CALL','PANEL UPGRADE','EV CHARGER','ROUGH-IN','TRIM-OUT','TROUBLESHOOT','GENERATOR','REWIRE','LIGHTING','GENERAL'];
 
   let html = '';
@@ -193,13 +238,13 @@ function renderEstimateBuilder(estId) {
   // ── Job Info ──
   html += '<div class="est-section-title">JOB INFO</div>';
   html += '<div class="field"><label>ADDRESS</label>';
-  html += '<input type="text" id="est-address" name="astra-xestaddr" autocomplete="nope" placeholder="STREET ADDRESS" value="' + A.esc(est.address) + '" onblur="window._estField(\'address\',this.value)">';
+  html += '<input type="text" id="est-address" name="astra-xestaddr" autocomplete="nope" placeholder="STREET ADDRESS" value="' + A.esc(est.address) + '">';
   html += '</div>';
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
-  html += '<div class="field"><label>CUSTOMER</label><input type="text" id="est-cname" name="astra-xestcname" autocomplete="nope" placeholder="NAME" value="' + A.esc(est.customerName) + '" onblur="window._estField(\'customerName\',this.value)"></div>';
-  html += '<div class="field"><label>PHONE</label><input type="tel" id="est-cphone" name="astra-xestcphone" autocomplete="nope" placeholder="(555) 555-5555" value="' + A.esc(est.customerPhone) + '" onblur="window._estField(\'customerPhone\',this.value)"></div>';
+  html += '<div class="field"><label>CUSTOMER</label><input type="text" id="est-cname" name="astra-xestcname" autocomplete="nope" placeholder="NAME" value="' + A.esc(est.customerName) + '"></div>';
+  html += '<div class="field"><label>PHONE</label><input type="tel" id="est-cphone" name="astra-xestcphone" autocomplete="nope" placeholder="(555) 555-5555" value="' + A.esc(est.customerPhone) + '"></div>';
   html += '</div>';
-  html += '<div class="field"><label>EMAIL</label><input type="email" id="est-cemail" name="astra-xestcemail" autocomplete="nope" placeholder="EMAIL" value="' + A.esc(est.customerEmail) + '" onblur="window._estField(\'customerEmail\',this.value)"></div>';
+  html += '<div class="field"><label>EMAIL</label><input type="email" id="est-cemail" name="astra-xestcemail" autocomplete="nope" placeholder="EMAIL" value="' + A.esc(est.customerEmail) + '"></div>';
 
   // Job type chips
   html += '<div class="field"><label>JOB TYPE</label><div style="display:flex;flex-wrap:wrap;gap:6px;">';
@@ -209,7 +254,7 @@ function renderEstimateBuilder(estId) {
   });
   html += '</div></div>';
 
-  html += '<div class="field"><label>DESCRIPTION</label><textarea id="est-desc" rows="2" placeholder="SCOPE OF WORK..." onblur="window._estField(\'description\',this.value)">' + A.esc(est.description) + '</textarea></div>';
+  html += '<div class="field"><label>DESCRIPTION</label><textarea id="est-desc" rows="2" placeholder="SCOPE OF WORK...">' + A.esc(est.description) + '</textarea></div>';
 
   // ── Materials ──
   html += '<div class="est-section-title">MATERIALS</div>';
@@ -217,13 +262,13 @@ function renderEstimateBuilder(estId) {
   est.materials.forEach(function(m, i) {
     html += '<div class="est-mat-item">';
     html += '<div class="est-mat-row">';
-    html += '<span class="est-mat-name">' + A.esc(m.name) + '</span>';
+    html += '<input type="text" class="est-mat-name" data-field="name" data-idx="' + i + '" value="' + A.esc(m.name) + '" placeholder="MATERIAL NAME" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid #333;background:#222;color:#e0e0e0;font-size:14px;font-weight:600;font-family:inherit;">';
     html += '<button class="est-mat-remove" onclick="window._estRemoveMat(' + i + ')">✕</button>';
     html += '</div>';
     html += '<div class="est-mat-fields">';
-    html += '<div class="est-mat-field"><label>QTY</label><input type="number" inputmode="decimal" value="' + (m.qty || '') + '" onblur="window._estUpdateMat(' + i + ',\'qty\',this.value)"></div>';
-    html += '<div class="est-mat-field"><label>COST</label><input type="number" inputmode="decimal" step="0.01" value="' + (m.unitCost || '') + '" onblur="window._estUpdateMat(' + i + ',\'unitCost\',this.value)"></div>';
-    html += '<div class="est-mat-field"><label>MKUP%</label><input type="number" inputmode="decimal" value="' + (m.markup != null ? m.markup : pb.materialMarkup) + '" onblur="window._estUpdateMat(' + i + ',\'markup\',this.value)"></div>';
+    html += '<div class="est-mat-field"><label>QTY</label><input type="number" inputmode="decimal" data-field="qty" data-idx="' + i + '" value="' + (m.qty || '') + '"></div>';
+    html += '<div class="est-mat-field"><label>COST</label><input type="number" inputmode="decimal" step="0.01" data-field="unitCost" data-idx="' + i + '" value="' + (m.unitCost || '') + '"></div>';
+    html += '<div class="est-mat-field"><label>MKUP%</label><input type="number" inputmode="decimal" data-field="markup" data-idx="' + i + '" value="' + (m.markup != null ? m.markup : pb.materialMarkup) + '"></div>';
     html += '<div class="est-mat-field"><label>TOTAL</label><input type="text" value="' + _fmt(m.lineTotal || 0) + '" readonly style="color:#FF6B00;font-weight:700;background:none;border:none;"></div>';
     html += '</div>';
     html += '</div>';
@@ -234,26 +279,26 @@ function renderEstimateBuilder(estId) {
   // ── Labor ──
   html += '<div class="est-section-title">LABOR</div>';
   html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
-  html += '<div class="field"><label>HOURS</label><input type="number" inputmode="decimal" id="est-labor-hrs" value="' + (est.laborHours || '') + '" onblur="window._estField(\'laborHours\',this.value);window._estRecalc()"></div>';
-  html += '<div class="field"><label>$/HR</label><input type="number" inputmode="decimal" id="est-labor-rate" value="' + (est.laborRate || '') + '" onblur="window._estField(\'laborRate\',this.value);window._estRecalc()"></div>';
-  html += '<div class="field"><label>TOTAL</label><input type="text" value="' + _fmt(est.laborTotal) + '" readonly style="color:#FF6B00;font-weight:700;"></div>';
+  html += '<div class="field"><label>HOURS</label><input type="number" inputmode="decimal" id="est-labor-hrs" value="' + (est.laborHours || '') + '"></div>';
+  html += '<div class="field"><label>$/HR</label><input type="number" inputmode="decimal" id="est-labor-rate" value="' + (est.laborRate || '') + '"></div>';
+  html += '<div class="field"><label>TOTAL</label><input type="text" id="est-labor-total" value="' + _fmt(est.laborTotal) + '" readonly style="color:#FF6B00;font-weight:700;"></div>';
   html += '</div>';
 
   // ── Adjustments ──
   html += '<div class="est-section-title">ADJUSTMENTS</div>';
   html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
-  html += '<div class="field"><label>OVERHEAD %</label><input type="number" inputmode="decimal" value="' + (est.overheadPercent || '') + '" onblur="window._estField(\'overheadPercent\',this.value);window._estRecalc()"></div>';
-  html += '<div class="field"><label>PROFIT %</label><input type="number" inputmode="decimal" value="' + (est.profitPercent || '') + '" onblur="window._estField(\'profitPercent\',this.value);window._estRecalc()"></div>';
-  html += '<div class="field"><label>TAX %</label><input type="number" inputmode="decimal" value="' + (est.taxRate || '') + '" onblur="window._estField(\'taxRate\',this.value);window._estRecalc()"></div>';
+  html += '<div class="field"><label>OVERHEAD %</label><input type="number" inputmode="decimal" id="est-overhead" value="' + (est.overheadPercent || '') + '"></div>';
+  html += '<div class="field"><label>PROFIT %</label><input type="number" inputmode="decimal" id="est-profit" value="' + (est.profitPercent || '') + '"></div>';
+  html += '<div class="field"><label>TAX %</label><input type="number" inputmode="decimal" id="est-tax" value="' + (est.taxRate || '') + '"></div>';
   html += '</div>';
-  html += '<div class="field"><label>PERMIT FEE</label><input type="number" inputmode="decimal" step="0.01" value="' + (est.permitFee || '') + '" onblur="window._estField(\'permitFee\',this.value);window._estRecalc()"></div>';
+  html += '<div class="field"><label>PERMIT FEE</label><input type="number" inputmode="decimal" step="0.01" id="est-permit" value="' + (est.permitFee || '') + '"></div>';
 
   // ── Summary ──
   html += _renderSummary(est);
 
   // ── Notes ──
   html += '<div class="est-section-title">NOTES</div>';
-  html += '<div class="field"><textarea id="est-notes" rows="3" placeholder="ADDITIONAL NOTES..." onblur="window._estField(\'notes\',this.value)">' + A.esc(est.notes) + '</textarea></div>';
+  html += '<div class="field"><textarea id="est-notes" rows="3" placeholder="ADDITIONAL NOTES...">' + A.esc(est.notes) + '</textarea></div>';
 
   // ── Actions ──
   html += '<div class="est-actions">';
@@ -262,6 +307,47 @@ function renderEstimateBuilder(estId) {
   html += '<div style="height:80px;"></div>';
 
   body.innerHTML = html;
+
+  // ── Attach blur listeners for auto-recalc ──
+  _attachBlurListeners();
+}
+
+// ── Attach blur handlers to all inputs so math recalcs automatically ──
+function _attachBlurListeners() {
+  const body = document.getElementById('estimate-builder-body');
+  if (!body) return;
+
+  // All numeric/text inputs — on blur, capture state + recalc + refresh summary
+  body.addEventListener('blur', function(e) {
+    const el = e.target;
+    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
+    if (el.readOnly) return;
+    _captureFormState();
+    recalc(_state.currentEstimate);
+    _refreshComputedFields();
+  }, true); // useCapture so blur (which doesn't bubble) gets caught
+}
+
+// ── Refresh only the computed/readonly fields without full re-render ──
+function _refreshComputedFields() {
+  const est = _state.currentEstimate;
+  if (!est) return;
+
+  // Material line totals
+  const matItems = document.querySelectorAll('.est-mat-item');
+  matItems.forEach(function(el, i) {
+    if (!est.materials[i]) return;
+    const totalInput = el.querySelector('.est-mat-field:last-child input');
+    if (totalInput) totalInput.value = _fmt(est.materials[i].lineTotal || 0);
+  });
+
+  // Labor total
+  const laborTotal = document.getElementById('est-labor-total');
+  if (laborTotal) laborTotal.value = _fmt(est.laborTotal);
+
+  // Summary
+  const summaryEl = document.querySelector('.est-summary');
+  if (summaryEl) summaryEl.outerHTML = _renderSummary(est);
 }
 
 function _renderSummary(est) {
@@ -274,7 +360,6 @@ function _renderSummary(est) {
   if (est.permitFee) html += '<div class="est-summary-row"><span class="est-summary-label">PERMIT</span><span class="est-summary-value">' + _fmt(est.permitFee) + '</span></div>';
   if (est.taxAmount) html += '<div class="est-summary-row"><span class="est-summary-label">TAX (' + (est.taxRate || 0) + '%)</span><span class="est-summary-value">' + _fmt(est.taxAmount) + '</span></div>';
   html += '<div class="est-summary-row total"><span class="est-summary-label">GRAND TOTAL</span><span class="est-summary-value">' + _fmt(est.grandTotal) + '</span></div>';
-  // Margin %
   if (est.grandTotal > 0) {
     const margin = ((est.profitAmount / est.grandTotal) * 100).toFixed(1);
     html += '<div style="text-align:center;margin-top:8px;font-size:12px;color:#555;font-weight:700;text-transform:uppercase;letter-spacing:1px;">MARGIN: ' + margin + '%</div>';
@@ -285,19 +370,16 @@ function _renderSummary(est) {
 
 // ── Builder Helpers ──
 
-function _estField(key, val) {
-  if (!_state.currentEstimate) return;
-  _state.currentEstimate[key] = val;
-}
-
 function _estSetJobType(type) {
   if (!_state.currentEstimate) return;
+  _captureFormState();
   _state.currentEstimate.jobType = _state.currentEstimate.jobType === type ? '' : type;
   renderEstimateBuilder(_state.currentEstimate.id);
 }
 
 function _estAddMat() {
   if (!_state.currentEstimate) return;
+  _captureFormState();
   const pb = loadPricebook();
   _state.currentEstimate.materials.push({
     itemId: crypto.randomUUID(),
@@ -309,92 +391,32 @@ function _estAddMat() {
     lineTotal: 0
   });
   renderEstimateBuilder(_state.currentEstimate.id);
-  // Focus the new material name — find last mat item
+  // Focus the new material name input
   setTimeout(function() {
-    const items = document.querySelectorAll('.est-mat-name');
-    // We need to focus the input, but names are spans. Let's focus the qty instead
-    const fields = document.querySelectorAll('.est-mat-item');
-    if (fields.length > 0) {
-      const last = fields[fields.length - 1];
-      const nameSpan = last.querySelector('.est-mat-name');
-      // Make name editable on new items
-      if (nameSpan && _state.currentEstimate.materials[_state.currentEstimate.materials.length - 1].name === '') {
-        _estEditMatName(_state.currentEstimate.materials.length - 1);
-      }
+    const nameInputs = document.querySelectorAll('.est-mat-name');
+    if (nameInputs.length > 0) {
+      nameInputs[nameInputs.length - 1].focus();
     }
   }, 50);
 }
 
-function _estEditMatName(idx) {
-  const items = document.querySelectorAll('.est-mat-item');
-  if (!items[idx]) return;
-  const nameEl = items[idx].querySelector('.est-mat-name');
-  if (!nameEl) return;
-  const mat = _state.currentEstimate.materials[idx];
-  nameEl.innerHTML = '<input type="text" value="' + A.esc(mat.name) + '" placeholder="MATERIAL NAME" style="width:100%;padding:6px 8px;border-radius:6px;border:1px solid #FF6B00;background:#222;color:#e0e0e0;font-size:14px;font-weight:600;font-family:inherit;" onblur="window._estUpdateMat(' + idx + ',\'name\',this.value)" autofocus>';
-  const inp = nameEl.querySelector('input');
-  if (inp) inp.focus();
-}
-
 function _estRemoveMat(idx) {
   if (!_state.currentEstimate) return;
+  _captureFormState();
   _state.currentEstimate.materials.splice(idx, 1);
   recalc(_state.currentEstimate);
   renderEstimateBuilder(_state.currentEstimate.id);
 }
 
-function _estUpdateMat(idx, field, val) {
-  if (!_state.currentEstimate || !_state.currentEstimate.materials[idx]) return;
-  if (field === 'name') {
-    _state.currentEstimate.materials[idx][field] = val;
-  } else {
-    _state.currentEstimate.materials[idx][field] = parseFloat(val) || 0;
-  }
-  recalc(_state.currentEstimate);
-  _refreshSummary();
-  // Update line total inline
-  _refreshLineTotal(idx);
-}
-
-function _refreshLineTotal(idx) {
-  const items = document.querySelectorAll('.est-mat-item');
-  if (!items[idx]) return;
-  const totalField = items[idx].querySelector('.est-mat-field:last-child input');
-  if (totalField && _state.currentEstimate.materials[idx]) {
-    totalField.value = _fmt(_state.currentEstimate.materials[idx].lineTotal || 0);
-  }
-  // Update labor total too
-  const laborTotal = document.querySelector('#est-labor-hrs');
-  if (laborTotal) {
-    const ltField = laborTotal.closest('div[style]');
-    if (ltField) {
-      const inputs = ltField.parentElement.querySelectorAll('input[readonly]');
-      if (inputs.length) inputs[0].value = _fmt(_state.currentEstimate.laborTotal);
-    }
-  }
-}
-
-function _refreshSummary() {
-  const summaryEl = document.querySelector('.est-summary');
-  if (summaryEl && _state.currentEstimate) {
-    summaryEl.outerHTML = _renderSummary(_state.currentEstimate);
-  }
-}
-
-function _estRecalc() {
-  if (!_state.currentEstimate) return;
-  recalc(_state.currentEstimate);
-  _refreshSummary();
-}
-
 function _estSave() {
   if (!_state.currentEstimate) return;
+  _captureFormState();
   recalc(_state.currentEstimate);
   A.saveEstimate(_state.currentEstimate);
   A.showToast('ESTIMATE SAVED');
-  // Show delete button now that it's saved
   const delBtn = document.getElementById('est-delete-btn');
   if (delBtn) delBtn.style.display = 'flex';
+  _refreshComputedFields();
 }
 
 function deleteCurrentEstimate() {
@@ -416,13 +438,13 @@ function renderPricebook() {
   const pb = loadPricebook();
 
   const fields = [
-    { key: 'laborRate', label: 'LABOR RATE ($/HR)', step: '0.01', prefix: '$' },
-    { key: 'overheadPercent', label: 'OVERHEAD %', step: '0.1', suffix: '%' },
-    { key: 'profitPercent', label: 'PROFIT MARGIN %', step: '0.1', suffix: '%' },
-    { key: 'materialMarkup', label: 'DEFAULT MATERIAL MARKUP %', step: '0.1', suffix: '%' },
-    { key: 'serviceCallFee', label: 'SERVICE CALL FEE', step: '0.01', prefix: '$' },
-    { key: 'permitFee', label: 'DEFAULT PERMIT FEE', step: '0.01', prefix: '$' },
-    { key: 'taxRate', label: 'TAX RATE %', step: '0.01', suffix: '%' }
+    { key: 'laborRate', label: 'LABOR RATE ($/HR)', step: '0.01' },
+    { key: 'overheadPercent', label: 'OVERHEAD %', step: '0.1' },
+    { key: 'profitPercent', label: 'PROFIT MARGIN %', step: '0.1' },
+    { key: 'materialMarkup', label: 'DEFAULT MATERIAL MARKUP %', step: '0.1' },
+    { key: 'serviceCallFee', label: 'SERVICE CALL FEE', step: '0.01' },
+    { key: 'permitFee', label: 'DEFAULT PERMIT FEE', step: '0.01' },
+    { key: 'taxRate', label: 'TAX RATE %', step: '0.01' }
   ];
 
   let html = '<div style="padding-top:4px;">';
@@ -457,14 +479,10 @@ Object.assign(window, {
   renderPricebook: renderPricebook,
   deleteCurrentEstimate: deleteCurrentEstimate,
   _setEstFilter: _setEstFilter,
-  _estField: _estField,
   _estSetJobType: _estSetJobType,
   _estAddMat: _estAddMat,
   _estRemoveMat: _estRemoveMat,
-  _estUpdateMat: _estUpdateMat,
-  _estRecalc: _estRecalc,
   _estSave: _estSave,
-  _estEditMatName: _estEditMatName,
   _pbSave: _pbSave,
 });
 
