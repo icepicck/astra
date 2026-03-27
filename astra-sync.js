@@ -1,14 +1,20 @@
 // ═══════════════════════════════════════════
 // ASTRA — SUPABASE CLOUD SYNC
 // One DB. One Account. Every Device. Same Data.
+//
+// Step 1 (Data Safety) changes:
+//   D1  — Estimate sync (push + pull)
+//   D2  — Timestamp-protected push (skip if cloud is newer)
+//   D3  — Material upsert with material_id (no more delete-all/re-insert)
+//   D14 — Backfill materialId on local materials missing one
 // ═══════════════════════════════════════════
 (function() {
 'use strict';
 
-const A = window.Astra;
-const SUPA_URL_KEY = 'astra_supabase_url';
-const SUPA_KEY_KEY = 'astra_supabase_key';
-const LAST_SYNC_KEY = 'astra_last_sync';
+var A = window.Astra;
+var SUPA_URL_KEY = 'astra_supabase_url';
+var SUPA_KEY_KEY = 'astra_supabase_key';
+var LAST_SYNC_KEY = 'astra_last_sync';
 
 function getSupabaseUrl() { return localStorage.getItem(SUPA_URL_KEY) || ''; }
 function saveSupabaseUrl(val) { localStorage.setItem(SUPA_URL_KEY, val.trim()); _client = null; }
@@ -19,18 +25,21 @@ function setLastSync() { localStorage.setItem(LAST_SYNC_KEY, new Date().toISOStr
 function isConfigured() { return !!(getSupabaseUrl() && getSupabaseKey()); }
 
 // ── Supabase Client (lazy singleton) ──
-let _client = null;
+var _client = null;
 function getClient() {
   if (_client) return _client;
-  const url = getSupabaseUrl();
-  const key = getSupabaseKey();
+  var url = getSupabaseUrl();
+  var key = getSupabaseKey();
   if (!url || !key) throw new Error('SUPABASE NOT CONFIGURED — ADD URL AND KEY IN SETTINGS.');
   if (!window.supabase || !window.supabase.createClient) throw new Error('SUPABASE LIBRARY NOT LOADED.');
   _client = window.supabase.createClient(url, key);
   return _client;
 }
 
-// ── Field mapping: local camelCase ↔ Postgres snake_case ──
+// ═══════════════════════════════════════════
+// FIELD MAPPING: local camelCase ↔ Postgres snake_case
+// ═══════════════════════════════════════════
+
 function jobToCloud(j) {
   return {
     id: j.id,
@@ -44,10 +53,11 @@ function jobToCloud(j) {
     archived: !!j.archived,
     tech_id: j.techId || null,
     tech_name: j.techName || '',
-    photo_meta: (j.photos || []).map(p => ({ id: p.id, name: p.name, type: p.type, addedAt: p.addedAt })),
-    drawing_meta: (j.drawings || []).map(d => ({ id: d.id, name: d.name, type: d.type, addedAt: d.addedAt })),
-    video_meta: (j.videos || []).map(v => ({ id: v.id, name: v.name, type: v.type, addedAt: v.addedAt })),
+    photo_meta: (j.photos || []).map(function(p) { return { id: p.id, name: p.name, type: p.type, addedAt: p.addedAt }; }),
+    drawing_meta: (j.drawings || []).map(function(d) { return { id: d.id, name: d.name, type: d.type, addedAt: d.addedAt }; }),
+    video_meta: (j.videos || []).map(function(v) { return { id: v.id, name: v.name, type: v.type, addedAt: v.addedAt }; }),
     manually_added_to_vector: !!j.manually_added_to_vector,
+    estimate_id: j.estimateId || null,
     created_at: j.createdAt || new Date().toISOString(),
     updated_at: j.updatedAt || new Date().toISOString()
   };
@@ -66,10 +76,11 @@ function jobFromCloud(r) {
     archived: !!r.archived,
     techId: r.tech_id || '',
     techName: r.tech_name || '',
-    photos: (r.photo_meta || []),
-    drawings: (r.drawing_meta || []),
-    videos: (r.video_meta || []),
+    photos: r.photo_meta || [],
+    drawings: r.drawing_meta || [],
+    videos: r.video_meta || [],
     manually_added_to_vector: !!r.manually_added_to_vector,
+    estimateId: r.estimate_id || '',
     materials: [], // filled separately
     createdAt: r.created_at || new Date().toISOString(),
     updatedAt: r.updated_at || new Date().toISOString()
@@ -144,216 +155,434 @@ function techFromCloud(r) {
   };
 }
 
+// ── D1: Estimate field mapping ──
+function estimateToCloud(e) {
+  return {
+    id: e.id,
+    address: e.address || '',
+    address_id: e.addressId || null,
+    customer_name: e.customerName || '',
+    customer_phone: e.customerPhone || '',
+    customer_email: e.customerEmail || '',
+    job_type: e.jobType || '',
+    description: e.description || '',
+    status: e.status || 'Draft',
+    materials: e.materials || [],
+    labor_hours: e.laborHours || 0,
+    labor_rate: e.laborRate || 0,
+    labor_total: e.laborTotal || 0,
+    adjustments: e.adjustments || [],
+    material_subtotal: e.materialSubtotal || 0,
+    material_markup_total: e.materialMarkupTotal || 0,
+    overhead_percent: e.overheadPercent || 0,
+    overhead_amount: e.overheadAmount || 0,
+    profit_percent: e.profitPercent || 0,
+    profit_amount: e.profitAmount || 0,
+    permit_fee: e.permitFee || 0,
+    tax_rate: e.taxRate || 0,
+    tax_amount: e.taxAmount || 0,
+    grand_total: e.grandTotal || 0,
+    valid_until: e.validUntil || null,
+    notes: e.notes || '',
+    linked_job_id: e.linkedJobId || null,
+    updated_at: e.updatedAt || new Date().toISOString(),
+    created_at: e.createdAt || new Date().toISOString()
+  };
+}
+
+function estimateFromCloud(r) {
+  return {
+    id: r.id,
+    address: r.address || '',
+    addressId: r.address_id || '',
+    customerName: r.customer_name || '',
+    customerPhone: r.customer_phone || '',
+    customerEmail: r.customer_email || '',
+    jobType: r.job_type || '',
+    description: r.description || '',
+    status: r.status || 'Draft',
+    materials: r.materials || [],
+    laborHours: r.labor_hours || 0,
+    laborRate: r.labor_rate || 0,
+    laborTotal: r.labor_total || 0,
+    adjustments: r.adjustments || [],
+    materialSubtotal: r.material_subtotal || 0,
+    materialMarkupTotal: r.material_markup_total || 0,
+    overheadPercent: r.overhead_percent || 0,
+    overheadAmount: r.overhead_amount || 0,
+    profitPercent: r.profit_percent || 0,
+    profitAmount: r.profit_amount || 0,
+    permitFee: r.permit_fee || 0,
+    taxRate: r.tax_rate || 0,
+    taxAmount: r.tax_amount || 0,
+    grandTotal: r.grand_total || 0,
+    validUntil: r.valid_until || '',
+    notes: r.notes || '',
+    linkedJobId: r.linked_job_id || '',
+    updatedAt: r.updated_at || new Date().toISOString(),
+    createdAt: r.created_at || new Date().toISOString()
+  };
+}
+
 // ── Batch upsert helper (chunks of 500) ──
-async function batchUpsert(table, records) {
-  const sb = getClient();
-  const CHUNK = 500;
-  let total = 0;
-  for (let i = 0; i < records.length; i += CHUNK) {
-    const batch = records.slice(i, i + CHUNK);
-    const { error } = await sb.from(table).upsert(batch, { onConflict: 'id' });
-    if (error) throw new Error(table.toUpperCase() + ' UPSERT FAILED: ' + error.message);
+async function batchUpsert(table, records, conflictCol) {
+  var sb = getClient();
+  var CHUNK = 500;
+  var total = 0;
+  for (var i = 0; i < records.length; i += CHUNK) {
+    var batch = records.slice(i, i + CHUNK);
+    var opts = { onConflict: conflictCol || 'id' };
+    var result = await sb.from(table).upsert(batch, opts);
+    if (result.error) throw new Error(table.toUpperCase() + ' UPSERT FAILED: ' + result.error.message);
     total += batch.length;
   }
   return total;
 }
 
+// ── D14: Ensure every local material has a materialId ──
+// Backfills missing IDs so we can upsert instead of nuke-and-rebuild
+function _ensureMaterialIds(jobs) {
+  var changed = false;
+  jobs.forEach(function(job) {
+    if (!job.materials) return;
+    job.materials.forEach(function(m) {
+      if (!m.materialId) {
+        m.materialId = crypto.randomUUID();
+        changed = true;
+      }
+    });
+  });
+  return changed;
+}
+
+// ═══════════════════════════════════════════
+// D2: TIMESTAMP-PROTECTED PUSH
+// Fetches cloud updated_at for each table, skips records where cloud is newer.
+// ═══════════════════════════════════════════
+
+async function _getCloudTimestamps(table) {
+  var sb = getClient();
+  var result = await sb.from(table).select('id, updated_at');
+  if (result.error) return {};
+  var map = {};
+  (result.data || []).forEach(function(r) { map[r.id] = r.updated_at; });
+  return map;
+}
+
+function _filterByTimestamp(records, cloudTimes, localTimeField) {
+  return records.filter(function(r) {
+    var cloudTime = cloudTimes[r.id];
+    if (!cloudTime) return true; // new record, always push
+    var localMs = new Date(r[localTimeField] || 0).getTime();
+    var cloudMs = new Date(cloudTime).getTime();
+    return localMs >= cloudMs; // push if local is newer or equal
+  });
+}
+
+
 // ═══════════════════════════════════════════
 // PUSH: Local → Cloud
+// Now with D1 (estimates), D2 (timestamp protection), D3 (material upsert)
 // ═══════════════════════════════════════════
 async function syncToCloud(statusCallback) {
-  const status = (msg) => { if (statusCallback) statusCallback(0, 4, msg); };
+  var status = function(msg) { if (statusCallback) statusCallback(0, 6, msg); };
+  window._syncInProgress = true;
 
-  const jobs = A.loadJobs();
-  const addresses = A.loadAddresses();
-  const techs = A.loadTechs();
+  try {
+    var jobs = A.loadJobs();
+    var addresses = A.loadAddresses();
+    var techs = A.loadTechs();
+    var estimates = A.loadEstimates();
 
-  // 1. Addresses
-  status('PUSHING ADDRESSES...');
-  await batchUpsert('addresses', addresses.map(addrToCloud));
-
-  // 2. Techs
-  status('PUSHING TECHS...');
-  await batchUpsert('techs', techs.map(techToCloud));
-
-  // 3. Jobs
-  status('PUSHING JOBS...');
-  await batchUpsert('jobs', jobs.map(jobToCloud));
-
-  // 4. Materials — delete all, re-insert
-  status('PUSHING MATERIALS...');
-  const sb = getClient();
-  const jobIds = jobs.map(j => j.id);
-  if (jobIds.length) {
-    const { error: delErr } = await sb.from('materials').delete().in('job_id', jobIds);
-    if (delErr) throw new Error('MATERIAL DELETE FAILED: ' + delErr.message);
-  }
-
-  const matRecords = [];
-  for (const job of jobs) {
-    if (!job.materials || !job.materials.length) continue;
-    for (const m of job.materials) {
-      matRecords.push({
-        job_id: job.id,
-        item_id: m.itemId || '',
-        name: m.name || '',
-        qty: m.qty || 1,
-        unit: m.unit || 'EA',
-        variant: m.variant || null,
-        part_ref: m.partRef || null
-      });
+    // D14: Backfill materialIds on any jobs missing them
+    if (_ensureMaterialIds(jobs)) {
+      // Save backfilled IDs to IDB so they persist
+      jobs.forEach(function(j) { A.updateJob(j.id, { materials: j.materials }); });
     }
-  }
-  if (matRecords.length) {
-    const CHUNK = 500;
-    for (let i = 0; i < matRecords.length; i += CHUNK) {
-      const batch = matRecords.slice(i, i + CHUNK);
-      const { error } = await sb.from('materials').insert(batch);
-      if (error) throw new Error('MATERIAL INSERT FAILED: ' + error.message);
-    }
-  }
 
-  setLastSync();
-  return { jobs: jobs.length, addresses: addresses.length, techs: techs.length, materials: matRecords.length };
+    // D2: Fetch cloud timestamps for timestamp-protected push
+    status('CHECKING CLOUD STATE...');
+    var cloudJobTimes = await _getCloudTimestamps('jobs');
+    var cloudAddrTimes = await _getCloudTimestamps('addresses');
+    var cloudEstTimes = await _getCloudTimestamps('estimates');
+
+    // 1. Addresses — skip if cloud is newer
+    status('PUSHING ADDRESSES...');
+    var addrRecords = addresses.map(addrToCloud);
+    var filteredAddrs = _filterByTimestamp(addrRecords, cloudAddrTimes, 'updated_at');
+    if (filteredAddrs.length) await batchUpsert('addresses', filteredAddrs);
+
+    // 2. Techs — small table, always push all
+    status('PUSHING TECHS...');
+    await batchUpsert('techs', techs.map(techToCloud));
+
+    // 3. Jobs — skip if cloud is newer (D2)
+    status('PUSHING JOBS...');
+    var jobRecords = jobs.map(jobToCloud);
+    var filteredJobs = _filterByTimestamp(jobRecords, cloudJobTimes, 'updated_at');
+    if (filteredJobs.length) await batchUpsert('jobs', filteredJobs);
+
+    // 4. Materials — D3: UPSERT with material_id instead of delete-all/re-insert
+    status('PUSHING MATERIALS...');
+    var matRecords = [];
+    var pushedJobIds = {}; // track which jobs we're pushing
+    filteredJobs.forEach(function(j) { pushedJobIds[j.id] = true; });
+
+    for (var ji = 0; ji < jobs.length; ji++) {
+      var job = jobs[ji];
+      // Only push materials for jobs that passed the timestamp filter
+      if (!pushedJobIds[job.id]) continue;
+      if (!job.materials || !job.materials.length) continue;
+      for (var mi = 0; mi < job.materials.length; mi++) {
+        var m = job.materials[mi];
+        matRecords.push({
+          job_id: job.id,
+          material_id: m.materialId || crypto.randomUUID(),
+          item_id: m.itemId || '',
+          name: m.name || '',
+          qty: m.qty || 1,
+          unit: m.unit || 'EA',
+          variant: m.variant || null,
+          part_ref: m.partRef || null
+        });
+      }
+    }
+    if (matRecords.length) {
+      // Upsert on (job_id, material_id) unique index
+      await batchUpsert('materials', matRecords, 'job_id,material_id');
+    }
+
+    // Clean up removed materials: for pushed jobs, delete cloud materials
+    // that no longer exist locally
+    var sb = getClient();
+    for (var jobId in pushedJobIds) {
+      var localMatIds = [];
+      var localJob = jobs.find(function(j) { return j.id === jobId; });
+      if (localJob && localJob.materials) {
+        localJob.materials.forEach(function(m) {
+          if (m.materialId) localMatIds.push(m.materialId);
+        });
+      }
+      if (localMatIds.length > 0) {
+        // Delete cloud materials for this job that aren't in local anymore
+        var delResult = await sb.from('materials')
+          .delete()
+          .eq('job_id', jobId)
+          .not('material_id', 'in', '(' + localMatIds.join(',') + ')');
+        // Ignore errors on cleanup — non-critical
+      } else if (localJob && (!localJob.materials || localJob.materials.length === 0)) {
+        // Job has no materials — delete all cloud materials for this job
+        await sb.from('materials').delete().eq('job_id', jobId);
+      }
+    }
+
+    // 5. Estimates — D1: push estimates to cloud (skip if cloud is newer)
+    status('PUSHING ESTIMATES...');
+    var estRecords = estimates.map(estimateToCloud);
+    var filteredEsts = _filterByTimestamp(estRecords, cloudEstTimes, 'updated_at');
+    if (filteredEsts.length) await batchUpsert('estimates', filteredEsts);
+
+    setLastSync();
+    window._syncInProgress = false;
+    return {
+      jobs: filteredJobs.length,
+      addresses: filteredAddrs.length,
+      techs: techs.length,
+      estimates: filteredEsts.length,
+      materials: matRecords.length
+    };
+  } catch (e) {
+    window._syncInProgress = false;
+    throw e;
+  }
 }
 
 // ═══════════════════════════════════════════
 // PULL: Cloud → Local
+// Now with D1 (estimates), D3 (material_id preserved)
 // ═══════════════════════════════════════════
 async function syncFromCloud(statusCallback) {
-  const status = (msg) => { if (statusCallback) statusCallback(0, 3, msg); };
-  const sb = getClient();
+  var status = function(msg) { if (statusCallback) statusCallback(0, 4, msg); };
+  var sb = getClient();
+  window._syncInProgress = true;
 
-  let newAddresses = 0, newJobs = 0, updatedJobs = 0;
+  try {
+    var newAddresses = 0, newJobs = 0, updatedJobs = 0, skippedJobs = 0;
+    var newEstimates = 0, updatedEstimates = 0, skippedEstimates = 0;
 
-  // 1. Pull addresses
-  status('PULLING ADDRESSES...');
-  const { data: cloudAddrs, error: addrErr } = await sb.from('addresses').select('*');
-  if (addrErr) throw new Error('ADDRESS PULL FAILED: ' + addrErr.message);
+    // 1. Pull addresses
+    status('PULLING ADDRESSES...');
+    var addrResult = await sb.from('addresses').select('*');
+    if (addrResult.error) throw new Error('ADDRESS PULL FAILED: ' + addrResult.error.message);
+    var cloudAddrs = addrResult.data || [];
 
-  const localAddrs = A.loadAddresses();
-  const localAddrMap = {};
-  localAddrs.forEach(a => { localAddrMap[a.id] = a; });
+    var localAddrs = A.loadAddresses();
+    var localAddrMap = {};
+    localAddrs.forEach(function(a) { localAddrMap[a.id] = a; });
 
-  for (const r of cloudAddrs) {
-    const local = localAddrMap[r.id];
-    if (local) {
-      A.updateAddress(r.id, addrFromCloud(r));
-    } else {
-      A.addAddress({ ...addrFromCloud(r) });
-      newAddresses++;
+    for (var ai = 0; ai < cloudAddrs.length; ai++) {
+      var r = cloudAddrs[ai];
+      var localAddr = localAddrMap[r.id];
+      if (localAddr) {
+        A.updateAddress(r.id, addrFromCloud(r));
+      } else {
+        A.addAddress(addrFromCloud(r));
+        newAddresses++;
+      }
     }
-  }
 
-  // 2. Pull techs
-  status('PULLING TECHS...');
-  const { data: cloudTechs, error: techErr } = await sb.from('techs').select('*');
-  if (techErr) throw new Error('TECH PULL FAILED: ' + techErr.message);
+    // 2. Pull techs
+    status('PULLING TECHS...');
+    var techResult = await sb.from('techs').select('*');
+    if (techResult.error) throw new Error('TECH PULL FAILED: ' + techResult.error.message);
+    var cloudTechs = techResult.data || [];
 
-  const localTechs = A.loadTechs();
-  const localTechMap = {};
-  localTechs.forEach(t => { localTechMap[t.id] = t; });
+    var localTechs = A.loadTechs();
+    var localTechMap = {};
+    localTechs.forEach(function(t) { localTechMap[t.id] = t; });
 
-  for (const r of cloudTechs) {
-    if (!localTechMap[r.id]) {
-      // addTech not exposed yet — push into techs array manually
-      const tech = techFromCloud(r);
-      A.loadTechs().push(tech);
+    for (var ti = 0; ti < cloudTechs.length; ti++) {
+      if (!localTechMap[cloudTechs[ti].id]) {
+        var tech = techFromCloud(cloudTechs[ti]);
+        A.loadTechs().push(tech);
+      }
     }
-  }
 
-  // 3. Pull jobs + materials
-  status('PULLING JOBS...');
-  const { data: cloudJobs, error: jobErr } = await sb.from('jobs').select('*');
-  if (jobErr) throw new Error('JOB PULL FAILED: ' + jobErr.message);
+    // 3. Pull jobs + materials
+    status('PULLING JOBS...');
+    var jobResult = await sb.from('jobs').select('*');
+    if (jobResult.error) throw new Error('JOB PULL FAILED: ' + jobResult.error.message);
+    var cloudJobs = jobResult.data || [];
 
-  // Pull all materials and group by job_id
-  const { data: cloudMats, error: matErr } = await sb.from('materials').select('*');
-  if (matErr) throw new Error('MATERIAL PULL FAILED: ' + matErr.message);
+    // Pull all materials and group by job_id — D3: preserve material_id
+    var matResult = await sb.from('materials').select('*');
+    if (matResult.error) throw new Error('MATERIAL PULL FAILED: ' + matResult.error.message);
+    var cloudMats = matResult.data || [];
 
-  const matsByJob = {};
-  for (const m of cloudMats) {
-    if (!matsByJob[m.job_id]) matsByJob[m.job_id] = [];
-    matsByJob[m.job_id].push({
-      itemId: m.item_id || '',
-      name: m.name || '',
-      qty: m.qty || 1,
-      unit: m.unit || 'EA',
-      variant: m.variant || undefined,
-      partRef: m.part_ref || undefined
-    });
-  }
-
-  let skippedJobs = 0;
-
-  for (const r of cloudJobs) {
-    const local = A.getJob(r.id);
-    const cloudJob = jobFromCloud(r);
-    cloudJob.materials = matsByJob[r.id] || [];
-
-    if (local) {
-      // LOCAL WINS if local is newer — never silently overwrite field work
-      const localTime = new Date(local.updatedAt || 0).getTime();
-      const cloudTime = new Date(cloudJob.updatedAt || 0).getTime();
-      if (localTime > cloudTime) { skippedJobs++; continue; }
-
-      // Cloud is newer or equal — safe to update, but keep local media blobs
-      const updates = {
-        address: cloudJob.address,
-        addressId: cloudJob.addressId,
-        types: cloudJob.types,
-        status: cloudJob.status,
-        notes: cloudJob.notes,
-        techNotes: cloudJob.techNotes,
-        date: cloudJob.date,
-        archived: cloudJob.archived,
-        techId: cloudJob.techId,
-        techName: cloudJob.techName,
-        materials: cloudJob.materials,
-        updatedAt: cloudJob.updatedAt
-      };
-      A.updateJob(r.id, updates);
-      updatedJobs++;
-    } else {
-      // New job from cloud — local photos/drawings/videos will be empty (blobs are device-local)
-      cloudJob.photos = cloudJob.photos || [];
-      cloudJob.drawings = cloudJob.drawings || [];
-      cloudJob.videos = cloudJob.videos || [];
-      A.addJob(cloudJob);
-      newJobs++;
+    var matsByJob = {};
+    for (var mi = 0; mi < cloudMats.length; mi++) {
+      var cm = cloudMats[mi];
+      if (!matsByJob[cm.job_id]) matsByJob[cm.job_id] = [];
+      matsByJob[cm.job_id].push({
+        materialId: cm.material_id || crypto.randomUUID(),
+        itemId: cm.item_id || '',
+        name: cm.name || '',
+        qty: cm.qty || 1,
+        unit: cm.unit || 'EA',
+        variant: cm.variant || undefined,
+        partRef: cm.part_ref || undefined
+      });
     }
-  }
 
-  setLastSync();
-  return {
-    jobs: cloudJobs.length,
-    addresses: cloudAddrs.length,
-    techs: cloudTechs.length,
-    newJobs, newAddresses, updatedJobs, skippedJobs
-  };
+    for (var ji = 0; ji < cloudJobs.length; ji++) {
+      var cr = cloudJobs[ji];
+      var local = A.getJob(cr.id);
+      var cloudJob = jobFromCloud(cr);
+      cloudJob.materials = matsByJob[cr.id] || [];
+
+      if (local) {
+        // LOCAL WINS if local is newer — never silently overwrite field work
+        var localTime = new Date(local.updatedAt || 0).getTime();
+        var cloudTime = new Date(cloudJob.updatedAt || 0).getTime();
+        if (localTime > cloudTime) { skippedJobs++; continue; }
+
+        // Cloud is newer or equal — safe to update, but keep local media blobs
+        A.updateJob(cr.id, {
+          address: cloudJob.address,
+          addressId: cloudJob.addressId,
+          types: cloudJob.types,
+          status: cloudJob.status,
+          notes: cloudJob.notes,
+          techNotes: cloudJob.techNotes,
+          date: cloudJob.date,
+          archived: cloudJob.archived,
+          techId: cloudJob.techId,
+          techName: cloudJob.techName,
+          materials: cloudJob.materials,
+          estimateId: cloudJob.estimateId,
+          updatedAt: cloudJob.updatedAt
+        });
+        updatedJobs++;
+      } else {
+        // New job from cloud — local photos/drawings/videos will be empty (blobs are device-local)
+        cloudJob.photos = cloudJob.photos || [];
+        cloudJob.drawings = cloudJob.drawings || [];
+        cloudJob.videos = cloudJob.videos || [];
+        A.addJob(cloudJob);
+        newJobs++;
+      }
+    }
+
+    // 4. D1: Pull estimates
+    status('PULLING ESTIMATES...');
+    var estResult = await sb.from('estimates').select('*');
+    if (estResult.error) throw new Error('ESTIMATE PULL FAILED: ' + estResult.error.message);
+    var cloudEstimates = estResult.data || [];
+
+    for (var ei = 0; ei < cloudEstimates.length; ei++) {
+      var ce = cloudEstimates[ei];
+      var localEst = A.getEstimate(ce.id);
+      var cloudEst = estimateFromCloud(ce);
+
+      if (localEst) {
+        // Local wins if newer
+        var localEstTime = new Date(localEst.updatedAt || 0).getTime();
+        var cloudEstTime = new Date(cloudEst.updatedAt || 0).getTime();
+        if (localEstTime > cloudEstTime) { skippedEstimates++; continue; }
+        A.saveEstimate(cloudEst);
+        updatedEstimates++;
+      } else {
+        A.saveEstimate(cloudEst);
+        newEstimates++;
+      }
+    }
+
+    setLastSync();
+    window._syncInProgress = false;
+    return {
+      jobs: cloudJobs.length,
+      addresses: cloudAddrs.length,
+      techs: cloudTechs.length,
+      estimates: cloudEstimates.length,
+      newJobs: newJobs,
+      newAddresses: newAddresses,
+      updatedJobs: updatedJobs,
+      skippedJobs: skippedJobs,
+      newEstimates: newEstimates,
+      updatedEstimates: updatedEstimates,
+      skippedEstimates: skippedEstimates
+    };
+  } catch (e) {
+    window._syncInProgress = false;
+    throw e;
+  }
 }
 
 // ═══════════════════════════════════════════
 // REALTIME — Live sync across devices
+// Now includes estimates table
 // ═══════════════════════════════════════════
-let _channel = null;
+var _channel = null;
 
 function startRealtime() {
   if (!isConfigured()) return;
-  if (_channel) return; // already subscribed
+  if (_channel) return;
   try {
-    const sb = getClient();
+    var sb = getClient();
     _channel = sb.channel('astra-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs' }, payload => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs' }, function(payload) {
         _handleRemoteChange('jobs', payload);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'addresses' }, payload => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'addresses' }, function(payload) {
         _handleRemoteChange('addresses', payload);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'techs' }, payload => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'techs' }, function(payload) {
         _handleRemoteChange('techs', payload);
       })
-      .subscribe((status) => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'estimates' }, function(payload) {
+        _handleRemoteChange('estimates', payload);
+      })
+      .subscribe(function(status) {
         if (status === 'SUBSCRIBED') {
           console.log('ASTRA REALTIME: CONNECTED');
         }
@@ -371,18 +600,17 @@ function stopRealtime() {
 }
 
 function _handleRemoteChange(table, payload) {
-  const { eventType, new: newRec, old: oldRec } = payload;
+  var newRec = payload.new;
+  var eventType = payload.eventType;
   if (!newRec) return;
-  // Skip realtime updates while a sync operation is in progress
   if (window._syncInProgress) return;
 
   if (table === 'jobs') {
-    const local = A.getJob(newRec.id);
-    const cloudJob = jobFromCloud(newRec);
+    var local = A.getJob(newRec.id);
+    var cloudJob = jobFromCloud(newRec);
     if (local) {
-      // Local wins if newer — don't overwrite field work
-      const localTime = new Date(local.updatedAt || 0).getTime();
-      const cloudTime = new Date(cloudJob.updatedAt || 0).getTime();
+      var localTime = new Date(local.updatedAt || 0).getTime();
+      var cloudTime = new Date(cloudJob.updatedAt || 0).getTime();
       if (localTime > cloudTime) return;
 
       A.updateJob(newRec.id, {
@@ -394,6 +622,7 @@ function _handleRemoteChange(table, payload) {
         types: cloudJob.types,
         techId: cloudJob.techId,
         techName: cloudJob.techName,
+        estimateId: cloudJob.estimateId,
         updatedAt: cloudJob.updatedAt
       });
     } else if (eventType === 'INSERT') {
@@ -401,19 +630,33 @@ function _handleRemoteChange(table, payload) {
       A.addJob(cloudJob);
     }
     A.showToast('SYNCED: ' + (cloudJob.address || 'JOB').substring(0, 30));
+
   } else if (table === 'addresses') {
-    const localAddrs = A.loadAddresses();
-    const exists = localAddrs.find(a => a.id === newRec.id);
+    var localAddrs = A.loadAddresses();
+    var exists = localAddrs.find(function(a) { return a.id === newRec.id; });
     if (exists) {
       A.updateAddress(newRec.id, addrFromCloud(newRec));
     } else if (eventType === 'INSERT') {
       A.addAddress(addrFromCloud(newRec));
     }
+
+  } else if (table === 'estimates') {
+    var localEst = A.getEstimate(newRec.id);
+    var cloudEst = estimateFromCloud(newRec);
+    if (localEst) {
+      var localEstTime = new Date(localEst.updatedAt || 0).getTime();
+      var cloudEstTime = new Date(cloudEst.updatedAt || 0).getTime();
+      if (localEstTime > cloudEstTime) return;
+      A.saveEstimate(cloudEst);
+    } else if (eventType === 'INSERT') {
+      A.saveEstimate(cloudEst);
+    }
+    A.showToast('SYNCED: ESTIMATE ' + (cloudEst.address || '').substring(0, 20));
   }
 }
 
 // ── Public API ──
-Object.assign(window, { syncToCloud, syncFromCloud, startRealtime, stopRealtime });
+Object.assign(window, { syncToCloud: syncToCloud, syncFromCloud: syncFromCloud, startRealtime: startRealtime, stopRealtime: stopRealtime });
 window.Astra.getSupabaseUrl = getSupabaseUrl;
 window.Astra.saveSupabaseUrl = saveSupabaseUrl;
 window.Astra.getSupabaseKey = getSupabaseKey;

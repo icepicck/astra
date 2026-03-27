@@ -716,26 +716,27 @@ function renderPricebook() {
     html += '</div>';
   });
 
-  html += '<button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="window._pbSave();window.Astra.showToast(\'PRICE BOOK SAVED\')">SAVE</button>';
+  html += '<button class="btn btn-primary" style="width:100%;margin-top:8px;" onclick="window._pbSave(true)">SAVE</button>';
   html += '<div style="height:40px;"></div>';
   html += '</div>';
 
   body.innerHTML = html;
 }
 
-function _pbSave() {
-  const pb = loadPricebook();
+function _pbSave(showConfirmation) {
+  var pb = loadPricebook();
   var numFields = ['laborRate', 'overheadPercent', 'profitPercent', 'materialMarkup', 'permitFee', 'taxRate'];
   numFields.forEach(function(key) {
-    const el = document.getElementById('pb-' + key);
+    var el = document.getElementById('pb-' + key);
     if (el) pb[key] = parseFloat(el.value) || 0;
   });
   var textFields = ['companyName', 'companyPhone', 'companyEmail', 'companyLicense'];
   textFields.forEach(function(key) {
-    const el = document.getElementById('pb-' + key);
+    var el = document.getElementById('pb-' + key);
     if (el) pb[key] = el.value;
   });
   savePricebook(pb);
+  if (showConfirmation) A.showToast('PRICE BOOK SAVED');
 }
 
 // ══════════════════════════════════════════

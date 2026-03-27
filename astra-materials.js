@@ -469,7 +469,7 @@ function addMatToJob(jobId, itemId, nameOverride, unitOverride, qtyStr) {
   const name = item ? item.name : (nameOverride || itemId);
   const unit = item ? item.unit : (unitOverride || 'EA');
   const qty = Math.max(1, parseInt(qtyStr) || 1);
-  const entry = { itemId, name, qty, unit };
+  const entry = { materialId: crypto.randomUUID(), itemId, name, qty, unit };
   if (_matPickerActiveVariant) {
     entry.variant = _matPickerActiveVariant;
     // Attach part ref if available
@@ -541,7 +541,7 @@ function applyBulkTemplate(jobId, templateKey) {
     if (existingIds.has(entry.id)) continue;
     const item = _lookupMatItem(entry.id);
     if (!item) continue;
-    mats.push({ itemId: entry.id, name: item.name, qty: entry.qty, unit: item.unit });
+    mats.push({ materialId: crypto.randomUUID(), itemId: entry.id, name: item.name, qty: entry.qty, unit: item.unit });
     trackMatAdd(entry.id);
     added++;
   }
