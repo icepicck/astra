@@ -570,6 +570,8 @@ function _attachBlurListeners() {
     _captureFormState();
     recalc(_state.currentEstimate);
     _refreshComputedFields();
+    // Auto-save to IDB so work isn't lost
+    A.saveEstimate(_state.currentEstimate);
   }, true);
 }
 
