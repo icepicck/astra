@@ -64,18 +64,19 @@ function loadTrimLibrary() {
 }
 
 // In-memory cache — all reads are synchronous from here
-const _cache = { jobs: [], techs: [], addresses: [] };
+const _cache = { jobs: [], techs: [], addresses: [], estimates: [] };
 let _astraDB = null;
 
 function _openAstraDB() {
   return new Promise((resolve, reject) => {
     if (_astraDB) { resolve(_astraDB); return; }
-    const req = indexedDB.open('astra_db', 1);
+    const req = indexedDB.open('astra_db', 2);
     req.onupgradeneeded = function(e) {
       const db = e.target.result;
       if (!db.objectStoreNames.contains('jobs')) db.createObjectStore('jobs', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('techs')) db.createObjectStore('techs', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('addresses')) db.createObjectStore('addresses', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('estimates')) db.createObjectStore('estimates', { keyPath: 'id' });
     };
     req.onsuccess = function(e) { _astraDB = e.target.result; resolve(_astraDB); };
     req.onerror = function() { reject(req.error); };
@@ -171,9 +172,10 @@ async function initDataLayer() {
   await _openAstraDB();
 
   // Try loading from IDB first
-  const [idbJobs, idbTechs, idbAddrs] = await Promise.all([
-    _idbGetAll('jobs'), _idbGetAll('techs'), _idbGetAll('addresses')
+  const [idbJobs, idbTechs, idbAddrs, idbEstimates] = await Promise.all([
+    _idbGetAll('jobs'), _idbGetAll('techs'), _idbGetAll('addresses'), _idbGetAll('estimates')
   ]);
+  _cache.estimates = idbEstimates;
 
   if (idbJobs.length > 0 || idbTechs.length > 0 || idbAddrs.length > 0) {
     _cache.jobs = idbJobs;
@@ -251,6 +253,21 @@ function updateJob(id, updates) {
 function addJob(job) {
   _cache.jobs.unshift(job);
   _idbPut('jobs', _cleanJobForStorage(job));
+}
+
+// ── ESTIMATES CRUD ──
+function loadEstimates() { return _cache.estimates; }
+function getEstimate(id) { return _cache.estimates.find(e => e.id === id); }
+function saveEstimate(est) {
+  est.updatedAt = new Date().toISOString();
+  const idx = _cache.estimates.findIndex(e => e.id === est.id);
+  if (idx === -1) _cache.estimates.unshift(est);
+  else _cache.estimates[idx] = est;
+  _idbPut('estimates', est);
+}
+function deleteEstimate(id) {
+  _cache.estimates = _cache.estimates.filter(e => e.id !== id);
+  _idbDelete('estimates', id);
 }
 
 // ── INDEXEDDB MEDIA STORE ──
@@ -491,6 +508,9 @@ async function initScreen(screenId, jobId) {
   if (screenId === 'screen-materials' && window.renderMaterials) window.renderMaterials();
   if (screenId === 'screen-vector' && window.renderMap) window.renderMap();
   if (screenId === 'screen-settings') renderSettings();
+  if (screenId === 'screen-estimates' && window.renderEstimates) window.renderEstimates();
+  if (screenId === 'screen-estimate-builder' && window.renderEstimateBuilder) window.renderEstimateBuilder(jobId);
+  if (screenId === 'screen-pricebook' && window.renderPricebook) window.renderPricebook();
   if (screenId === 'screen-search') {
     setTimeout(() => {
       const inp = document.getElementById('search-input');
@@ -1823,6 +1843,7 @@ Object.assign(window.Astra, {
   todayStr, esc, goTo, showToast,
   getGmapsKey, saveGmapsKey, getHomeBase, saveHomeBase,
   MAT_LIB_KEY, MAT_LIB_TRIM_KEY, loadMaterialLibrary, loadRoughLibrary, loadTrimLibrary,
+  loadEstimates, getEstimate, saveEstimate, deleteEstimate,
 });
 
 // ── Public API — expose only what HTML handlers need ──
