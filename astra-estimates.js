@@ -368,6 +368,9 @@ function renderEstimatesList() {
     });
   }
 
+  // Accuracy metrics at bottom of list
+  html += _renderAccuracyMetrics();
+
   body.innerHTML = html;
 }
 
@@ -494,6 +497,9 @@ function renderEstimateBuilder(estId) {
   html += '<input type="date" id="est-valid-until" value="' + (est.validUntil || '') + '">';
   html += '</div>';
 
+  // ── Comparison (Phase D) ──
+  html += _renderComparison(est);
+
   // ── Notes ──
   html += '<div class="est-section-title">NOTES</div>';
   html += '<div class="field"><textarea id="est-notes" rows="3" placeholder="ADDITIONAL NOTES...">' + A.esc(est.notes) + '</textarea></div>';
@@ -506,6 +512,18 @@ function renderEstimateBuilder(estId) {
   html += '<button class="btn btn-secondary" onclick="window._estShare()" style="flex:1;">SHARE</button>';
   html += '<button class="btn btn-secondary" onclick="window._estPreview()" style="flex:1;">PREVIEW</button>';
   html += '</div>';
+  // Create Ticket button (only if no linked job yet and estimate has content)
+  if (!est.linkedJobId && est.address && est.materials.length > 0) {
+    html += '<div class="est-actions" style="margin-top:8px;">';
+    html += '<button class="btn btn-secondary" style="flex:1;border-color:#2d8a4e;color:#2d8a4e;" onclick="window._estCreateTicket()">CREATE TICKET FROM ESTIMATE</button>';
+    html += '</div>';
+  }
+  // View linked ticket button
+  if (est.linkedJobId) {
+    html += '<div class="est-actions" style="margin-top:8px;">';
+    html += '<button class="btn btn-secondary" style="flex:1;" onclick="goTo(\'screen-detail\',\'' + est.linkedJobId + '\')">VIEW LINKED TICKET</button>';
+    html += '</div>';
+  }
   html += '<div style="height:80px;"></div>';
 
   body.innerHTML = html;
@@ -1150,6 +1168,225 @@ function _estShare() {
   }
 }
 
+// ══════════════════════════════════════════
+// PHASE D: FEEDBACK LOOP
+// ══════════════════════════════════════════
+
+// ── Create Ticket from Estimate ──
+function _estCreateTicket() {
+  var est = _state.currentEstimate;
+  if (!est) return;
+  _captureFormState();
+  recalc(est);
+
+  // Ensure estimate is saved first
+  A.saveEstimate(est);
+
+  // Build address ID
+  var addressId = est.addressId;
+  if (!addressId && est.address) {
+    addressId = A.findOrCreateAddress(est.address);
+  }
+
+  // Convert estimate materials to ticket material format
+  var ticketMats = est.materials.map(function(m) {
+    return {
+      itemId: m.itemId || crypto.randomUUID(),
+      name: m.name,
+      qty: parseFloat(m.qty) || 1,
+      unit: m.unit || 'EA',
+      variant: '',
+      partRef: ''
+    };
+  });
+
+  // Create the job
+  var job = {
+    id: crypto.randomUUID(),
+    syncId: crypto.randomUUID(),
+    address: est.address,
+    addressId: addressId,
+    types: est.jobType ? [est.jobType] : ['GENERAL'],
+    status: 'Not Started',
+    date: A.todayStr(),
+    techId: '', techName: '',
+    notes: est.description || '',
+    techNotes: '',
+    materials: ticketMats,
+    photos: [], drawings: [], videos: [],
+    manually_added_to_vector: false,
+    estimateId: est.id,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  A.addJob(job);
+
+  // Link estimate to job
+  est.linkedJobId = job.id;
+  est.status = 'Accepted';
+  A.saveEstimate(est);
+
+  A.showToast('TICKET CREATED FROM ESTIMATE');
+  A.goTo('screen-detail', job.id);
+}
+
+// ── Get linked job for comparison ──
+function _getLinkedJob(est) {
+  if (!est || !est.linkedJobId) return null;
+  return A.getJob(est.linkedJobId);
+}
+
+// ── Render: Comparison Section (estimated vs actual) ──
+function _renderComparison(est) {
+  var job = _getLinkedJob(est);
+  if (!job) return '';
+
+  var html = '<div class="est-section-title">ESTIMATED vs ACTUAL</div>';
+  html += '<div class="est-intel-card" style="border-color:#FF6B00;">';
+
+  // Job status
+  var statusColor = job.status === 'Complete' ? '#2d8a4e' : '#c9a800';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">';
+  html += '<span style="font-size:12px;font-weight:800;color:#888;letter-spacing:1px;">LINKED TICKET</span>';
+  html += '<span class="badge" style="background:' + statusColor + ';color:#fff;font-size:10px;">' + A.esc(job.status) + '</span>';
+  html += '</div>';
+
+  // Materials comparison
+  var estMats = {};
+  est.materials.forEach(function(m) {
+    var key = m.itemId || m.name;
+    estMats[key] = { name: m.name, estQty: parseFloat(m.qty) || 0, unit: m.unit || 'EA', actQty: 0 };
+  });
+
+  var jobMats = job.materials || [];
+  jobMats.forEach(function(m) {
+    var key = m.itemId || m.name;
+    if (estMats[key]) {
+      estMats[key].actQty = parseFloat(m.qty) || 0;
+    } else {
+      estMats[key] = { name: m.name, estQty: 0, unit: m.unit || 'EA', actQty: parseFloat(m.qty) || 0 };
+    }
+  });
+
+  var matList = Object.values(estMats);
+  if (matList.length > 0) {
+    html += '<div style="font-size:11px;font-weight:800;color:#666;letter-spacing:1px;margin-bottom:6px;">MATERIALS</div>';
+    html += '<table style="width:100%;border-collapse:collapse;">';
+    html += '<tr style="border-bottom:1px solid #333;">';
+    html += '<th style="text-align:left;font-size:10px;color:#555;font-weight:800;padding:4px 0;">ITEM</th>';
+    html += '<th style="text-align:right;font-size:10px;color:#555;font-weight:800;padding:4px 0;">EST</th>';
+    html += '<th style="text-align:right;font-size:10px;color:#555;font-weight:800;padding:4px 0;">ACTUAL</th>';
+    html += '<th style="text-align:right;font-size:10px;color:#555;font-weight:800;padding:4px 0;">DIFF</th>';
+    html += '</tr>';
+
+    var totalEst = 0, totalAct = 0;
+    matList.forEach(function(m) {
+      var diff = m.actQty - m.estQty;
+      var diffColor = diff === 0 ? '#555' : diff > 0 ? '#c0392b' : '#2d8a4e';
+      var diffStr = diff === 0 ? '—' : (diff > 0 ? '+' : '') + diff;
+      totalEst += m.estQty;
+      totalAct += m.actQty;
+      html += '<tr style="border-bottom:1px solid #222;">';
+      html += '<td style="font-size:12px;color:#ccc;padding:6px 0;">' + A.esc(m.name) + '</td>';
+      html += '<td style="text-align:right;font-size:12px;color:#888;padding:6px 0;">' + m.estQty + '</td>';
+      html += '<td style="text-align:right;font-size:12px;color:#e0e0e0;font-weight:600;padding:6px 0;">' + m.actQty + '</td>';
+      html += '<td style="text-align:right;font-size:12px;color:' + diffColor + ';font-weight:700;padding:6px 0;">' + diffStr + '</td>';
+      html += '</tr>';
+    });
+    html += '</table>';
+
+    // Accuracy score
+    if (totalEst > 0 && totalAct > 0) {
+      var accuracy = Math.round((1 - Math.abs(totalAct - totalEst) / totalEst) * 100);
+      if (accuracy < 0) accuracy = 0;
+      var accColor = accuracy >= 90 ? '#2d8a4e' : accuracy >= 70 ? '#c9a800' : '#c0392b';
+      html += '<div style="text-align:center;margin-top:12px;padding:10px;background:#1a1a1a;border-radius:8px;">';
+      html += '<div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;">MATERIAL ACCURACY</div>';
+      html += '<div style="font-size:28px;font-weight:900;color:' + accColor + ';">' + accuracy + '%</div>';
+      html += '</div>';
+    }
+  }
+
+  // Cost comparison
+  if (job.status === 'Complete' && est.grandTotal > 0) {
+    html += '<div style="display:flex;gap:8px;margin-top:12px;">';
+    html += '<div style="flex:1;background:#1a1a1a;border-radius:8px;padding:10px;text-align:center;">';
+    html += '<div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;">ESTIMATED</div>';
+    html += '<div style="font-size:18px;font-weight:900;color:#FF6B00;">' + _fmt(est.grandTotal) + '</div>';
+    html += '</div>';
+    html += '<div style="flex:1;background:#1a1a1a;border-radius:8px;padding:10px;text-align:center;">';
+    html += '<div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;">STATUS</div>';
+    html += '<div style="font-size:18px;font-weight:900;color:#2d8a4e;">COMPLETE</div>';
+    html += '</div>';
+    html += '</div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+// ── Accuracy Metrics Dashboard (across all linked estimates) ──
+function _renderAccuracyMetrics() {
+  var estimates = A.loadEstimates();
+  var linked = estimates.filter(function(e) { return e.linkedJobId; });
+  if (!linked.length) return '';
+
+  var totalAccuracy = 0;
+  var completedCount = 0;
+  var overCount = 0;
+  var underCount = 0;
+  var exactCount = 0;
+
+  linked.forEach(function(est) {
+    var job = A.getJob(est.linkedJobId);
+    if (!job) return;
+
+    var estMats = {};
+    est.materials.forEach(function(m) {
+      var key = m.itemId || m.name;
+      estMats[key] = parseFloat(m.qty) || 0;
+    });
+
+    var totalEst = 0, totalAct = 0;
+    est.materials.forEach(function(m) { totalEst += parseFloat(m.qty) || 0; });
+    (job.materials || []).forEach(function(m) { totalAct += parseFloat(m.qty) || 0; });
+
+    if (totalEst > 0) {
+      var acc = (1 - Math.abs(totalAct - totalEst) / totalEst) * 100;
+      if (acc < 0) acc = 0;
+      totalAccuracy += acc;
+      completedCount++;
+      if (totalAct > totalEst) overCount++;
+      else if (totalAct < totalEst) underCount++;
+      else exactCount++;
+    }
+  });
+
+  if (!completedCount) return '';
+
+  var avgAccuracy = Math.round(totalAccuracy / completedCount);
+  var accColor = avgAccuracy >= 90 ? '#2d8a4e' : avgAccuracy >= 70 ? '#c9a800' : '#c0392b';
+
+  var html = '<div class="est-intel-card" style="margin-top:16px;">';
+  html += '<div class="est-intel-header"><span class="est-intel-icon">📈</span> ESTIMATE ACCURACY <span class="est-intel-count">' + completedCount + ' LINKED</span></div>';
+  html += '<div style="display:flex;gap:8px;">';
+  html += '<div style="flex:1;background:#1a1a1a;border-radius:8px;padding:12px;text-align:center;">';
+  html += '<div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;">AVG ACCURACY</div>';
+  html += '<div style="font-size:28px;font-weight:900;color:' + accColor + ';">' + avgAccuracy + '%</div>';
+  html += '</div>';
+  html += '<div style="flex:1;background:#1a1a1a;border-radius:8px;padding:12px;text-align:center;">';
+  html += '<div style="font-size:10px;color:#555;font-weight:800;letter-spacing:1px;">TREND</div>';
+  html += '<div style="font-size:14px;font-weight:800;margin-top:6px;">';
+  if (overCount > underCount) html += '<span style="color:#c0392b;">UNDER-ESTIMATING</span>';
+  else if (underCount > overCount) html += '<span style="color:#2d8a4e;">OVER-ESTIMATING</span>';
+  else html += '<span style="color:#FF6B00;">ON TARGET</span>';
+  html += '</div></div></div>';
+  html += '</div>';
+
+  return html;
+}
+
 // ── Public API ──
 Object.assign(window, {
   renderEstimates: renderEstimatesList,
@@ -1172,6 +1409,7 @@ Object.assign(window, {
   _estImportAllAddress: _estImportAllAddress,
   _estPreview: _estPreview,
   _estShare: _estShare,
+  _estCreateTicket: _estCreateTicket,
 });
 
 })();

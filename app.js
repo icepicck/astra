@@ -1840,7 +1840,7 @@ function _showUpdateBanner() {
 // ── Shared namespace for sub-modules (maps, materials) ──
 Object.assign(window.Astra, {
   loadJobs, loadAddresses, updateAddress, addAddress, getJob, updateJob, addJob, loadTechs,
-  todayStr, esc, goTo, showToast,
+  todayStr, esc, goTo, showToast, findOrCreateAddress,
   getGmapsKey, saveGmapsKey, getHomeBase, saveHomeBase,
   MAT_LIB_KEY, MAT_LIB_TRIM_KEY, loadMaterialLibrary, loadRoughLibrary, loadTrimLibrary,
   loadEstimates, getEstimate, saveEstimate, deleteEstimate,
