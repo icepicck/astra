@@ -108,8 +108,24 @@ function _fmt(n) {
 // MATERIAL LIBRARY SEARCH
 // ══════════════════════════════════════════
 
+let _estMatPhase = 'ALL'; // ALL, ROUGH, TRIM
+
+function _setEstMatPhase(phase) {
+  _estMatPhase = phase;
+  var toggle = document.getElementById('est-mat-phase-toggle');
+  if (toggle) {
+    toggle.querySelectorAll('.date-toggle-btn').forEach(function(btn) {
+      var btnPhase = btn.textContent.trim() === 'ALL' ? 'ALL' : btn.textContent.trim() === 'ROUGH-IN' ? 'ROUGH' : 'TRIM';
+      btn.classList.toggle('active', btnPhase === phase);
+    });
+  }
+}
+
 function _getAllLibraryItems() {
-  const lib = A.loadMaterialLibrary();
+  var lib;
+  if (_estMatPhase === 'ROUGH') lib = A.loadRoughLibrary();
+  else if (_estMatPhase === 'TRIM') lib = A.loadTrimLibrary();
+  else lib = A.loadMaterialLibrary();
   if (!lib || !lib.categories) return [];
   return lib.categories.flatMap(function(c) {
     return c.items.map(function(item) {
@@ -438,6 +454,11 @@ function renderEstimateBuilder(estId) {
 
   // ── Materials ──
   html += '<div class="est-section-title">MATERIALS</div>';
+  html += '<div class="date-toggle" style="margin-bottom:12px;" id="est-mat-phase-toggle">';
+  html += '<button class="date-toggle-btn' + (_estMatPhase === 'ALL' ? ' active' : '') + '" onclick="window._setEstMatPhase(\'ALL\')">ALL</button>';
+  html += '<button class="date-toggle-btn' + (_estMatPhase === 'ROUGH' ? ' active' : '') + '" onclick="window._setEstMatPhase(\'ROUGH\')">ROUGH-IN</button>';
+  html += '<button class="date-toggle-btn' + (_estMatPhase === 'TRIM' ? ' active' : '') + '" onclick="window._setEstMatPhase(\'TRIM\')">TRIM-OUT</button>';
+  html += '</div>';
 
   est.materials.forEach(function(m, i) {
     html += '<div class="est-mat-item">';
@@ -1407,6 +1428,7 @@ Object.assign(window, {
   _estImportMat: _estImportMat,
   _estImportAllSimilar: _estImportAllSimilar,
   _estImportAllAddress: _estImportAllAddress,
+  _setEstMatPhase: _setEstMatPhase,
   _estPreview: _estPreview,
   _estShare: _estShare,
   _estCreateTicket: _estCreateTicket,

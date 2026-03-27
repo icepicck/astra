@@ -211,10 +211,16 @@ function openMatPicker(jobId) {
     document.body.appendChild(overlay);
   }
   overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;flex-direction:column;padding:16px;';
+  _matPickerPhase = 'ALL';
   overlay.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
       <span style="font-weight:800;font-size:14px;text-transform:uppercase;letter-spacing:1px;">ADD MATERIALS</span>
       <button onclick="closeMatPicker()" style="background:none;border:none;color:#e0e0e0;font-size:24px;cursor:pointer;padding:4px 8px;">✕</button>
+    </div>
+    <div class="date-toggle" style="margin-bottom:12px;" id="mat-picker-toggle">
+      <button class="date-toggle-btn active" onclick="_setMatPickerPhase('${jobId}','ALL')">ALL</button>
+      <button class="date-toggle-btn" onclick="_setMatPickerPhase('${jobId}','ROUGH')">ROUGH-IN</button>
+      <button class="date-toggle-btn" onclick="_setMatPickerPhase('${jobId}','TRIM')">TRIM-OUT</button>
     </div>
     <div class="search-bar" style="margin-bottom:12px;">
       <span class="search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span>
@@ -231,6 +237,7 @@ function closeMatPicker() {
 
 let _matPickerActiveItem = null;
 let _matPickerActiveVariant = null;
+let _matPickerPhase = 'ALL'; // ALL, ROUGH, TRIM
 
 function _matQtyRow(jobId, itemId, escapedName, escapedUnit, defaultQty, color, variants) {
   let variantHtml = '';
@@ -321,8 +328,28 @@ function getFrequentMats(lib, limit) {
   return entries.map(([id]) => allItems[id]).filter(Boolean);
 }
 
+function _setMatPickerPhase(jobId, phase) {
+  _matPickerPhase = phase;
+  // Update toggle buttons
+  const toggle = document.getElementById('mat-picker-toggle');
+  if (toggle) {
+    toggle.querySelectorAll('.date-toggle-btn').forEach(function(btn) {
+      const btnPhase = btn.textContent.trim() === 'ALL' ? 'ALL' : btn.textContent.trim() === 'ROUGH-IN' ? 'ROUGH' : 'TRIM';
+      btn.classList.toggle('active', btnPhase === phase);
+    });
+  }
+  const search = document.getElementById('mat-picker-search');
+  filterMatPicker(jobId, search ? search.value : '');
+}
+
+function _getPickerLib() {
+  if (_matPickerPhase === 'ROUGH') return A.loadRoughLibrary();
+  if (_matPickerPhase === 'TRIM') return A.loadTrimLibrary();
+  return A.loadMaterialLibrary();
+}
+
 function filterMatPicker(jobId, query) {
-  const lib = A.loadMaterialLibrary();
+  const lib = _getPickerLib();
   if (!lib) return;
   const el = document.getElementById('mat-picker-list');
   if (!el) return;
@@ -579,7 +606,7 @@ Object.assign(window, {
   openMatPicker, closeMatPicker, filterMatPicker, showMatQtyInput,
   adjustMatQty, setMatQty, removeMatFromJob, applyBulkTemplate,
   addMatToJob, filterMaterials, importMaterialLibrary,
-  renderAddrMaterialRollup, _setMatPhase,
+  renderAddrMaterialRollup, _setMatPhase, _setMatPickerPhase,
   _matStepQty, _matAddFromPicker, _matLongPress, _matLongStop,
 });
 Object.defineProperty(window, '_matPickerActiveItem', {
