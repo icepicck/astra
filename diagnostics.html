@@ -625,7 +625,7 @@ async function testTicketLifecycle() {
     address: 'DIAG-LIFECYCLE-' + Date.now(), addressId: '',
     types: ['Panel Upgrade', 'Service Call'], status: 'Not Started',
     date: '2026-03-27',
-    techId: 'tech1', techName: 'Test Tech',
+    techId: '', techName: 'Test Tech',
     notes: 'lifecycle test notes', techNotes: 'tech notes here',
     materials: [
       { materialId: crypto.randomUUID(), itemId: 'bc_003', name: '1G OLD WORK BOX', qty: 5, unit: 'EA' },
@@ -1041,7 +1041,7 @@ async function testSyncFieldMapping() {
     id: crypto.randomUUID(), syncId: crypto.randomUUID(),
     address: 'DIAG-FIELDMAP-' + Date.now(), addressId: '',
     types: ['Panel Upgrade', 'Service Call'], status: 'In Progress',
-    date: '2026-03-27', techId: 'tech1', techName: 'Field Map Tech',
+    date: '2026-03-27', techId: '', techName: 'Field Map Tech',
     notes: 'field mapping test', techNotes: 'tech notes field map',
     materials: [
       { materialId: crypto.randomUUID(), itemId: 'bc_003', name: '1G OLD WORK BOX', qty: 5, unit: 'EA' }
