@@ -1164,6 +1164,15 @@ async function runAll() {
   if (shell) shell.remove();
   _A = null;
 
+  // Recompute counts from actual test array (eliminates phantom counting)
+  _passed = 0; _failed = 0; _skipped = 0;
+  _tests.forEach(function(t) {
+    if (t.status === 'pass') _passed++;
+    else if (t.status === 'fail') _failed++;
+    else if (t.status === 'skip') _skipped++;
+  });
+  renderResults();
+
   btn.disabled = false;
   btn.textContent = _failed === 0 ? 'ALL PASSED — RUN AGAIN' : _failed + ' FAILED — RUN AGAIN';
 }
