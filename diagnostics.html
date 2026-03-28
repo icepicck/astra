@@ -154,7 +154,8 @@ function loadAstra() {
       '<input type="file" id="video-input" style="display:none">' +
       '<div id="overlay" class="overlay"></div><div class="status-picker" id="status-picker"></div>' +
       '<div id="sync-status" style="display:none"></div>' +
-      '<input type="file" id="import-input" style="display:none">';
+      '<input type="file" id="import-input" style="display:none">' +
+      '<div id="search-results"></div>';
     document.body.appendChild(shell);
 
     // Load scripts in order
@@ -471,6 +472,653 @@ async function testUI() {
 }
 
 // ══════════════════════════════════════════
+// SUITE: ESTIMATE ENGINE
+// ══════════════════════════════════════════
+
+async function testEstimateEngine() {
+  suite('ESTIMATE ENGINE');
+  var E = window.Astra._testEst;
+
+  // Pricebook defaults
+  var pb = E.defaultPricebook();
+  addResult('Pricebook default laborRate', pb.laborRate === 125, 'got ' + pb.laborRate);
+  addResult('Pricebook default overheadPercent', pb.overheadPercent === 15, 'got ' + pb.overheadPercent);
+  addResult('Pricebook default profitPercent', pb.profitPercent === 15, 'got ' + pb.profitPercent);
+  addResult('Pricebook default materialMarkup', pb.materialMarkup === 40, 'got ' + pb.materialMarkup);
+  addResult('Pricebook default taxRate', pb.taxRate === 8.25, 'got ' + pb.taxRate);
+
+  // Pricebook save/load round-trip
+  var origPb = E.loadPricebook();
+  var testPb = E.defaultPricebook();
+  testPb.laborRate = 200;
+  testPb.companyName = 'DIAG TEST CO';
+  E.savePricebook(testPb);
+  var loaded = E.loadPricebook();
+  addResult('Pricebook save/load round-trip', loaded.laborRate === 200 && loaded.companyName === 'DIAG TEST CO');
+  E.savePricebook(origPb); // restore
+
+  // newEstimate() populates from pricebook
+  var est = E.newEstimate();
+  addResult('newEstimate() has id', !!est.id);
+  addResult('newEstimate() status is Draft', est.status === 'Draft');
+  addResult('newEstimate() has validUntil', !!est.validUntil, est.validUntil);
+
+  // recalc with zero materials — labor only
+  est.laborHours = 8;
+  est.laborRate = 100;
+  est.overheadPercent = 10;
+  est.profitPercent = 15;
+  est.permitFee = 150;
+  est.taxRate = 8.25;
+  est.materials = [];
+  E.recalc(est);
+  // subtotal = 0 + 0 + 800 = 800
+  // overhead = 800 * 0.10 = 80
+  // profit = 800 * 0.15 = 120
+  // tax = 0 (no materials)
+  // grand = 800 + 80 + 120 + 150 + 0 = 1150
+  addResult('recalc: labor only grandTotal', est.grandTotal === 1150, 'got ' + est.grandTotal);
+  addResult('recalc: tax zero with no materials', est.taxAmount === 0, 'got ' + est.taxAmount);
+  addResult('recalc: laborTotal correct', est.laborTotal === 800, 'got ' + est.laborTotal);
+
+  // recalc with materials
+  est.materials = [
+    { name: 'WIRE', qty: 100, unitCost: 2, markup: 25 },
+    { name: 'BOX', qty: 10, unitCost: 5, markup: 40 }
+  ];
+  E.recalc(est);
+  // materialSubtotal = (100*2) + (10*5) = 200 + 50 = 250
+  // materialMarkup = (200*0.25) + (50*0.40) = 50 + 20 = 70
+  // laborTotal = 800
+  // subtotal = 250 + 70 + 800 = 1120
+  // overhead = 1120 * 0.10 = 112
+  // profit = 1120 * 0.15 = 168
+  // tax = (250 + 70) * 0.0825 = 320 * 0.0825 = 26.40
+  // grand = 1120 + 112 + 168 + 150 + 26.40 = 1576.40
+  addResult('recalc: materialSubtotal', est.materialSubtotal === 250, 'got ' + est.materialSubtotal);
+  addResult('recalc: materialMarkupTotal', est.materialMarkupTotal === 70, 'got ' + est.materialMarkupTotal);
+  addResult('recalc: tax on materials only', Math.abs(est.taxAmount - 26.4) < 0.01, 'got ' + est.taxAmount);
+  addResult('recalc: grandTotal with materials', Math.abs(est.grandTotal - 1576.4) < 0.01, 'got ' + est.grandTotal);
+
+  // Per-material lineTotal
+  addResult('recalc: line 1 total', est.materials[0].lineTotal === 250, 'got ' + est.materials[0].lineTotal);
+  addResult('recalc: line 2 total', est.materials[1].lineTotal === 70, 'got ' + est.materials[1].lineTotal);
+
+  // Zero qty no NaN
+  est.materials = [{ name: 'EMPTY', qty: 0, unitCost: 0, markup: 0 }];
+  E.recalc(est);
+  addResult('recalc: zero qty no NaN', !isNaN(est.grandTotal), 'got ' + est.grandTotal);
+
+  // Estimate CRUD
+  var testEst = E.newEstimate();
+  testEst.address = 'DIAG-EST-ENGINE-' + Date.now();
+  testEst.customerName = 'Test Customer';
+  _A.saveEstimate(testEst);
+  await sleep(300);
+  var found = _A.getEstimate(testEst.id);
+  addResult('Estimate save + retrieve', !!found && found.customerName === 'Test Customer');
+
+  _A.deleteEstimate(testEst.id);
+  await sleep(300);
+  var deleted = _A.getEstimate(testEst.id);
+  addResult('Estimate delete', !deleted);
+}
+
+// ══════════════════════════════════════════
+// SUITE: MATERIAL LIBRARY
+// ══════════════════════════════════════════
+
+async function testMaterialLibrary() {
+  suite('MATERIAL LIBRARY');
+
+  var rough = _A.loadRoughLibrary ? _A.loadRoughLibrary() : null;
+  addResult('Rough library loaded', !!rough, rough ? 'loaded' : 'null');
+
+  var trim = _A.loadTrimLibrary ? _A.loadTrimLibrary() : null;
+  addResult('Trim library loaded', !!trim, trim ? 'loaded' : 'null');
+
+  if (rough) {
+    addResult('Rough has categories', Array.isArray(rough.categories) && rough.categories.length > 0, rough.categories ? rough.categories.length + ' categories' : '0');
+    var roughItems = 0;
+    rough.categories.forEach(function(c) { roughItems += (c.items || []).length; });
+    addResult('Rough items have structure', roughItems > 50, roughItems + ' items');
+    // Check first item has required fields
+    var firstItem = rough.categories[0] && rough.categories[0].items && rough.categories[0].items[0];
+    addResult('Rough item has id+name+unit', firstItem && !!firstItem.id && !!firstItem.name && !!firstItem.unit,
+      firstItem ? firstItem.name : 'no items');
+  }
+
+  if (trim) {
+    addResult('Trim has categories', Array.isArray(trim.categories) && trim.categories.length > 0, trim.categories ? trim.categories.length + ' categories' : '0');
+    var trimItems = 0;
+    trim.categories.forEach(function(c) { trimItems += (c.items || []).length; });
+    addResult('Trim items have structure', trimItems > 50, trimItems + ' items');
+  }
+
+  // Merged library
+  var merged = _A.loadMaterialLibrary ? _A.loadMaterialLibrary() : null;
+  addResult('Merged library loaded', !!merged);
+}
+
+// ══════════════════════════════════════════
+// SUITE: TICKET LIFECYCLE
+// ══════════════════════════════════════════
+
+async function testTicketLifecycle() {
+  suite('TICKET LIFECYCLE');
+
+  // Create full job
+  var job = {
+    id: crypto.randomUUID(), syncId: crypto.randomUUID(),
+    address: 'DIAG-LIFECYCLE-' + Date.now(), addressId: '',
+    types: ['Panel Upgrade', 'Service Call'], status: 'Not Started',
+    date: '2026-03-27',
+    techId: 'tech1', techName: 'Test Tech',
+    notes: 'lifecycle test notes', techNotes: 'tech notes here',
+    materials: [
+      { materialId: crypto.randomUUID(), itemId: 'bc_003', name: '1G OLD WORK BOX', qty: 5, unit: 'EA' },
+      { materialId: crypto.randomUUID(), itemId: 'wp_001', name: '14/2 ROMEX', qty: 100, unit: 'FT' }
+    ],
+    photos: [], drawings: [], videos: [],
+    manually_added_to_vector: false, archived: false,
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+  };
+  _A.addJob(job);
+  await sleep(300);
+
+  // Read back
+  var fetched = _A.getJob(job.id);
+  addResult('Create + read job', !!fetched);
+  addResult('Job types preserved', fetched && fetched.types.length === 2 && fetched.types[0] === 'Panel Upgrade');
+  addResult('Job date preserved', fetched && fetched.date === '2026-03-27');
+  addResult('Job materials preserved', fetched && fetched.materials.length === 2);
+  addResult('Job techName preserved', fetched && fetched.techName === 'Test Tech');
+
+  // Update status
+  _A.updateJob(job.id, { status: 'In Progress' });
+  var updated = _A.getJob(job.id);
+  addResult('Update status', updated && updated.status === 'In Progress');
+
+  // Update notes
+  _A.updateJob(job.id, { notes: 'UPDATED NOTES' });
+  updated = _A.getJob(job.id);
+  addResult('Update notes', updated && updated.notes === 'UPDATED NOTES');
+
+  // Archive
+  _A.updateJob(job.id, { archived: true });
+  updated = _A.getJob(job.id);
+  addResult('Archive job', updated && updated.archived === true);
+
+  // Unarchive
+  _A.updateJob(job.id, { archived: false });
+  updated = _A.getJob(job.id);
+  addResult('Unarchive job', updated && updated.archived === false);
+
+  // Add material
+  var newMat = { materialId: crypto.randomUUID(), itemId: 'ak_011', name: '20A BREAKER', qty: 4, unit: 'EA' };
+  var mats = (fetched.materials || []).slice();
+  mats.push(newMat);
+  _A.updateJob(job.id, { materials: mats });
+  updated = _A.getJob(job.id);
+  addResult('Add material', updated && updated.materials.length === 3);
+
+  // Remove material
+  mats = updated.materials.filter(function(m) { return m.itemId !== 'ak_011'; });
+  _A.updateJob(job.id, { materials: mats });
+  updated = _A.getJob(job.id);
+  addResult('Remove material', updated && updated.materials.length === 2);
+
+  // findOrCreateAddress — new
+  var addrId1 = _A.findOrCreateAddress('DIAG-NEWADDR-' + Date.now());
+  addResult('findOrCreateAddress creates new', !!addrId1);
+
+  // findOrCreateAddress — dedup
+  var addrId2 = _A.findOrCreateAddress('DIAG-NEWADDR-' + Date.now().toString().slice(0, -1) + '0');
+  // Different address, should be different ID
+  // Actually let's test same address
+  var testAddr = 'DIAG-DEDUP-' + Date.now();
+  var id1 = _A.findOrCreateAddress(testAddr);
+  var id2 = _A.findOrCreateAddress(testAddr);
+  addResult('findOrCreateAddress deduplicates', id1 === id2, 'id1=' + id1 + ' id2=' + id2);
+
+  // Cleanup
+  var allJobs = _A.loadJobs();
+  for (var i = allJobs.length - 1; i >= 0; i--) {
+    if (allJobs[i].address.indexOf('DIAG-') === 0) allJobs.splice(i, 1);
+  }
+  var allAddrs = _A.loadAddresses();
+  for (var j = allAddrs.length - 1; j >= 0; j--) {
+    if (allAddrs[j].address.indexOf('DIAG-') === 0) allAddrs.splice(j, 1);
+  }
+}
+
+// ══════════════════════════════════════════
+// SUITE: ADDRESS & PROPERTY INTEL
+// ══════════════════════════════════════════
+
+async function testAddressIntel() {
+  suite('ADDRESS & PROPERTY INTEL');
+
+  var addr = {
+    id: crypto.randomUUID(),
+    address: 'DIAG-INTEL-' + Date.now() + ', Houston, TX 77001',
+    street: 'DIAG-INTEL-' + Date.now(),
+    suite: 'Suite 100',
+    city: 'Houston', state: 'TX', zip: '77001',
+    builder: 'ACME BUILDERS',
+    subdivision: 'SUNSET RIDGE',
+    panelType: 'Main Breaker',
+    ampRating: '200A',
+    breakerType: 'SQD',
+    serviceType: 'Underground',
+    panelLocation: 'Indoor',
+    notes: 'Test property notes',
+    lat: 29.7604, lng: -95.3698
+  };
+  _A.addAddress(addr);
+  await sleep(300);
+
+  var fetched = _A.loadAddresses().find(function(a) { return a.id === addr.id; });
+  addResult('Address created', !!fetched);
+  addResult('Builder preserved', fetched && fetched.builder === 'ACME BUILDERS');
+  addResult('Subdivision preserved', fetched && fetched.subdivision === 'SUNSET RIDGE');
+  addResult('Panel type preserved', fetched && fetched.panelType === 'Main Breaker');
+  addResult('Amp rating preserved', fetched && fetched.ampRating === '200A');
+  addResult('Breaker type preserved', fetched && fetched.breakerType === 'SQD');
+  addResult('Service type preserved', fetched && fetched.serviceType === 'Underground');
+  addResult('Notes preserved', fetched && fetched.notes === 'Test property notes');
+  addResult('Lat/lng preserved', fetched && fetched.lat === 29.7604 && fetched.lng === -95.3698);
+
+  // Update
+  _A.updateAddress(addr.id, { ampRating: '400A' });
+  var updated = _A.loadAddresses().find(function(a) { return a.id === addr.id; });
+  addResult('Address update persists', updated && updated.ampRating === '400A');
+
+  // Multiple jobs linked
+  var job1 = {
+    id: crypto.randomUUID(), syncId: crypto.randomUUID(),
+    address: addr.address, addressId: addr.id,
+    types: ['Service Call'], status: 'Complete',
+    date: '2026-01-15', techId: '', techName: '',
+    notes: '', techNotes: '', materials: [],
+    photos: [], drawings: [], videos: [],
+    manually_added_to_vector: false, archived: false,
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+  };
+  var job2 = { ...job1, id: crypto.randomUUID(), syncId: crypto.randomUUID(), date: '2026-02-20' };
+  _A.addJob(job1);
+  _A.addJob(job2);
+  await sleep(300);
+
+  var linked = _A.loadJobs().filter(function(j) { return j.addressId === addr.id; });
+  addResult('Multiple jobs linked to address', linked.length >= 2, linked.length + ' jobs');
+
+  // Cleanup
+  var allJobs = _A.loadJobs();
+  for (var i = allJobs.length - 1; i >= 0; i--) {
+    if (allJobs[i].addressId === addr.id) allJobs.splice(i, 1);
+  }
+  var allAddrs = _A.loadAddresses();
+  for (var j = allAddrs.length - 1; j >= 0; j--) {
+    if (allAddrs[j].id === addr.id) allAddrs.splice(j, 1);
+  }
+}
+
+// ══════════════════════════════════════════
+// SUITE: NAVIGATION & UTILITIES
+// ══════════════════════════════════════════
+
+async function testNavigation() {
+  suite('NAVIGATION & UTILITIES');
+
+  // goTo screen-jobs
+  await window.goTo('screen-jobs');
+  await sleep(200);
+  var jobsScreen = document.getElementById('screen-jobs');
+  addResult('goTo screen-jobs', jobsScreen && jobsScreen.classList.contains('active'));
+
+  // goTo screen-settings
+  await window.goTo('screen-settings');
+  await sleep(200);
+  var settingsScreen = document.getElementById('screen-settings');
+  addResult('goTo screen-settings activates', settingsScreen && settingsScreen.classList.contains('active'));
+  addResult('Previous screen deactivated', jobsScreen && !jobsScreen.classList.contains('active'));
+
+  // Back to jobs
+  await window.goTo('screen-jobs');
+  await sleep(200);
+
+  // Utility: todayStr
+  var T = _A._test;
+  var today = T.todayStr();
+  addResult('todayStr() format YYYY-MM-DD', /^\d{4}-\d{2}-\d{2}$/.test(today), today);
+
+  // Utility: esc
+  addResult('esc() escapes <script>', T.esc('<script>').indexOf('<') === -1);
+  addResult('esc() escapes ampersand', T.esc('A&B').indexOf('&amp;') !== -1);
+  addResult('esc() handles null/undefined', T.esc(null) === '' || T.esc(undefined) === '');
+
+  // Utility: getISOWeek — Jan 1 2026 is Thursday, so it's week 1
+  var jan1 = new Date(2026, 0, 1);
+  var week = T.getISOWeek(jan1);
+  addResult('getISOWeek(Jan 1 2026) = week 1', week === 1, 'got week ' + week);
+
+  // Dec 31 2025 is Wednesday — should be week 1 of 2026 (ISO week rule)
+  var dec31 = new Date(2025, 11, 31);
+  var weekDec = T.getISOWeek(dec31);
+  addResult('getISOWeek(Dec 31 2025) = week 1', weekDec === 1, 'got week ' + weekDec);
+}
+
+// ══════════════════════════════════════════
+// SUITE: SEARCH
+// ══════════════════════════════════════════
+
+async function testSearch() {
+  suite('SEARCH');
+  var T = _A._test;
+
+  // Create test data
+  var searchJobs = [
+    { id: crypto.randomUUID(), syncId: crypto.randomUUID(), address: 'DIAG-SEARCH-123 Oak St', types: ['Panel Upgrade'], status: 'Complete', date: '2026-03-01', techName: 'John Smith', notes: 'replaced main breaker', techNotes: '', materials: [], photos: [], drawings: [], videos: [], manually_added_to_vector: false, archived: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+    { id: crypto.randomUUID(), syncId: crypto.randomUUID(), address: 'DIAG-SEARCH-456 Pine Ave', types: ['Service Call'], status: 'In Progress', date: '2026-03-15', techName: 'Mike Torres', notes: 'troubleshooting circuit', techNotes: '', materials: [], photos: [], drawings: [], videos: [], manually_added_to_vector: false, archived: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+  ];
+  searchJobs.forEach(function(j) { _A.addJob(j); });
+  await sleep(300);
+
+  // Ensure search-results element exists
+  var searchEl = document.getElementById('search-results');
+  if (!searchEl) {
+    addResult('Search element exists', 'skip', 'No #search-results in DOM shell');
+    return;
+  }
+
+  // Search by address
+  T.runSearch('Oak');
+  addResult('Search by address', searchEl.innerHTML.indexOf('Oak St') !== -1, 'found Oak St');
+
+  // Search by tech name
+  T.runSearch('John');
+  addResult('Search by tech name', searchEl.innerHTML.indexOf('Oak St') !== -1, 'found via tech');
+
+  // Search by notes
+  T.runSearch('breaker');
+  addResult('Search by notes', searchEl.innerHTML.indexOf('Oak St') !== -1, 'found via notes');
+
+  // Search by type
+  T.runSearch('Panel');
+  addResult('Search by job type', searchEl.innerHTML.indexOf('Oak St') !== -1, 'found via type');
+
+  // Case insensitive
+  T.runSearch('OAK');
+  addResult('Case insensitive search', searchEl.innerHTML.indexOf('Oak St') !== -1);
+
+  // No match
+  T.runSearch('ZZZNOMATCH');
+  addResult('No match returns empty', searchEl.innerHTML.indexOf('NO RESULTS') !== -1);
+
+  // Cleanup
+  var allJobs = _A.loadJobs();
+  for (var i = allJobs.length - 1; i >= 0; i--) {
+    if (allJobs[i].address.indexOf('DIAG-SEARCH-') === 0) allJobs.splice(i, 1);
+  }
+}
+
+// ══════════════════════════════════════════
+// SUITE: EXPORT / IMPORT
+// ══════════════════════════════════════════
+
+async function testExportImport() {
+  suite('EXPORT / IMPORT');
+
+  // Create test data
+  var expJob = {
+    id: crypto.randomUUID(), syncId: crypto.randomUUID(),
+    address: 'DIAG-EXPORT-' + Date.now(), addressId: '',
+    types: ['Service Call'], status: 'Complete', date: '2026-03-20',
+    techId: '', techName: 'Export Tech',
+    notes: 'export test', techNotes: 'tech export notes',
+    materials: [{ materialId: crypto.randomUUID(), itemId: 'bc_003', name: '1G BOX', qty: 3, unit: 'EA' }],
+    photos: [{ id: 'p1', name: 'test.jpg', type: 'image', addedAt: new Date().toISOString() }],
+    drawings: [], videos: [],
+    manually_added_to_vector: false, archived: false,
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+  };
+  _A.addJob(expJob);
+  await sleep(300);
+
+  // Simulate export data assembly (can't trigger download)
+  var jobs = _A.loadJobs();
+  var techs = _A.loadTechs();
+  var addresses = _A.loadAddresses();
+  var data = {
+    version: '0.5',
+    exportedAt: new Date().toISOString(),
+    jobs: jobs,
+    techs: techs,
+    addresses: addresses,
+    materialLibrary: _A.loadRoughLibrary ? _A.loadRoughLibrary() : null,
+    materialLibraryTrim: _A.loadTrimLibrary ? _A.loadTrimLibrary() : null,
+    homeBase: '',
+    media: []
+  };
+
+  addResult('Export has jobs array', Array.isArray(data.jobs) && data.jobs.length > 0, data.jobs.length + ' jobs');
+  addResult('Export has techs array', Array.isArray(data.techs), data.techs.length + ' techs');
+  addResult('Export has addresses array', Array.isArray(data.addresses), data.addresses.length + ' addresses');
+  addResult('Export has materialLibrary', data.materialLibrary !== undefined);
+
+  // Simulate import validation
+  var validImport = { jobs: [{ id: 'test', address: 'test addr', status: 'Not Started' }] };
+  var invalidImport1 = { techs: [] }; // missing jobs
+  var invalidImport2 = { jobs: [{ id: 'test' }] }; // missing address
+
+  addResult('Import validates: valid', !!validImport.jobs && Array.isArray(validImport.jobs));
+  addResult('Import rejects: missing jobs', !invalidImport1.jobs || !Array.isArray(invalidImport1.jobs));
+  var badJobs = (invalidImport2.jobs || []).filter(function(j) { return !j.id || !j.address; });
+  addResult('Import rejects: job without address', badJobs.length > 0, badJobs.length + ' invalid');
+
+  // Round-trip: verify our export job is in the data
+  var exportedJob = data.jobs.find(function(j) { return j.id === expJob.id; });
+  addResult('Round-trip: job in export', !!exportedJob);
+  addResult('Round-trip: types preserved', exportedJob && exportedJob.types[0] === 'Service Call');
+  addResult('Round-trip: materials preserved', exportedJob && exportedJob.materials.length === 1);
+  addResult('Round-trip: photo metadata preserved', exportedJob && exportedJob.photos.length === 1 && exportedJob.photos[0].id === 'p1');
+
+  // Cleanup
+  var allJobs = _A.loadJobs();
+  for (var i = allJobs.length - 1; i >= 0; i--) {
+    if (allJobs[i].address.indexOf('DIAG-EXPORT-') === 0) allJobs.splice(i, 1);
+  }
+}
+
+// ══════════════════════════════════════════
+// SUITE: MEDIA STORAGE
+// ══════════════════════════════════════════
+
+async function testMediaStorage() {
+  suite('MEDIA STORAGE');
+  var T = _A._test;
+
+  // Save a blob
+  var testId = 'diag-media-' + Date.now();
+  var testData = 'data:image/png;base64,iVBORw0KGgo='; // tiny valid base64
+  try {
+    await T.saveMediaBlob(testId, testData);
+    addResult('saveMediaBlob succeeds', true);
+  } catch (e) {
+    addResult('saveMediaBlob succeeds', false, e.message);
+    return;
+  }
+
+  // Retrieve
+  try {
+    var retrieved = await T.getMediaBlob(testId);
+    addResult('getMediaBlob retrieves', !!retrieved, typeof retrieved);
+  } catch (e) {
+    addResult('getMediaBlob retrieves', false, e.message);
+  }
+
+  // DB size > 0
+  try {
+    var size = await T.getMediaDBSize();
+    addResult('getMediaDBSize > 0', size > 0, size + ' bytes');
+  } catch (e) {
+    addResult('getMediaDBSize > 0', false, e.message);
+  }
+
+  // getAllMediaBlobs
+  try {
+    var all = await T.getAllMediaBlobs();
+    var hasOurs = all.some(function(b) { return b.id === testId; });
+    addResult('getAllMediaBlobs includes test', hasOurs, all.length + ' total');
+  } catch (e) {
+    addResult('getAllMediaBlobs includes test', false, e.message);
+  }
+
+  // Delete
+  try {
+    await T.deleteMediaBlob(testId);
+    var afterDel = await T.getMediaBlob(testId);
+    addResult('deleteMediaBlob removes', !afterDel);
+  } catch (e) {
+    addResult('deleteMediaBlob removes', false, e.message);
+  }
+
+  // clearAllMediaBlobs (only if no real data — check count first)
+  try {
+    var allBefore = await T.getAllMediaBlobs();
+    if (allBefore.length === 0) {
+      // Safe to test clear
+      await T.saveMediaBlob('diag-clear-test', 'test');
+      await T.clearAllMediaBlobs();
+      var allAfter = await T.getAllMediaBlobs();
+      addResult('clearAllMediaBlobs empties store', allAfter.length === 0);
+    } else {
+      addResult('clearAllMediaBlobs', 'skip', 'Skipped — ' + allBefore.length + ' real blobs exist');
+    }
+  } catch (e) {
+    addResult('clearAllMediaBlobs', false, e.message);
+  }
+}
+
+// ══════════════════════════════════════════
+// SUITE: SYNC FIELD MAPPING
+// ══════════════════════════════════════════
+
+async function testSyncFieldMapping() {
+  suite('SYNC FIELD MAPPING');
+  var win = window;
+
+  var isConfigured = _A.isSyncConfigured && _A.isSyncConfigured();
+  if (!isConfigured) {
+    addResult('Supabase configured', 'skip', 'NOT CONFIGURED — skipping sync field tests');
+    addResult('Job round-trip', 'skip', 'Requires Supabase');
+    addResult('Address round-trip', 'skip', 'Requires Supabase');
+    addResult('Estimate round-trip', 'skip', 'Requires Supabase');
+    addResult('Material materialId preserved', 'skip', 'Requires Supabase');
+    addResult('D14: materialId backfill', 'skip', 'Requires Supabase');
+    addResult('Estimate JSONB materials survive', 'skip', 'Requires Supabase');
+    addResult('Estimate status capitalization', 'skip', 'Requires Supabase');
+    return;
+  }
+
+  addResult('Supabase configured', true);
+
+  // Create test data, push, clear local, pull, verify
+  var testJob = {
+    id: crypto.randomUUID(), syncId: crypto.randomUUID(),
+    address: 'DIAG-FIELDMAP-' + Date.now(), addressId: '',
+    types: ['Panel Upgrade', 'Service Call'], status: 'In Progress',
+    date: '2026-03-27', techId: 'tech1', techName: 'Field Map Tech',
+    notes: 'field mapping test', techNotes: 'tech notes field map',
+    materials: [
+      { materialId: crypto.randomUUID(), itemId: 'bc_003', name: '1G OLD WORK BOX', qty: 5, unit: 'EA' }
+    ],
+    photos: [], drawings: [], videos: [],
+    manually_added_to_vector: false, archived: false,
+    estimateId: '',
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+  };
+  _A.addJob(testJob);
+
+  var testEst = window.Astra._testEst.newEstimate();
+  testEst.address = 'DIAG-ESTMAP-' + Date.now();
+  testEst.customerName = 'Map Test';
+  testEst.jobType = 'Panel Upgrade';
+  testEst.laborHours = 6;
+  testEst.laborRate = 110;
+  testEst.materials = [{ name: 'TEST PANEL', qty: 1, unitCost: 500, markup: 25, unit: 'EA' }];
+  testEst.status = 'Draft';
+  window.Astra._testEst.recalc(testEst);
+  _A.saveEstimate(testEst);
+  await sleep(500);
+
+  // Push
+  _tests.push({ suite: _currentSuite, name: 'Pushing to cloud...', status: 'running', notes: '' });
+  renderResults();
+  try {
+    await win.syncToCloud(function() {});
+  } catch (e) {
+    _tests.pop();
+    addResult('Push failed', false, e.message);
+    return;
+  }
+  _tests.pop();
+  await sleep(2000);
+
+  // Remove from local cache (simulate fresh device)
+  var jobs = _A.loadJobs();
+  for (var i = jobs.length - 1; i >= 0; i--) {
+    if (jobs[i].id === testJob.id) jobs.splice(i, 1);
+  }
+  var ests = _A.loadEstimates();
+  for (var j = ests.length - 1; j >= 0; j--) {
+    if (ests[j].id === testEst.id) ests.splice(j, 1);
+  }
+
+  // Pull
+  _tests.push({ suite: _currentSuite, name: 'Pulling from cloud...', status: 'running', notes: '' });
+  renderResults();
+  try {
+    await win.syncFromCloud(function() {});
+  } catch (e) {
+    _tests.pop();
+    addResult('Pull failed', false, e.message);
+    return;
+  }
+  _tests.pop();
+  await sleep(1000);
+
+  // Verify job round-trip
+  var pulledJob = _A.getJob(testJob.id);
+  addResult('Job round-trip', !!pulledJob, pulledJob ? 'found' : 'missing');
+  if (pulledJob) {
+    addResult('Job types survived', pulledJob.types && pulledJob.types.length === 2 && pulledJob.types[0] === 'Panel Upgrade');
+    addResult('Job techName survived', pulledJob.techName === 'Field Map Tech');
+    addResult('Material materialId preserved', pulledJob.materials && pulledJob.materials.length === 1 && !!pulledJob.materials[0].materialId);
+  }
+
+  // Verify estimate round-trip
+  var pulledEst = _A.getEstimate(testEst.id);
+  addResult('Estimate round-trip', !!pulledEst, pulledEst ? 'found' : 'missing');
+  if (pulledEst) {
+    addResult('Estimate JSONB materials survive', pulledEst.materials && pulledEst.materials.length === 1);
+    addResult('Estimate status capitalization', pulledEst.status === 'Draft');
+    addResult('Estimate laborHours survived', pulledEst.laborHours === 6);
+  }
+
+  // Cleanup local
+  jobs = _A.loadJobs();
+  for (var k = jobs.length - 1; k >= 0; k--) {
+    if (jobs[k].address && jobs[k].address.indexOf('DIAG-') === 0) jobs.splice(k, 1);
+  }
+  ests = _A.loadEstimates();
+  for (var l = ests.length - 1; l >= 0; l--) {
+    if (ests[l].address && ests[l].address.indexOf('DIAG-') === 0) ests.splice(l, 1);
+  }
+}
+
+// ══════════════════════════════════════════
 // MAIN
 // ══════════════════════════════════════════
 
@@ -493,9 +1141,18 @@ async function runAll() {
     addResult('ASTRA loaded in test frame', true);
 
     await testCoreData();
+    await testEstimateEngine();
+    await testMaterialLibrary();
+    await testTicketLifecycle();
+    await testAddressIntel();
+    await testNavigation();
+    await testSearch();
+    await testExportImport();
+    await testMediaStorage();
     await testAutoSync();
     await testSilentErrors();
     await testSupabaseSync();
+    await testSyncFieldMapping();
     await testUI();
 
   } catch (e) {

@@ -2034,4 +2034,12 @@ Object.assign(window, {
   saveGmapsKey, saveHomeBase, hardReload, _applyUpdate,
 });
 
+// ── Test API (diagnostics.html only) ──
+Object.assign(window.Astra, {
+  _test: {
+    runSearch, esc, todayStr, getISOWeek,
+    saveMediaBlob, getMediaBlob, deleteMediaBlob, getAllMediaBlobs, clearAllMediaBlobs, getMediaDBSize,
+  }
+});
+
 })();

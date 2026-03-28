@@ -1439,4 +1439,14 @@ Object.assign(window, {
   _estCreateTicket: _estCreateTicket,
 });
 
+// ── Test API (diagnostics.html only) ──
+window.Astra._testEst = {
+  newEstimate: newEstimate,
+  recalc: recalc,
+  loadPricebook: loadPricebook,
+  savePricebook: savePricebook,
+  defaultPricebook: defaultPricebook,
+  _getAllLibraryItems: _getAllLibraryItems,
+};
+
 })();
