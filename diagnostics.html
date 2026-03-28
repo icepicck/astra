@@ -117,13 +117,25 @@ function renderResults() {
   // Summary
   var total = _passed + _failed + _skipped;
   if (total > 0) {
-    document.getElementById('summary').innerHTML =
-      '<div class="summary">' +
+    var summaryHtml = '<div class="summary">' +
       '<div class="summary-row"><span class="summary-label">PASSED</span><span class="summary-value summary-pass">' + _passed + '</span></div>' +
       '<div class="summary-row"><span class="summary-label">FAILED</span><span class="summary-value summary-fail">' + _failed + '</span></div>' +
       '<div class="summary-row"><span class="summary-label">SKIPPED</span><span class="summary-value" style="color:#666;">' + _skipped + '</span></div>' +
-      '<div class="summary-row"><span class="summary-label">TOTAL</span><span class="summary-value summary-total">' + total + '</span></div>' +
-      '</div>';
+      '<div class="summary-row"><span class="summary-label">TOTAL</span><span class="summary-value summary-total">' + total + '</span></div>';
+    // List any failures by name
+    var failList = _tests.filter(function(t) { return t.status === 'fail'; });
+    if (failList.length > 0) {
+      summaryHtml += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #333;">';
+      summaryHtml += '<div style="font-size:11px;font-weight:800;color:#c0392b;letter-spacing:1px;margin-bottom:8px;">FAILURES:</div>';
+      failList.forEach(function(t) {
+        summaryHtml += '<div style="font-size:13px;color:#e0e0e0;margin-bottom:4px;">' + t.suite + ' > ' + t.name;
+        if (t.notes) summaryHtml += '<br><span style="font-size:11px;color:#888;">' + t.notes + '</span>';
+        summaryHtml += '</div>';
+      });
+      summaryHtml += '</div>';
+    }
+    summaryHtml += '</div>';
+    document.getElementById('summary').innerHTML = summaryHtml;
   }
 }
 
