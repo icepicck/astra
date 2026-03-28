@@ -39,22 +39,24 @@ function importMaterialLibrary(input) {
 }
 
 async function autoLoadBuiltInLibraries() {
-  // Auto-load rough and trim from bundled JSON files if not already imported
-  if (!localStorage.getItem(A.MAT_LIB_KEY)) {
+  // D15: Auto-load rough and trim from bundled JSON files if not in IDB
+  if (!A.loadRoughLibrary || !A.loadRoughLibrary()) {
     try {
-      const res = await fetch('rough_materials.json');
+      var res = await fetch('rough_materials.json');
       if (res.ok) {
-        const data = await res.json();
-        localStorage.setItem(A.MAT_LIB_KEY, JSON.stringify(data));
+        var data = await res.json();
+        if (A.saveRoughLibrary) A.saveRoughLibrary(data);
+        else localStorage.setItem(A.MAT_LIB_KEY, JSON.stringify(data));
       }
     } catch {}
   }
-  if (!localStorage.getItem(A.MAT_LIB_TRIM_KEY)) {
+  if (!A.loadTrimLibrary || !A.loadTrimLibrary()) {
     try {
-      const res = await fetch('trim_materials.json');
-      if (res.ok) {
-        const data = await res.json();
-        localStorage.setItem(A.MAT_LIB_TRIM_KEY, JSON.stringify(data));
+      var res2 = await fetch('trim_materials.json');
+      if (res2.ok) {
+        var data2 = await res2.json();
+        if (A.saveTrimLibrary) A.saveTrimLibrary(data2);
+        else localStorage.setItem(A.MAT_LIB_TRIM_KEY, JSON.stringify(data2));
       }
     } catch {}
   }

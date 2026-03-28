@@ -46,21 +46,53 @@ function saveGmapsKey(key) { localStorage.setItem(GMAPS_KEY_STORAGE, key.trim())
 function getHomeBase() { return localStorage.getItem(HOME_BASE_KEY) || ''; }
 function saveHomeBase(val) { localStorage.setItem(HOME_BASE_KEY, val.trim()); }
 
+// D15: Material libraries + pricebook cached in memory, persisted to IDB
+// Falls back to localStorage on first run, then migrates
+var _configCache = {};
+
+function _idbConfigGet(key) {
+  return new Promise(function(resolve) {
+    if (!_astraDB) { resolve(null); return; }
+    try {
+      var tx = _astraDB.transaction('_config', 'readonly');
+      var req = tx.objectStore('_config').get(key);
+      req.onsuccess = function() { resolve(req.result ? req.result.value : null); };
+      req.onerror = function() { resolve(null); };
+    } catch (e) { resolve(null); }
+  });
+}
+
+function _idbConfigPut(key, value) {
+  if (!_astraDB) return;
+  try {
+    var tx = _astraDB.transaction('_config', 'readwrite');
+    tx.objectStore('_config').put({ key: key, value: value });
+  } catch (e) { /* non-critical */ }
+}
+
 function loadMaterialLibrary() {
-  let rough = null, trim = null;
-  try { rough = JSON.parse(localStorage.getItem(MAT_LIB_KEY)) || null; } catch {}
-  try { trim = JSON.parse(localStorage.getItem(MAT_LIB_TRIM_KEY)) || null; } catch {}
+  var rough = _configCache.roughLib || null;
+  var trim = _configCache.trimLib || null;
   if (!rough && !trim) return null;
-  const cats = [];
-  if (rough && rough.categories) cats.push(...rough.categories);
-  if (trim && trim.categories) cats.push(...trim.categories);
+  var cats = [];
+  if (rough && rough.categories) cats.push.apply(cats, rough.categories);
+  if (trim && trim.categories) cats.push.apply(cats, trim.categories);
   return { categories: cats };
 }
-function loadRoughLibrary() {
-  try { return JSON.parse(localStorage.getItem(MAT_LIB_KEY)) || null; } catch { return null; }
+function loadRoughLibrary() { return _configCache.roughLib || null; }
+function loadTrimLibrary() { return _configCache.trimLib || null; }
+function saveRoughLibrary(lib) {
+  _configCache.roughLib = lib;
+  _idbConfigPut('roughLib', lib);
 }
-function loadTrimLibrary() {
-  try { return JSON.parse(localStorage.getItem(MAT_LIB_TRIM_KEY)) || null; } catch { return null; }
+function saveTrimLibrary(lib) {
+  _configCache.trimLib = lib;
+  _idbConfigPut('trimLib', lib);
+}
+function loadPricebookConfig() { return _configCache.pricebook || null; }
+function savePricebookConfig(pb) {
+  _configCache.pricebook = pb;
+  _idbConfigPut('pricebook', pb);
 }
 
 // In-memory cache — all reads are synchronous from here
@@ -70,7 +102,7 @@ let _astraDB = null;
 function _openAstraDB() {
   return new Promise((resolve, reject) => {
     if (_astraDB) { resolve(_astraDB); return; }
-    const req = indexedDB.open('astra_db', 3);
+    const req = indexedDB.open('astra_db', 4);
     req.onupgradeneeded = function(e) {
       const db = e.target.result;
       if (!db.objectStoreNames.contains('jobs')) db.createObjectStore('jobs', { keyPath: 'id' });
@@ -78,6 +110,8 @@ function _openAstraDB() {
       if (!db.objectStoreNames.contains('addresses')) db.createObjectStore('addresses', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('estimates')) db.createObjectStore('estimates', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('_syncMeta')) db.createObjectStore('_syncMeta', { keyPath: 'key' });
+      // D15: Config store for material libraries + pricebook
+      if (!db.objectStoreNames.contains('_config')) db.createObjectStore('_config', { keyPath: 'key' });
     };
     req.onsuccess = function(e) { _astraDB = e.target.result; resolve(_astraDB); };
     req.onerror = function() { reject(req.error); };
@@ -332,9 +366,30 @@ async function initDataLayer() {
     localStorage.removeItem(ADDRS_KEY);
   }
 
-  // Seed default tech
+  // D15: Load config (material libs + pricebook) from IDB, migrate from localStorage
+  var idbRough = await _idbConfigGet('roughLib');
+  var idbTrim = await _idbConfigGet('trimLib');
+  var idbPricebook = await _idbConfigGet('pricebook');
+
+  if (idbRough) { _configCache.roughLib = idbRough; }
+  else {
+    try { _configCache.roughLib = JSON.parse(localStorage.getItem(MAT_LIB_KEY)) || null; } catch { _configCache.roughLib = null; }
+    if (_configCache.roughLib) { _idbConfigPut('roughLib', _configCache.roughLib); localStorage.removeItem(MAT_LIB_KEY); }
+  }
+  if (idbTrim) { _configCache.trimLib = idbTrim; }
+  else {
+    try { _configCache.trimLib = JSON.parse(localStorage.getItem(MAT_LIB_TRIM_KEY)) || null; } catch { _configCache.trimLib = null; }
+    if (_configCache.trimLib) { _idbConfigPut('trimLib', _configCache.trimLib); localStorage.removeItem(MAT_LIB_TRIM_KEY); }
+  }
+  if (idbPricebook) { _configCache.pricebook = idbPricebook; }
+  else {
+    try { _configCache.pricebook = JSON.parse(localStorage.getItem('astra_pricebook')) || null; } catch { _configCache.pricebook = null; }
+    if (_configCache.pricebook) { _idbConfigPut('pricebook', _configCache.pricebook); localStorage.removeItem('astra_pricebook'); }
+  }
+
+  // D19: Seed default tech — use "DEFAULT TECH" instead of hardcoded name
   if (_cache.techs.length === 0) {
-    _cache.techs = [{ id: crypto.randomUUID(), name: 'Mike Torres' }];
+    _cache.techs = [{ id: crypto.randomUUID(), name: 'DEFAULT TECH' }];
     _idbReplaceAll('techs', _cache.techs);
   }
 
@@ -422,7 +477,18 @@ function openMediaDB() {
   });
 }
 
+// D21: 2MB cap on media blobs
+var MAX_MEDIA_BYTES = 2 * 1024 * 1024; // 2MB
+
 async function saveMediaBlob(id, data) {
+  // Check size — data can be a string (base64) or Blob
+  var size = 0;
+  if (typeof data === 'string') size = data.length * 0.75; // base64 → bytes approx
+  else if (data && data.size) size = data.size;
+  if (size > MAX_MEDIA_BYTES) {
+    showToast('FILE TOO LARGE (' + (size / (1024 * 1024)).toFixed(1) + 'MB). MAX 2MB.', 'error');
+    throw new Error('Media exceeds 2MB cap');
+  }
   const db = await openMediaDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction('blobs', 'readwrite');
@@ -724,7 +790,10 @@ function setHomeView(view) {
 }
 
 function renderJobList() {
-  const allJobs = loadJobs().filter(j => !j.archived);
+  // D11: Sort by date at render time — newest first, don't rely on array order
+  const allJobs = loadJobs().filter(j => !j.archived).sort(function(a, b) {
+    return (b.date || '').localeCompare(a.date || '');
+  });
   const el = document.getElementById('jobs-body');
   if (!el) return;
 
@@ -807,7 +876,10 @@ function setArchiveView(view) {
 }
 
 function renderArchiveList() {
-  const allJobs = loadJobs().filter(j => j.archived);
+  // D11: Sort by date at render time
+  const allJobs = loadJobs().filter(j => j.archived).sort(function(a, b) {
+    return (b.date || '').localeCompare(a.date || '');
+  });
   const el = document.getElementById('archive-body');
   if (!el) return;
 
@@ -1699,10 +1771,18 @@ async function renderSettings() {
   }
   const usedMB = ((mediaBytes + lsBytes) / (1024 * 1024)).toFixed(1);
 
+  // D21: Storage warning threshold at 50MB
+  var warningHtml = '';
+  if (parseFloat(usedMB) > 50) {
+    warningHtml = '<div class="dash-row" style="margin-top:8px;"><div class="dash-row-label" style="color:#c0392b;">⚠ STORAGE HIGH</div><div class="dash-row-value" style="color:#c0392b;">ARCHIVE OLD MEDIA</div></div>';
+  }
+
   document.getElementById('storage-info').innerHTML = `
     <div class="dash-row"><div class="dash-row-label">MEDIA</div><div class="dash-row-value">${(mediaBytes / (1024 * 1024)).toFixed(1)} MB</div></div>
     <div class="dash-row"><div class="dash-row-label">METADATA</div><div class="dash-row-value">${(lsBytes / 1024).toFixed(0)} KB</div></div>
     <div class="dash-row"><div class="dash-row-label">TOTAL</div><div class="dash-row-value" style="color:#FF6B00;">${usedMB} MB</div></div>
+    <div class="dash-row"><div class="dash-row-label">MAX PER FILE</div><div class="dash-row-value">2 MB</div></div>
+    ${warningHtml}
   `;
 }
 
@@ -2006,6 +2086,7 @@ Object.assign(window.Astra, {
   todayStr, esc, goTo, showToast, findOrCreateAddress,
   getGmapsKey, saveGmapsKey, getHomeBase, saveHomeBase,
   MAT_LIB_KEY, MAT_LIB_TRIM_KEY, loadMaterialLibrary, loadRoughLibrary, loadTrimLibrary,
+  saveRoughLibrary, saveTrimLibrary, loadPricebookConfig, savePricebookConfig,
   loadEstimates, getEstimate, saveEstimate, deleteEstimate,
 });
 

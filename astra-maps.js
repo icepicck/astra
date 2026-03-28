@@ -276,6 +276,34 @@ function clearRoute() {
   document.getElementById('map-reroute-btn').style.display = 'none';
 }
 
+// D17: Schedule map refresh at midnight if vector is active
+var _lastVectorDate = '';
+function _scheduleMidnightRefresh() {
+  var now = new Date();
+  var midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+  var ms = midnight - now;
+  setTimeout(function() {
+    var today = A.todayStr();
+    if (_lastVectorDate && _lastVectorDate !== today) {
+      // Date changed — refresh the vector board if it's the active screen
+      var vectorScreen = document.getElementById('screen-vector');
+      if (vectorScreen && vectorScreen.classList.contains('active')) {
+        renderMap();
+      }
+    }
+    _lastVectorDate = today;
+    _scheduleMidnightRefresh(); // schedule next midnight
+  }, ms);
+}
+_scheduleMidnightRefresh();
+
+// Track current date on every render
+var _origRenderMap = renderMap;
+renderMap = async function() {
+  _lastVectorDate = A.todayStr();
+  return _origRenderMap();
+};
+
 // ── Public API ──
 Object.assign(window, { loadGmaps, renderMap, optimizeRoute, reroute, clearRoute });
 

@@ -26,11 +26,17 @@ function defaultPricebook() {
 }
 
 function loadPricebook() {
-  try { return Object.assign(defaultPricebook(), JSON.parse(localStorage.getItem(PRICEBOOK_KEY))); }
-  catch { return defaultPricebook(); }
+  // D15: Try IDB-backed config first, fall back to localStorage
+  var stored = (A.loadPricebookConfig && A.loadPricebookConfig()) || null;
+  if (!stored) {
+    try { stored = JSON.parse(localStorage.getItem(PRICEBOOK_KEY)) || null; } catch {}
+  }
+  return Object.assign(defaultPricebook(), stored || {});
 }
 
 function savePricebook(pb) {
+  // D15: Save to IDB config + localStorage fallback
+  if (A.savePricebookConfig) A.savePricebookConfig(pb);
   localStorage.setItem(PRICEBOOK_KEY, JSON.stringify(pb));
 }
 
