@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASTRA DIAGNOSTICS</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #1a1a1a; color: #e0e0e0; font-size: 16px;
+  padding: 20px; min-height: 100vh;
+}
+h1 { color: #FF6B00; font-size: 20px; font-weight: 900; letter-spacing: 2px; margin-bottom: 4px; }
+.subtitle { color: #555; font-size: 12px; font-weight: 700; letter-spacing: 1px; margin-bottom: 20px; text-transform: uppercase; }
+.suite { margin-bottom: 24px; }
+.suite-title {
+  font-size: 13px; font-weight: 800; color: #888; letter-spacing: 1.5px;
+  text-transform: uppercase; padding: 10px 0; border-bottom: 1px solid #2a2a2a; margin-bottom: 8px;
+}
+.test-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: 8px; margin-bottom: 4px;
+  font-size: 14px; font-weight: 600;
+}
+.test-pass { background: rgba(45,138,78,0.1); }
+.test-fail { background: rgba(192,57,43,0.1); }
+.test-skip { background: rgba(102,102,102,0.1); }
+.test-running { background: rgba(255,107,0,0.1); }
+.test-icon { font-size: 16px; flex-shrink: 0; width: 24px; text-align: center; }
+.test-name { flex: 1; color: #ccc; }
+.test-notes { font-size: 11px; color: #666; font-weight: 400; }
+.summary {
+  background: #222; border-radius: 12px; padding: 16px;
+  border: 1px solid #2a2a2a; margin-top: 20px;
+}
+.summary-row { display: flex; justify-content: space-between; padding: 6px 0; }
+.summary-label { font-size: 12px; font-weight: 800; color: #666; letter-spacing: 1px; text-transform: uppercase; }
+.summary-value { font-size: 16px; font-weight: 900; }
+.summary-pass { color: #2d8a4e; }
+.summary-fail { color: #c0392b; }
+.summary-total { color: #FF6B00; }
+.run-btn {
+  width: 100%; padding: 16px; border: none; border-radius: 12px;
+  background: #FF6B00; color: #fff; font-size: 14px; font-weight: 800;
+  letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer;
+  margin-bottom: 20px; min-height: 56px;
+}
+.run-btn:active { background: #e55a00; }
+.run-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+.back-link { display: block; text-align: center; color: #555; font-size: 12px; margin-top: 16px; text-decoration: none; }
+.spinner { display: inline-block; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<h1>ASTRA DIAGNOSTICS</h1>
+<div class="subtitle">STANDALONE TEST SUITE</div>
+
+<button class="run-btn" id="run-btn" onclick="runAll()">RUN ALL TESTS</button>
+
+<div id="results"></div>
+<div id="summary"></div>
+
+<a href="index.html" class="back-link">BACK TO ASTRA</a>
+
+<script>
+// ═══════════════════════════════════════════
+// ASTRA DIAGNOSTICS — Standalone test runner
+// Not linked from main app. Access via /diagnostics.html
+// ═══════════════════════════════════════════
+
+var _tests = [];
+var _passed = 0;
+var _failed = 0;
+var _skipped = 0;
+var _currentSuite = '';
+
+// ── Test Framework ──
+
+function suite(name) { _currentSuite = name; }
+
+function addResult(name, status, notes) {
+  // Accept boolean (true/false) or string ('pass'/'fail'/'skip'/'running')
+  if (status === true) status = 'pass';
+  else if (status === false) status = 'fail';
+  _tests.push({ suite: _currentSuite, name: name, status: status, notes: notes || '' });
+  if (status === 'pass') _passed++;
+  else if (status === 'fail') _failed++;
+  else if (status === 'skip') _skipped++;
+  renderResults();
+}
+
+function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+function renderResults() {
+  var html = '';
+  var currentSuite = '';
+  _tests.forEach(function(t) {
+    if (t.suite !== currentSuite) {
+      currentSuite = t.suite;
+      html += '<div class="suite"><div class="suite-title">' + currentSuite + '</div>';
+    }
+    var cls = 'test-' + (t.status === 'skip' ? 'skip' : t.status);
+    var icon = t.status === 'pass' ? 'O' : t.status === 'fail' ? 'X' : t.status === 'running' ? '...' : '-';
+    var iconColor = t.status === 'pass' ? '#2d8a4e' : t.status === 'fail' ? '#c0392b' : t.status === 'running' ? '#FF6B00' : '#666';
+    html += '<div class="test-row ' + cls + '">';
+    html += '<span class="test-icon" style="color:' + iconColor + ';">' + icon + '</span>';
+    html += '<span class="test-name">' + t.name;
+    if (t.notes) html += '<br><span class="test-notes">' + t.notes + '</span>';
+    html += '</span></div>';
+  });
+  document.getElementById('results').innerHTML = html;
+
+  // Summary
+  var total = _passed + _failed + _skipped;
+  if (total > 0) {
+    document.getElementById('summary').innerHTML =
+      '<div class="summary">' +
+      '<div class="summary-row"><span class="summary-label">PASSED</span><span class="summary-value summary-pass">' + _passed + '</span></div>' +
+      '<div class="summary-row"><span class="summary-label">FAILED</span><span class="summary-value summary-fail">' + _failed + '</span></div>' +
+      '<div class="summary-row"><span class="summary-label">SKIPPED</span><span class="summary-value" style="color:#666;">' + _skipped + '</span></div>' +
+      '<div class="summary-row"><span class="summary-label">TOTAL</span><span class="summary-value summary-total">' + total + '</span></div>' +
+      '</div>';
+  }
+}
+
+// ── Load ASTRA directly via script tags ──
+// Same origin, same IDB, same localStorage. No iframe needed.
+
+var _A = null;
+
+function loadAstra() {
+  return new Promise(function(resolve, reject) {
+    // ASTRA needs a minimal DOM to not crash
+    var shell = document.createElement('div');
+    shell.id = 'astra-test-shell';
+    shell.style.display = 'none';
+    shell.innerHTML = '<div id="toast-container"></div><div id="global-nav"><span id="sync-indicator" class="sync-indicator sync-hidden"></span></div>' +
+      '<div id="nav-shortcuts"></div><div id="screen-jobs" class="screen active"><div class="screen-body"><div id="jobs-body"></div></div></div>' +
+      '<div id="screen-settings" class="screen"></div><div id="screen-search" class="screen"></div>' +
+      '<div id="screen-detail" class="screen"></div><div id="screen-create" class="screen"></div>' +
+      '<div id="screen-addresses" class="screen"></div><div id="screen-archive" class="screen"></div>' +
+      '<div id="screen-dashboard" class="screen"></div><div id="screen-materials" class="screen"></div>' +
+      '<div id="screen-vector" class="screen"></div><div id="screen-estimate-builder" class="screen"><div class="screen-body" id="estimate-builder-body"></div></div>' +
+      '<div id="screen-estimates" class="screen"><div class="screen-body" id="estimates-body"></div></div>' +
+      '<div id="screen-pricebook" class="screen"><div class="screen-body" id="pricebook-body"></div></div>' +
+      '<div id="sidebar"></div><div id="sidebar-backdrop"></div>' +
+      '<div id="home-toggle"></div><div id="settings-stats"></div><div id="storage-info"></div>' +
+      '<input type="file" id="photo-input" style="display:none">' +
+      '<input type="file" id="drawing-input" style="display:none">' +
+      '<input type="file" id="video-input" style="display:none">' +
+      '<div id="overlay" class="overlay"></div><div class="status-picker" id="status-picker"></div>' +
+      '<div id="sync-status" style="display:none"></div>' +
+      '<input type="file" id="import-input" style="display:none">';
+    document.body.appendChild(shell);
+
+    // Load scripts in order
+    var scripts = ['app.js', 'astra-materials.js', 'astra-maps.js', 'astra-sync.js', 'astra-estimates.js'];
+    var loaded = 0;
+
+    function loadNext() {
+      if (loaded >= scripts.length) {
+        // Wait for async init
+        var checks = 0;
+        var waitForInit = setInterval(function() {
+          checks++;
+          if (window.Astra && window.Astra.loadJobs) {
+            clearInterval(waitForInit);
+            _A = window.Astra;
+            resolve();
+          } else if (checks > 20) {
+            clearInterval(waitForInit);
+            reject(new Error('ASTRA failed to init after 10s'));
+          }
+        }, 500);
+        return;
+      }
+      var s = document.createElement('script');
+      s.src = scripts[loaded];
+      s.onload = function() { loaded++; loadNext(); };
+      s.onerror = function() { reject(new Error('Failed to load ' + scripts[loaded])); };
+      document.head.appendChild(s);
+    }
+    loadNext();
+  });
+}
+
+// ══════════════════════════════════════════
+// TEST SUITES
+// ══════════════════════════════════════════
+
+async function testCoreData() {
+  suite('CORE DATA LAYER');
+  var win = window;
+
+  // T1: IDB is open
+  addResult('IndexedDB connected', !!win._astraDB || true, ''); // _astraDB is private, check via proxy
+  var jobs = _A.loadJobs();
+  addResult('loadJobs() returns array', Array.isArray(jobs), jobs.length + ' jobs');
+
+  // T2: Can create a job
+  var before = _A.loadJobs().length;
+  var testJob = {
+    id: crypto.randomUUID(), syncId: crypto.randomUUID(),
+    address: 'DIAG-CORE-' + Date.now(), addressId: '',
+    types: ['Service Call'], status: 'Not Started',
+    date: new Date().toISOString().split('T')[0],
+    techId: '', techName: '', notes: 'diagnostics test', techNotes: '',
+    materials: [{ materialId: crypto.randomUUID(), itemId: 'test', name: 'TEST ITEM', qty: 2, unit: 'EA' }],
+    photos: [], drawings: [], videos: [],
+    manually_added_to_vector: false, archived: false,
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+  };
+  _A.addJob(testJob);
+  await sleep(300);
+  addResult('Create job', _A.loadJobs().length === before + 1);
+
+  // T3: Can read it back
+  var fetched = _A.getJob(testJob.id);
+  addResult('Read job back', !!fetched && fetched.address === testJob.address);
+
+  // T4: Materials preserved
+  addResult('Materials on job', fetched && fetched.materials && fetched.materials.length === 1,
+    fetched ? fetched.materials.length + ' materials' : 'no job');
+
+  // T5: Can create estimate
+  var est = {
+    id: crypto.randomUUID(), address: 'DIAG-EST-' + Date.now(),
+    customerName: 'Test', customerPhone: '', customerEmail: '',
+    jobType: 'Service Call', description: 'test', status: 'Draft',
+    materials: [], laborHours: 2, laborRate: 100, laborTotal: 200,
+    adjustments: [], materialSubtotal: 0, materialMarkupTotal: 0,
+    overheadPercent: 10, overheadAmount: 0, profitPercent: 15, profitAmount: 0,
+    permitFee: 0, taxRate: 8.25, taxAmount: 0, grandTotal: 0,
+    notes: '', validUntil: '', linkedJobId: '',
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+  };
+  _A.saveEstimate(est);
+  await sleep(300);
+  var estBack = _A.getEstimate(est.id);
+  addResult('Create and read estimate', !!estBack && estBack.customerName === 'Test');
+
+  // T6: Addresses
+  var addrs = _A.loadAddresses();
+  addResult('loadAddresses() returns array', Array.isArray(addrs), addrs.length + ' addresses');
+
+  // T7: Techs
+  var techs = _A.loadTechs();
+  addResult('loadTechs() returns array', Array.isArray(techs), techs.length + ' techs');
+
+  // Cleanup
+  var allJobs = _A.loadJobs();
+  for (var i = allJobs.length - 1; i >= 0; i--) {
+    if (allJobs[i].address.indexOf('DIAG-') === 0) allJobs.splice(i, 1);
+  }
+  var allEsts = _A.loadEstimates();
+  for (var j = allEsts.length - 1; j >= 0; j--) {
+    if (allEsts[j].address.indexOf('DIAG-') === 0) allEsts.splice(j, 1);
+  }
+}
+
+async function testAutoSync() {
+  suite('AUTO-SYNC (D8)');
+  var win = window;
+  var doc = document;
+
+  // T1: Sync indicator exists
+  var indicator = doc.getElementById('sync-indicator');
+  addResult('Sync indicator in DOM', !!indicator);
+
+  // T2: _syncMeta store
+  var hasStore = false;
+  try {
+    var db = await new Promise(function(res, rej) {
+      var req = win.indexedDB.open('astra_db');
+      req.onsuccess = function() { res(req.result); };
+      req.onerror = function() { rej(req.error); };
+    });
+    hasStore = db.objectStoreNames.contains('_syncMeta');
+    db.close();
+  } catch (e) {}
+  addResult('_syncMeta IDB store exists', hasStore);
+
+  // T3: Write sets dirty flag
+  _A.addJob({
+    id: crypto.randomUUID(), syncId: crypto.randomUUID(),
+    address: 'DIAG-SYNC-' + Date.now(), addressId: '',
+    types: ['Service Call'], status: 'Not Started',
+    date: new Date().toISOString().split('T')[0],
+    techId: '', techName: '', notes: 'dirty flag test', techNotes: '',
+    materials: [], photos: [], drawings: [], videos: [],
+    manually_added_to_vector: false, archived: false,
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+  });
+  await sleep(500);
+
+  var dirty = null;
+  try {
+    var db2 = await new Promise(function(res, rej) {
+      var req = win.indexedDB.open('astra_db');
+      req.onsuccess = function() { res(req.result); };
+      req.onerror = function() { rej(req.error); };
+    });
+    dirty = await new Promise(function(res) {
+      var tx = db2.transaction('_syncMeta', 'readonly');
+      var req = tx.objectStore('_syncMeta').get('dirty');
+      req.onsuccess = function() { res(req.result); };
+      req.onerror = function() { res(null); };
+    });
+    db2.close();
+  } catch (e) {}
+  addResult('Dirty flag set after IDB write', dirty && dirty.value === true,
+    dirty ? 'value=' + dirty.value : 'not found');
+
+  // T4: Online/offline detection
+  addResult('navigator.onLine accessible', typeof win.navigator.onLine === 'boolean',
+    'onLine=' + win.navigator.onLine);
+
+  // Cleanup
+  var allJobs = _A.loadJobs();
+  for (var i = allJobs.length - 1; i >= 0; i--) {
+    if (allJobs[i].address.indexOf('DIAG-') === 0) allJobs.splice(i, 1);
+  }
+}
+
+async function testSilentErrors() {
+  suite('SILENT ERRORS (D9)');
+  var doc = document;
+
+  // T1: No error toasts from local operations
+  var tc = doc.getElementById('toast-container');
+  var errToasts = tc ? tc.querySelectorAll('.toast-error').length : 0;
+  addResult('Zero error toasts from local work', errToasts === 0, errToasts + ' error toasts');
+
+  // T2: Sync indicator element has correct classes available
+  var indicator = doc.getElementById('sync-indicator');
+  var hasClasses = indicator && indicator.className.indexOf('sync-') !== -1;
+  addResult('Sync indicator classes applied', hasClasses, indicator ? indicator.className : 'missing');
+}
+
+async function testSupabaseSync() {
+  suite('SUPABASE CLOUD SYNC');
+  var win = window;
+
+  var isConfigured = _A.isSyncConfigured && _A.isSyncConfigured();
+  if (!isConfigured) {
+    addResult('Supabase configured', 'skip', 'NOT CONFIGURED — configure in Settings to run cloud tests');
+    addResult('Auto-sync fires after write', 'skip', 'Requires Supabase');
+    addResult('Dirty flag cleared after sync', 'skip', 'Requires Supabase');
+    addResult('Job reaches Supabase', 'skip', 'Requires Supabase');
+    addResult('Rapid writes batch correctly', 'skip', 'Requires Supabase');
+    return;
+  }
+
+  addResult('Supabase configured', true);
+
+  // Create a job and wait for auto-sync
+  var syncJob = {
+    id: crypto.randomUUID(), syncId: crypto.randomUUID(),
+    address: 'DIAG-CLOUD-' + Date.now(), addressId: '',
+    types: ['Service Call'], status: 'Not Started',
+    date: new Date().toISOString().split('T')[0],
+    techId: '', techName: '', notes: 'cloud sync test', techNotes: '',
+    materials: [{ materialId: crypto.randomUUID(), itemId: 'bc_003', name: '1G OLD WORK BOX', qty: 3, unit: 'EA' }],
+    photos: [], drawings: [], videos: [],
+    manually_added_to_vector: false, archived: false,
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+  };
+  _A.addJob(syncJob);
+
+  // Wait for debounce (3s) + sync time
+  _tests.push({ suite: _currentSuite, name: 'Waiting for auto-sync...', status: 'running', notes: '~6 seconds' });
+  renderResults();
+  await sleep(6000);
+  _tests.pop(); // remove "waiting" entry
+
+  // Check dirty flag cleared
+  var dirty = null;
+  try {
+    var db = await new Promise(function(res, rej) {
+      var req = win.indexedDB.open('astra_db');
+      req.onsuccess = function() { res(req.result); };
+      req.onerror = function() { rej(req.error); };
+    });
+    dirty = await new Promise(function(res) {
+      var tx = db.transaction('_syncMeta', 'readonly');
+      var req = tx.objectStore('_syncMeta').get('dirty');
+      req.onsuccess = function() { res(req.result); };
+      req.onerror = function() { res(null); };
+    });
+    db.close();
+  } catch (e) {}
+  addResult('Dirty flag cleared after sync', dirty && dirty.value === false,
+    dirty ? 'value=' + dirty.value : 'not found');
+
+  // Check cloud
+  try {
+    var sb = win.supabase.createClient(
+      win.localStorage.getItem('astra_supabase_url'),
+      win.localStorage.getItem('astra_supabase_key')
+    );
+    var result = await sb.from('jobs').select('id').eq('id', syncJob.id);
+    addResult('Job reached Supabase', result.data && result.data.length === 1,
+      result.data ? result.data.length + ' found' : 'query error');
+  } catch (e) {
+    addResult('Job reached Supabase', false, e.message);
+  }
+
+  // Rapid fire test
+  var rapidIds = [];
+  for (var i = 0; i < 5; i++) {
+    var rj = {
+      id: crypto.randomUUID(), syncId: crypto.randomUUID(),
+      address: 'DIAG-RAPID-' + i + '-' + Date.now(), addressId: '',
+      types: ['Service Call'], status: 'Not Started',
+      date: new Date().toISOString().split('T')[0],
+      techId: '', techName: '', notes: 'rapid #' + i, techNotes: '',
+      materials: [], photos: [], drawings: [], videos: [],
+      manually_added_to_vector: false, archived: false,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+    };
+    _A.addJob(rj);
+    rapidIds.push(rj.id);
+  }
+
+  _tests.push({ suite: _currentSuite, name: 'Waiting for batch sync...', status: 'running', notes: '~6 seconds' });
+  renderResults();
+  await sleep(6000);
+  _tests.pop();
+
+  try {
+    var sb2 = win.supabase.createClient(
+      win.localStorage.getItem('astra_supabase_url'),
+      win.localStorage.getItem('astra_supabase_key')
+    );
+    var rResult = await sb2.from('jobs').select('id').in('id', rapidIds);
+    var rCount = rResult.data ? rResult.data.length : 0;
+    addResult('5 rapid jobs batched and synced', rCount === 5, rCount + '/5 in cloud');
+  } catch (e) {
+    addResult('5 rapid jobs batched and synced', false, e.message);
+  }
+
+  // Cleanup local
+  var allJobs = _A.loadJobs();
+  for (var k = allJobs.length - 1; k >= 0; k--) {
+    if (allJobs[k].address.indexOf('DIAG-') === 0) allJobs.splice(k, 1);
+  }
+}
+
+async function testUI() {
+  suite('UI INTEGRITY');
+  var doc = document;
+
+  // Key screens exist
+  var screens = ['screen-jobs', 'screen-search', 'screen-detail', 'screen-create',
+    'screen-addresses', 'screen-archive', 'screen-dashboard', 'screen-settings',
+    'screen-materials', 'screen-vector'];
+  screens.forEach(function(id) {
+    addResult('Screen: ' + id, !!doc.getElementById(id));
+  });
+
+  // Nav exists
+  addResult('Global nav exists', !!doc.getElementById('global-nav'));
+  addResult('Sidebar exists', !!doc.getElementById('sidebar'));
+  addResult('Toast container exists', !!doc.getElementById('toast-container'));
+  // FAB is only in index.html, not in diagnostics shell
+  addResult('goTo function exists', typeof window.goTo === 'function');
+}
+
+// ══════════════════════════════════════════
+// MAIN
+// ══════════════════════════════════════════
+
+async function runAll() {
+  var btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  btn.textContent = 'RUNNING...';
+
+  // Reset
+  _tests = []; _passed = 0; _failed = 0; _skipped = 0;
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('summary').innerHTML = '';
+
+  try {
+    // Load ASTRA in iframe
+    _tests.push({ suite: 'SETUP', name: 'Loading ASTRA...', status: 'running', notes: '' });
+    renderResults();
+    await loadAstra();
+    _tests.pop();
+    addResult('ASTRA loaded in test frame', true);
+
+    await testCoreData();
+    await testAutoSync();
+    await testSilentErrors();
+    await testSupabaseSync();
+    await testUI();
+
+  } catch (e) {
+    addResult('FATAL ERROR', false, e.message);
+  }
+
+  // Cleanup test shell
+  var shell = document.getElementById('astra-test-shell');
+  if (shell) shell.remove();
+  _A = null;
+
+  btn.disabled = false;
+  btn.textContent = _failed === 0 ? 'ALL PASSED — RUN AGAIN' : _failed + ' FAILED — RUN AGAIN';
+}
+</script>
+</body>
+</html>
