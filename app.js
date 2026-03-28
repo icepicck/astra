@@ -70,13 +70,14 @@ let _astraDB = null;
 function _openAstraDB() {
   return new Promise((resolve, reject) => {
     if (_astraDB) { resolve(_astraDB); return; }
-    const req = indexedDB.open('astra_db', 2);
+    const req = indexedDB.open('astra_db', 3);
     req.onupgradeneeded = function(e) {
       const db = e.target.result;
       if (!db.objectStoreNames.contains('jobs')) db.createObjectStore('jobs', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('techs')) db.createObjectStore('techs', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('addresses')) db.createObjectStore('addresses', { keyPath: 'id' });
       if (!db.objectStoreNames.contains('estimates')) db.createObjectStore('estimates', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('_syncMeta')) db.createObjectStore('_syncMeta', { keyPath: 'key' });
     };
     req.onsuccess = function(e) { _astraDB = e.target.result; resolve(_astraDB); };
     req.onerror = function() { reject(req.error); };
@@ -86,11 +87,140 @@ function _openAstraDB() {
 // Granular IDB operations — no more nuke-and-rebuild
 // All writes detect failures and alert the user. No silent data loss.
 
+// ── D8: Auto-sync dirty flag + debounced push ──
+var _syncDirty = false;
+var _syncDebounceTimer = null;
+var _syncRetryTimer = null;
+var _syncRetryDelay = 5000; // 5s initial, doubles on each failure, caps at 60s
+var _autoSyncEnabled = true; // can be disabled during bulk operations
+
+function _markDirty() {
+  if (!_astraDB) return;
+  _syncDirty = true;
+  // Persist dirty flag to IDB so it survives app restarts
+  try {
+    var tx = _astraDB.transaction('_syncMeta', 'readwrite');
+    tx.objectStore('_syncMeta').put({ key: 'dirty', value: true, at: new Date().toISOString() });
+  } catch (e) { /* non-critical */ }
+  _debouncedAutoSync();
+}
+
+function _clearDirty() {
+  _syncDirty = false;
+  if (!_astraDB) return;
+  try {
+    var tx = _astraDB.transaction('_syncMeta', 'readwrite');
+    tx.objectStore('_syncMeta').put({ key: 'dirty', value: false, at: new Date().toISOString() });
+  } catch (e) { /* non-critical */ }
+}
+
+function _debouncedAutoSync() {
+  if (!_autoSyncEnabled) return;
+  if (_syncDebounceTimer) clearTimeout(_syncDebounceTimer);
+  _syncDebounceTimer = setTimeout(_runAutoSync, 3000); // 3s debounce
+}
+
+async function _runAutoSync() {
+  // Guards: don't auto-sync if not configured, already syncing, or not dirty
+  if (!_syncDirty) return;
+  if (window._syncInProgress) return;
+  if (!window.Astra.isSyncConfigured || !window.Astra.isSyncConfigured()) return;
+  if (!navigator.onLine) {
+    _updateSyncIndicator('offline');
+    return;
+  }
+
+  _updateSyncIndicator('syncing');
+  window._syncInProgress = true;
+
+  try {
+    await window.syncToCloud(function() {}); // silent — no status callback
+    _clearDirty();
+    _syncRetryDelay = 5000; // reset backoff on success
+    _updateSyncIndicator('synced');
+    console.log('[ASTRA] Auto-sync complete');
+  } catch (e) {
+    // D9: Silent failure for background sync — console only, no toast
+    console.warn('[ASTRA] Auto-sync failed:', e.message);
+    _updateSyncIndicator('pending');
+    // Exponential backoff retry
+    if (_syncRetryTimer) clearTimeout(_syncRetryTimer);
+    _syncRetryTimer = setTimeout(_runAutoSync, _syncRetryDelay);
+    _syncRetryDelay = Math.min(_syncRetryDelay * 2, 60000); // cap at 60s
+  } finally {
+    window._syncInProgress = false;
+  }
+}
+
+// D8c: Startup drain — check for dirty flag from previous session
+async function _startupDrain() {
+  if (!_astraDB) return;
+  try {
+    var tx = _astraDB.transaction('_syncMeta', 'readonly');
+    var req = tx.objectStore('_syncMeta').get('dirty');
+    req.onsuccess = function() {
+      if (req.result && req.result.value) {
+        console.log('[ASTRA] Dirty flag from previous session — auto-syncing');
+        _syncDirty = true;
+        _updateSyncIndicator('pending');
+        // Delay to let app fully init
+        setTimeout(_runAutoSync, 5000);
+      }
+    };
+  } catch (e) { /* non-critical */ }
+}
+
+// D9: Ambient sync indicator — small dot in nav bar
+function _updateSyncIndicator(state) {
+  // state: 'synced' | 'pending' | 'syncing' | 'offline' | 'hidden'
+  var el = document.getElementById('sync-indicator');
+  if (!el) return;
+  el.className = 'sync-indicator';
+  if (state === 'synced') {
+    el.className += ' sync-synced';
+    el.title = 'SYNCED';
+    // Auto-hide after 3 seconds
+    setTimeout(function() {
+      if (el.className.indexOf('sync-synced') !== -1) {
+        el.className = 'sync-indicator sync-hidden';
+      }
+    }, 3000);
+  } else if (state === 'pending') {
+    el.className += ' sync-pending';
+    el.title = 'CHANGES PENDING';
+  } else if (state === 'syncing') {
+    el.className += ' sync-syncing';
+    el.title = 'SYNCING...';
+  } else if (state === 'offline') {
+    el.className += ' sync-offline';
+    el.title = 'OFFLINE';
+  } else {
+    el.className += ' sync-hidden';
+  }
+}
+
+// Online/offline listeners
+window.addEventListener('online', function() {
+  console.log('[ASTRA] Back online');
+  if (_syncDirty) {
+    _updateSyncIndicator('pending');
+    setTimeout(_runAutoSync, 2000); // brief delay to let connection stabilize
+  }
+});
+window.addEventListener('offline', function() {
+  console.log('[ASTRA] Went offline');
+  _updateSyncIndicator('offline');
+});
+
 function _idbPut(storeName, item) {
   if (!_astraDB) return;
   try {
     const tx = _astraDB.transaction(storeName, 'readwrite');
     tx.objectStore(storeName).put(item);
+    tx.oncomplete = function() {
+      // D8: Mark dirty on successful write (skip internal stores)
+      if (storeName !== '_syncMeta') _markDirty();
+    };
     tx.onabort = tx.onerror = function() {
       console.error('IDB put FAILED (' + storeName + '):', tx.error);
       showToast('SAVE FAILED — RETRYING...', 'error');
@@ -125,6 +255,9 @@ function _idbDelete(storeName, id) {
   try {
     const tx = _astraDB.transaction(storeName, 'readwrite');
     tx.objectStore(storeName).delete(id);
+    tx.oncomplete = function() {
+      if (storeName !== '_syncMeta') _markDirty();
+    };
     tx.onabort = tx.onerror = function() {
       console.error('IDB delete FAILED (' + storeName + '):', tx.error);
       showToast('DELETE FAILED — TRY AGAIN', 'error');
@@ -139,6 +272,9 @@ function _idbReplaceAll(storeName, items) {
     const store = tx.objectStore(storeName);
     store.clear();
     items.forEach(item => store.put(item));
+    tx.oncomplete = function() {
+      if (storeName !== '_syncMeta') _markDirty();
+    };
     tx.onabort = tx.onerror = function() {
       console.error('IDB replaceAll FAILED (' + storeName + '):', tx.error);
       showToast('BULK SAVE FAILED — DATA NOT SAVED. DO NOT CLOSE APP.', 'error');
@@ -1668,24 +1804,30 @@ async function runSyncPush() {
   }
   if (window._syncInProgress) { showToast('SYNC ALREADY IN PROGRESS — WAIT', 'error'); return; }
   window._syncInProgress = true;
+  _autoSyncEnabled = false; // pause auto-sync during manual push
   const btn = document.getElementById('sync-push-btn');
   const pullBtn = document.getElementById('sync-pull-btn');
   btn.disabled = true; btn.textContent = 'PUSHING...';
   if (pullBtn) pullBtn.disabled = true;
   _syncStatus('STARTING...');
+  _updateSyncIndicator('syncing');
   try {
     const result = await window.syncToCloud((step, total, msg) => _syncStatus(msg));
     _syncStatus(null);
+    _clearDirty(); // manual push clears dirty flag
+    _updateSyncIndicator('synced');
     showToast(result.jobs + ' TICKETS, ' + result.addresses + ' ADDRESSES, ' + result.materials + ' MATERIALS PUSHED');
     btn.textContent = 'PUSHED ✓';
     setTimeout(() => { btn.textContent = 'PUSH TO CLOUD'; btn.disabled = false; }, 3000);
   } catch (e) {
     console.error('Push failed:', e);
     _syncStatus('FAILED: ' + e.message);
-    showToast('PUSH FAILED: ' + e.message, 'error');
+    _updateSyncIndicator('pending');
+    showToast('PUSH FAILED: ' + e.message, 'error'); // D9: keep toast for manual push
     btn.textContent = 'PUSH TO CLOUD'; btn.disabled = false;
   } finally {
     window._syncInProgress = false;
+    _autoSyncEnabled = true;
     if (pullBtn) pullBtn.disabled = false;
   }
 }
@@ -1697,14 +1839,17 @@ async function runSyncPull() {
   if (window._syncInProgress) { showToast('SYNC ALREADY IN PROGRESS — WAIT', 'error'); return; }
   if (!confirm('PULL DATA FROM CLOUD? THIS WILL UPDATE LOCAL TICKETS WITH CLOUD CHANGES.')) return;
   window._syncInProgress = true;
+  _autoSyncEnabled = false;
   const btn = document.getElementById('sync-pull-btn');
   const pushBtn = document.getElementById('sync-push-btn');
   btn.disabled = true; btn.textContent = 'PULLING...';
   if (pushBtn) pushBtn.disabled = true;
   _syncStatus('STARTING...');
+  _updateSyncIndicator('syncing');
   try {
     const result = await window.syncFromCloud((step, total, msg) => _syncStatus(msg));
     _syncStatus(null);
+    _updateSyncIndicator('synced');
     const parts = [];
     if (result.newJobs) parts.push(result.newJobs + ' NEW TICKETS');
     if (result.newAddresses) parts.push(result.newAddresses + ' NEW ADDRESSES');
@@ -1717,10 +1862,12 @@ async function runSyncPull() {
   } catch (e) {
     console.error('Pull failed:', e);
     _syncStatus('FAILED: ' + e.message);
-    showToast('PULL FAILED: ' + e.message, 'error');
+    _updateSyncIndicator('pending');
+    showToast('PULL FAILED: ' + e.message, 'error'); // D9: keep toast for manual pull
     btn.textContent = 'PULL FROM CLOUD'; btn.disabled = false;
   } finally {
     window._syncInProgress = false;
+    _autoSyncEnabled = true;
     if (pushBtn) pushBtn.disabled = false;
   }
 }
@@ -1730,6 +1877,11 @@ async function runSyncPull() {
 // ═══════════════════════════════════════════
 renderShortcuts();
 updateSidebarActive();
+
+// D8c: Startup drain — sync any dirty data from previous session
+_startupDrain();
+// D9: Initial sync indicator state
+if (!navigator.onLine) _updateSyncIndicator('offline');
 
 // Clear vector flags at midnight
 (function clearVectorAtMidnight() {

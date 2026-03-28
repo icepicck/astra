@@ -49,6 +49,19 @@ body {
 }
 .nav-hamburger:active { background: rgba(255,107,0,0.15); }
 
+/* ── D9: Sync Indicator ── */
+.sync-indicator {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  transition: opacity 0.3s, background 0.3s;
+}
+.sync-hidden { opacity: 0; }
+.sync-pending { background: #FF6B00; opacity: 1; animation: sync-pulse 2s infinite; }
+.sync-syncing { background: #FF6B00; opacity: 1; animation: sync-spin 1s infinite; }
+.sync-synced { background: #2d8a4e; opacity: 1; }
+.sync-offline { background: #666; opacity: 1; }
+@keyframes sync-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+@keyframes sync-spin { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
 /* ── Sidebar ── */
 .sidebar-backdrop {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
@@ -782,6 +795,7 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
 <nav id="global-nav">
   <div class="nav-logo" onclick="goTo('screen-jobs')">ASTRA</div>
   <div class="nav-shortcuts" id="nav-shortcuts"></div>
+  <span id="sync-indicator" class="sync-indicator sync-hidden"></span>
   <button class="nav-hamburger" id="hamburger-btn" onclick="toggleSidebar()">☰</button>
 </nav>
 
