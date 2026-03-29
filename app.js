@@ -97,6 +97,8 @@ function savePricebookConfig(pb) {
 
 // In-memory cache — all reads are synchronous from here
 const _cache = { jobs: [], techs: [], addresses: [], estimates: [] };
+// D30: Seed intelligence data for cold start (loaded from seed_intelligence.json)
+var _seedIntelligence = null;
 let _astraDB = null;
 
 // Step 4: Cache-clear functions for auth logout
@@ -644,6 +646,14 @@ if (navigator.storage && navigator.storage.persist) {
 // Init — data layer must be ready before any rendering
 initDataLayer()
   .then(() => window.autoLoadBuiltInLibraries && window.autoLoadBuiltInLibraries())
+  .then(() => {
+    // D30: Load seed intelligence data for cold start
+    return fetch('seed_intelligence.json').then(function(r) {
+      return r.ok ? r.json() : null;
+    }).then(function(data) {
+      _seedIntelligence = data;
+    }).catch(function() { _seedIntelligence = null; });
+  })
   .then(() => openMediaDB())
   .then(() => migrateLegacyMedia())
   .then(() => {
@@ -2171,6 +2181,7 @@ function _showUpdateBanner() {
 // ── Shared namespace for sub-modules (maps, materials) ──
 Object.assign(window.Astra, {
   loadJobs, loadAddresses, updateAddress, addAddress, getJob, updateJob, addJob, loadTechs, addTech,
+  getSeedIntelligence: function() { return _seedIntelligence; },
   todayStr, esc, goTo, showToast, findOrCreateAddress,
   getGmapsKey, saveGmapsKey, getHomeBase, saveHomeBase,
   MAT_LIB_KEY, MAT_LIB_TRIM_KEY, loadMaterialLibrary, loadRoughLibrary, loadTrimLibrary,

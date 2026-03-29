@@ -1,7 +1,8 @@
-const CACHE_NAME = 'astra-v63';
+const CACHE_NAME = 'astra-v64';
 const ASSETS = [
   'index.html', 'diagnostics.html', 'app.js', 'astra-materials.js', 'astra-maps.js', 'astra-auth.js', 'astra-sync.js', 'astra-estimates.js',
   'manifest.json', 'rough_materials.json', 'trim_materials.json',
+  'seed_intelligence.json',
   'supabase.min.js'
 ];
 const TIMEOUT_MS = 3000;

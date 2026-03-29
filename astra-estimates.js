@@ -785,6 +785,19 @@ function _querySimilarJobs(jobType) {
   return result;
 }
 
+// D30: Wrapper — returns local data if sufficient, seed data as fallback
+function _getSimilarWithSeed(jobType) {
+  var local = _querySimilarJobs(jobType);
+  if (local.jobCount >= 5) return { materials: local.materials, jobCount: local.jobCount, source: 'local' };
+  if (local.materials.length > 0) return { materials: local.materials, jobCount: local.jobCount, source: 'local' };
+  // Fall back to seed data
+  var seed = A.getSeedIntelligence && A.getSeedIntelligence();
+  if (!seed || !seed.jobTypes) return { materials: local.materials, jobCount: local.jobCount, source: 'local' };
+  var match = seed.jobTypes.find(function(s) { return s.jobType === jobType; });
+  if (!match) return { materials: local.materials, jobCount: local.jobCount, source: 'local' };
+  return { materials: match.materials, jobCount: match.jobCount, source: 'seed' };
+}
+
 // ── Query: Jobs at Address ──
 function _queryAddressJobs(addressId) {
   if (!addressId) return { materials: [], jobCount: 0, jobs: [] };
@@ -852,12 +865,14 @@ function _renderIntelSection(est) {
     html += '</div></div>';
   }
 
-  // Load from Similar Jobs
+  // Load from Similar Jobs — D30: uses seed data as fallback for cold start
   if (est.jobType) {
-    var similar = _querySimilarJobs(est.jobType);
+    var similar = _getSimilarWithSeed(est.jobType);
     if (similar.materials.length > 0) {
-      html += '<div class="est-intel-card">';
-      html += '<div class="est-intel-header"><span class="est-intel-icon">📊</span> SIMILAR ' + A.esc(est.jobType) + ' JOBS <span class="est-intel-count">' + similar.jobCount + ' JOB' + (similar.jobCount !== 1 ? 'S' : '') + '</span></div>';
+      var isSeed = similar.source === 'seed';
+      var sourceLabel = isSeed ? 'INDUSTRY AVERAGE' : 'YOUR DATA';
+      html += '<div class="est-intel-card' + (isSeed ? ' est-intel-seed' : '') + '">';
+      html += '<div class="est-intel-header"><span class="est-intel-icon">📊</span> ' + (isSeed ? '' : 'SIMILAR ') + A.esc(est.jobType) + ' JOBS <span class="est-intel-count">' + sourceLabel + ': ' + similar.jobCount + ' JOB' + (similar.jobCount !== 1 ? 'S' : '') + '</span></div>';
       html += '<div class="est-intel-mats">';
       similar.materials.slice(0, 10).forEach(function(m) {
         var alreadyAdded = est.materials.some(function(em) { return (em.itemId === m.itemId) || (em.name === m.name); });
@@ -941,7 +956,7 @@ function _estImportAllSimilar() {
   if (!_state.currentEstimate) return;
   _captureFormState();
   var est = _state.currentEstimate;
-  var similar = _querySimilarJobs(est.jobType);
+  var similar = _getSimilarWithSeed(est.jobType); // D30: includes seed fallback
   var pb = loadPricebook();
   var count = 0;
   similar.materials.forEach(function(m) {
