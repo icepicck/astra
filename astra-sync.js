@@ -404,6 +404,9 @@ async function syncToCloud(statusCallback) {
 
     setLastSync();
     window._syncInProgress = false;
+    // Suppress realtime toasts briefly — push triggers cloud events back to us
+    window._syncCooldown = true;
+    setTimeout(function() { window._syncCooldown = false; }, 3000);
     return {
       jobs: filteredJobs.length,
       addresses: filteredAddrs.length,
@@ -559,6 +562,9 @@ async function syncFromCloud(statusCallback) {
 
     setLastSync();
     window._syncInProgress = false;
+    // Suppress realtime toasts briefly — bulk sync triggers cloud events for every record written
+    window._syncCooldown = true;
+    setTimeout(function() { window._syncCooldown = false; }, 3000);
     return {
       jobs: cloudJobs.length,
       addresses: cloudAddrs.length,
@@ -624,6 +630,7 @@ function _handleRemoteChange(table, payload) {
   var eventType = payload.eventType;
   if (!newRec) return;
   if (window._syncInProgress) return;
+  if (window._syncCooldown) return;
 
   if (table === 'jobs') {
     var local = A.getJob(newRec.id);

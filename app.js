@@ -728,10 +728,10 @@ async function goTo(screenId, jobId) {
   closeSidebar();
   await initScreen(screenId, jobId);
 
-  // Transition
-  const prev = document.getElementById(currentScreen);
+  // Transition — hide ALL screens first, then show target
+  var allScreens = document.querySelectorAll('.screen');
+  for (var i = 0; i < allScreens.length; i++) allScreens[i].classList.remove('active');
   const next = document.getElementById(screenId);
-  if (prev) prev.classList.remove('active');
   if (next) next.classList.add('active');
   currentScreen = screenId;
 
