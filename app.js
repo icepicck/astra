@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════
-// ASTRA v0.6 — FIELD SERVICE
+// ASTRA v0.7 — FIELD SERVICE
 // ═══════════════════════════════════════════
 window.Astra = window.Astra || {};
 (function() {
@@ -228,31 +228,50 @@ async function _startupDrain() {
 }
 
 // D9: Ambient sync indicator — small dot in nav bar
+function _syncRelativeTime() {
+  // D35: Human-readable time since last sync
+  var last = localStorage.getItem('astra_last_sync');
+  if (!last) return '';
+  var diff = Math.floor((Date.now() - new Date(last).getTime()) / 1000);
+  if (diff < 60) return 'JUST NOW';
+  if (diff < 3600) return Math.floor(diff / 60) + ' MIN AGO';
+  if (diff < 86400) return Math.floor(diff / 3600) + ' HR AGO';
+  return Math.floor(diff / 86400) + ' DAY AGO';
+}
+
 function _updateSyncIndicator(state) {
-  // state: 'synced' | 'pending' | 'syncing' | 'offline' | 'hidden'
+  // D35: state: 'synced' | 'pending' | 'syncing' | 'offline' | 'hidden'
   var el = document.getElementById('sync-indicator');
   if (!el) return;
   el.className = 'sync-indicator';
+  var relTime = _syncRelativeTime();
+
   if (state === 'synced') {
     el.className += ' sync-synced';
     el.title = 'SYNCED';
-    // Auto-hide after 3 seconds
+    el.innerHTML = '<span class="sync-dot"></span><span class="sync-text">SYNCED' + (relTime ? ' · ' + relTime : '') + '</span>';
     setTimeout(function() {
       if (el.className.indexOf('sync-synced') !== -1) {
-        el.className = 'sync-indicator sync-hidden';
+        // D35: Keep text visible but muted after auto-hide
+        el.className = 'sync-indicator sync-synced';
+        el.innerHTML = '<span class="sync-dot"></span><span class="sync-text">' + (_syncRelativeTime() || 'SYNCED') + '</span>';
       }
     }, 3000);
   } else if (state === 'pending') {
     el.className += ' sync-pending';
     el.title = 'CHANGES PENDING';
+    el.innerHTML = '<span class="sync-dot"></span><span class="sync-text">PENDING</span>';
   } else if (state === 'syncing') {
     el.className += ' sync-syncing';
     el.title = 'SYNCING...';
+    el.innerHTML = '<span class="sync-dot"></span><span class="sync-text">SYNCING</span>';
   } else if (state === 'offline') {
     el.className += ' sync-offline';
-    el.title = 'OFFLINE';
+    el.title = 'OFFLINE — CHANGES WILL SYNC WHEN CONNECTED';
+    el.innerHTML = '<span class="sync-dot"></span><span class="sync-text">OFFLINE' + (relTime ? ' · LAST: ' + relTime : '') + '</span>';
   } else {
     el.className += ' sync-hidden';
+    el.innerHTML = '';
   }
 }
 
@@ -442,6 +461,8 @@ function replaceAllJobs(jobs) {
   _idbReplaceAll('jobs', _cache.jobs);
 }
 function loadTechs() { return _cache.techs; }
+// D23: write-through to IDB on tech add (matches addJob pattern)
+function addTech(tech) { _cache.techs.push(tech); _idbPut('techs', tech); }
 function replaceAllTechs(techs) { _cache.techs = techs; _idbReplaceAll('techs', techs); }
 function loadAddresses() { return _cache.addresses; }
 function replaceAllAddresses(addrs) { _cache.addresses = addrs; _idbReplaceAll('addresses', addrs); }
@@ -463,10 +484,14 @@ function updateJob(id, updates) {
   if (idx === -1) return;
   Object.assign(_cache.jobs[idx], updates, { updatedAt: new Date().toISOString() });
   _idbPut('jobs', _cleanJobForStorage(_cache.jobs[idx]));
+  // D28: Invalidate intelligence cache when job data changes
+  if (window.Astra.invalidateIntelCache) window.Astra.invalidateIntelCache();
 }
 function addJob(job) {
   _cache.jobs.unshift(job);
   _idbPut('jobs', _cleanJobForStorage(job));
+  // D28: Invalidate intelligence cache when new job added
+  if (window.Astra.invalidateIntelCache) window.Astra.invalidateIntelCache();
 }
 
 // ── ESTIMATES CRUD ──
@@ -1863,7 +1888,7 @@ async function hardReload() {
 async function exportData() {
   const mediaBlobs = await getAllMediaBlobs();
   const data = {
-    version: '0.5',
+    version: '0.7', // D37: matches manifest.json
     exportedAt: new Date().toISOString(),
     jobs: loadJobs(),
     techs: loadTechs(),
@@ -2145,7 +2170,7 @@ function _showUpdateBanner() {
 
 // ── Shared namespace for sub-modules (maps, materials) ──
 Object.assign(window.Astra, {
-  loadJobs, loadAddresses, updateAddress, addAddress, getJob, updateJob, addJob, loadTechs,
+  loadJobs, loadAddresses, updateAddress, addAddress, getJob, updateJob, addJob, loadTechs, addTech,
   todayStr, esc, goTo, showToast, findOrCreateAddress,
   getGmapsKey, saveGmapsKey, getHomeBase, saveHomeBase,
   MAT_LIB_KEY, MAT_LIB_TRIM_KEY, loadMaterialLibrary, loadRoughLibrary, loadTrimLibrary,

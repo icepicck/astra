@@ -49,16 +49,28 @@ body {
 }
 .nav-hamburger:active { background: rgba(255,107,0,0.15); }
 
-/* ── D9: Sync Indicator ── */
+/* ── D9/D35: Sync Indicator — dot + human-readable status ── */
 .sync-indicator {
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  transition: opacity 0.3s;
+}
+.sync-indicator .sync-dot {
   width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-  transition: opacity 0.3s, background 0.3s;
+  transition: background 0.3s;
+}
+.sync-indicator .sync-text {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
+  color: #999; text-transform: uppercase; white-space: nowrap;
 }
 .sync-hidden { opacity: 0; }
-.sync-pending { background: #FF6B00; opacity: 1; animation: sync-pulse 2s infinite; }
-.sync-syncing { background: #FF6B00; opacity: 1; animation: sync-spin 1s infinite; }
-.sync-synced { background: #2d8a4e; opacity: 1; }
-.sync-offline { background: #666; opacity: 1; }
+.sync-pending .sync-dot { background: #FF6B00; animation: sync-pulse 2s infinite; }
+.sync-pending .sync-text { color: #FF6B00; }
+.sync-syncing .sync-dot { background: #FF6B00; animation: sync-spin 1s infinite; }
+.sync-syncing .sync-text { color: #FF6B00; }
+.sync-synced .sync-dot { background: #2d8a4e; }
+.sync-synced .sync-text { color: #2d8a4e; }
+.sync-offline .sync-dot { background: #666; }
+.sync-offline .sync-text { color: #999; }
 @keyframes sync-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 @keyframes sync-spin { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 

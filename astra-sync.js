@@ -146,7 +146,10 @@ function addrFromCloud(r) {
     panelLocation: r.panel_location || '',
     notes: r.notes || '',
     lat: r.lat || null,
-    lng: r.lng || null
+    lng: r.lng || null,
+    // D31: Preserve timestamps from cloud (matches jobFromCloud pattern)
+    createdAt: r.created_at || new Date().toISOString(),
+    updatedAt: r.updated_at || new Date().toISOString()
   };
 }
 
@@ -169,7 +172,10 @@ function techFromCloud(r) {
     name: r.name || '',
     phone: r.phone || '',
     license: r.license || '',
-    active: r.active !== false
+    active: r.active !== false,
+    // D31: Preserve timestamps from cloud (matches jobFromCloud pattern)
+    createdAt: r.created_at || new Date().toISOString(),
+    updatedAt: r.updated_at || new Date().toISOString()
   };
 }
 
@@ -281,7 +287,11 @@ function _ensureMaterialIds(jobs) {
 
 async function _getCloudTimestamps(table) {
   var sb = getClient();
-  var result = await sb.from(table).select('id, updated_at');
+  // D27: Only fetch timestamps for records changed since last sync
+  var query = sb.from(table).select('id, updated_at');
+  var lastSync = getLastSync();
+  if (lastSync) query = query.gt('updated_at', lastSync);
+  var result = await query;
   if (result.error) return {};
   var map = {};
   (result.data || []).forEach(function(r) { map[r.id] = r.updated_at; });
@@ -432,10 +442,14 @@ async function syncFromCloud(statusCallback) {
   try {
     var newAddresses = 0, newJobs = 0, updatedJobs = 0, skippedJobs = 0;
     var newEstimates = 0, updatedEstimates = 0, skippedEstimates = 0;
+    // D27: Incremental sync — only fetch records changed since last sync
+    var lastSync = getLastSync();
 
     // 1. Pull addresses
     status('PULLING ADDRESSES...');
-    var addrResult = await sb.from('addresses').select('*');
+    var addrQuery = sb.from('addresses').select('*');
+    if (lastSync) addrQuery = addrQuery.gt('updated_at', lastSync);
+    var addrResult = await addrQuery;
     if (addrResult.error) throw new Error('ADDRESS PULL FAILED: ' + addrResult.error.message);
     var cloudAddrs = addrResult.data || [];
 
@@ -456,7 +470,9 @@ async function syncFromCloud(statusCallback) {
 
     // 2. Pull techs
     status('PULLING TECHS...');
-    var techResult = await sb.from('techs').select('*');
+    var techQuery = sb.from('techs').select('*');
+    if (lastSync) techQuery = techQuery.gt('updated_at', lastSync);
+    var techResult = await techQuery;
     if (techResult.error) throw new Error('TECH PULL FAILED: ' + techResult.error.message);
     var cloudTechs = techResult.data || [];
 
@@ -467,18 +483,31 @@ async function syncFromCloud(statusCallback) {
     for (var ti = 0; ti < cloudTechs.length; ti++) {
       if (!localTechMap[cloudTechs[ti].id]) {
         var tech = techFromCloud(cloudTechs[ti]);
-        A.loadTechs().push(tech);
+        A.addTech(tech); // D23: write-through to IDB, not just cache
       }
     }
 
     // 3. Pull jobs + materials
     status('PULLING JOBS...');
-    var jobResult = await sb.from('jobs').select('*');
+    var jobQuery = sb.from('jobs').select('*');
+    if (lastSync) jobQuery = jobQuery.gt('updated_at', lastSync);
+    var jobResult = await jobQuery;
     if (jobResult.error) throw new Error('JOB PULL FAILED: ' + jobResult.error.message);
     var cloudJobs = jobResult.data || [];
 
-    // Pull all materials and group by job_id — D3: preserve material_id
-    var matResult = await sb.from('materials').select('*');
+    // D27: Pull materials for changed jobs only (complete list per job, not partial)
+    // First sync (no lastSync) pulls all materials. Incremental pulls by changed job IDs.
+    status('PULLING MATERIALS...');
+    var changedJobIds = cloudJobs.map(function(j) { return j.id; });
+    var matResult;
+    if (lastSync && changedJobIds.length === 0) {
+      matResult = { data: [], error: null };
+    } else if (lastSync && changedJobIds.length <= 500) {
+      matResult = await sb.from('materials').select('*').in('job_id', changedJobIds);
+    } else {
+      // First sync or 500+ changed jobs — pull all
+      matResult = await sb.from('materials').select('*');
+    }
     if (matResult.error) throw new Error('MATERIAL PULL FAILED: ' + matResult.error.message);
     var cloudMats = matResult.data || [];
 
@@ -538,7 +567,9 @@ async function syncFromCloud(statusCallback) {
 
     // 4. D1: Pull estimates
     status('PULLING ESTIMATES...');
-    var estResult = await sb.from('estimates').select('*');
+    var estQuery = sb.from('estimates').select('*');
+    if (lastSync) estQuery = estQuery.gt('updated_at', lastSync);
+    var estResult = await estQuery;
     if (estResult.error) throw new Error('ESTIMATE PULL FAILED: ' + estResult.error.message);
     var cloudEstimates = estResult.data || [];
 
@@ -627,10 +658,49 @@ function stopRealtime() {
 
 function _handleRemoteChange(table, payload) {
   var newRec = payload.new;
+  var oldRec = payload.old;
   var eventType = payload.eventType;
-  if (!newRec) return;
+  if (!newRec && !oldRec) return;
   if (window._syncInProgress) return;
   if (window._syncCooldown) return;
+
+  // D24: Handle material table events (needs oldRec for DELETE, so runs before newRec guard)
+  if (table === 'materials') {
+    var matRec = newRec || oldRec;
+    if (!matRec || !matRec.job_id) return;
+    var parentJob = A.getJob(matRec.job_id);
+    if (!parentJob) return;
+
+    if (eventType === 'DELETE') {
+      var matId = matRec.material_id;
+      parentJob.materials = (parentJob.materials || []).filter(function(m) {
+        return m.materialId !== matId;
+      });
+    } else {
+      // INSERT or UPDATE — add or replace material on parent job
+      var mat = {
+        materialId: matRec.material_id || crypto.randomUUID(),
+        itemId: matRec.item_id || '',
+        name: matRec.name || '',
+        qty: matRec.qty || 1,
+        unit: matRec.unit || 'EA',
+        variant: matRec.variant || undefined,
+        partRef: matRec.part_ref || undefined
+      };
+      var mats = parentJob.materials || [];
+      var found = false;
+      for (var i = 0; i < mats.length; i++) {
+        if (mats[i].materialId === mat.materialId) { mats[i] = mat; found = true; break; }
+      }
+      if (!found) mats.push(mat);
+      parentJob.materials = mats;
+    }
+    A.updateJob(matRec.job_id, { materials: parentJob.materials });
+    return;
+  }
+
+  // All other tables require newRec
+  if (!newRec) return;
 
   if (table === 'jobs') {
     var local = A.getJob(newRec.id);

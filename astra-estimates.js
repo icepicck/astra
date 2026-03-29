@@ -8,6 +8,9 @@ const A = window.Astra;
 const PRICEBOOK_KEY = 'astra_pricebook';
 const _state = { currentEstimate: null };
 
+// D28: Intelligence aggregation cache — avoids recomputing on every render
+var _intelCache = {};
+
 // ── Price Book (localStorage) ──
 
 function defaultPricebook() {
@@ -26,18 +29,15 @@ function defaultPricebook() {
 }
 
 function loadPricebook() {
-  // D15: Try IDB-backed config first, fall back to localStorage
+  // D33: Lazy read from IDB config. No localStorage fallback (D32 removed dual-write).
+  // If _configCache isn't populated yet (boot race), defaults are safe.
   var stored = (A.loadPricebookConfig && A.loadPricebookConfig()) || null;
-  if (!stored) {
-    try { stored = JSON.parse(localStorage.getItem(PRICEBOOK_KEY)) || null; } catch {}
-  }
   return Object.assign(defaultPricebook(), stored || {});
 }
 
 function savePricebook(pb) {
-  // D15: Save to IDB config + localStorage fallback
+  // D32: IDB is source of truth. localStorage dual-write removed.
   if (A.savePricebookConfig) A.savePricebookConfig(pb);
-  localStorage.setItem(PRICEBOOK_KEY, JSON.stringify(pb));
 }
 
 // ── New Estimate Factory ──
@@ -752,8 +752,10 @@ function _pbSave(showConfirmation) {
 // ══════════════════════════════════════════
 
 // ── Query: Similar Jobs by Type ──
+// D28: Cached — returns stored result if available, recomputes only after invalidation
 function _querySimilarJobs(jobType) {
   if (!jobType) return { materials: [], jobCount: 0 };
+  if (_intelCache[jobType]) return _intelCache[jobType];
   var jobs = A.loadJobs().filter(function(j) {
     return j.types && j.types.indexOf(jobType) !== -1 && j.materials && j.materials.length > 0;
   });
@@ -778,7 +780,9 @@ function _querySimilarJobs(jobType) {
     return m;
   }).sort(function(a, b) { return b.jobCount - a.jobCount; });
 
-  return { materials: materials, jobCount: jobs.length };
+  var result = { materials: materials, jobCount: jobs.length };
+  _intelCache[jobType] = result; // D28: cache for subsequent calls
+  return result;
 }
 
 // ── Query: Jobs at Address ──
@@ -1444,6 +1448,9 @@ Object.assign(window, {
   _estShare: _estShare,
   _estCreateTicket: _estCreateTicket,
 });
+
+// D28: Expose cache invalidation for app.js to call on job save
+window.Astra.invalidateIntelCache = function() { _intelCache = {}; };
 
 // ── Test API (diagnostics.html only) ──
 window.Astra._testEst = {
