@@ -74,6 +74,9 @@ function jobToCloud(j) {
     estimate_id: j.estimateId || null,
     created_by: j.createdBy || null,
     assigned_to: j.assignedTo || null,
+    locked_by: j.lockedBy || null,
+    locked_at: j.lockedAt || null,
+    deleted_at: j.deletedAt || null,
     created_at: j.createdAt || new Date().toISOString(),
     updated_at: j.updatedAt || new Date().toISOString()
   };
@@ -97,6 +100,11 @@ function jobFromCloud(r) {
     videos: r.video_meta || [],
     manually_added_to_vector: !!r.manually_added_to_vector,
     estimateId: r.estimate_id || '',
+    createdBy: r.created_by || null,
+    assignedTo: r.assigned_to || null,
+    lockedBy: r.locked_by || null,
+    lockedAt: r.locked_at || null,
+    deletedAt: r.deleted_at || null,
     materials: [], // filled separately
     createdAt: r.created_at || new Date().toISOString(),
     updatedAt: r.updated_at || new Date().toISOString()
@@ -382,9 +390,10 @@ async function syncToCloud(statusCallback) {
       await batchUpsert('materials', matRecords, 'job_id,material_id');
     }
 
-    // Clean up removed materials: for pushed jobs, delete cloud materials
-    // that no longer exist locally
+    // D25: Clean up removed materials — scoped by account_id
+    // RLS enforces this at DB level, but explicit scope is defense-in-depth
     var sb = getClient();
+    var acct = _acctId();
     for (var jobId in pushedJobIds) {
       var localMatIds = [];
       var localJob = jobs.find(function(j) { return j.id === jobId; });
@@ -395,14 +404,17 @@ async function syncToCloud(statusCallback) {
       }
       if (localMatIds.length > 0) {
         // Delete cloud materials for this job that aren't in local anymore
-        var delResult = await sb.from('materials')
+        var delQuery = sb.from('materials')
           .delete()
           .eq('job_id', jobId)
           .not('material_id', 'in', '(' + localMatIds.join(',') + ')');
-        // Ignore errors on cleanup — non-critical
+        if (acct) delQuery = delQuery.eq('account_id', acct);
+        await delQuery;
       } else if (localJob && (!localJob.materials || localJob.materials.length === 0)) {
         // Job has no materials — delete all cloud materials for this job
-        await sb.from('materials').delete().eq('job_id', jobId);
+        var delAll = sb.from('materials').delete().eq('job_id', jobId);
+        if (acct) delAll = delAll.eq('account_id', acct);
+        await delAll;
       }
     }
 
@@ -432,7 +444,12 @@ async function syncToCloud(statusCallback) {
 
 // ═══════════════════════════════════════════
 // PULL: Cloud → Local
-// Now with D1 (estimates), D3 (material_id preserved)
+// D1 (estimates), D3 (material_id preserved), D6 (RLS-filtered — role-aware)
+// RLS policies handle role-based scoping at the DB level:
+//   Tech: own assigned/created jobs only
+//   Supervisor/Admin: all account jobs
+//   All tables: deleted_at IS NULL excluded by RLS
+// Client adds deleted_at filter as defense-in-depth.
 // ═══════════════════════════════════════════
 async function syncFromCloud(statusCallback) {
   var status = function(msg) { if (statusCallback) statusCallback(0, 4, msg); };
@@ -445,9 +462,9 @@ async function syncFromCloud(statusCallback) {
     // D27: Incremental sync — only fetch records changed since last sync
     var lastSync = getLastSync();
 
-    // 1. Pull addresses
+    // 1. Pull addresses (unfiltered within account — architecture decision #3)
     status('PULLING ADDRESSES...');
-    var addrQuery = sb.from('addresses').select('*');
+    var addrQuery = sb.from('addresses').select('*').is('deleted_at', null);
     if (lastSync) addrQuery = addrQuery.gt('updated_at', lastSync);
     var addrResult = await addrQuery;
     if (addrResult.error) throw new Error('ADDRESS PULL FAILED: ' + addrResult.error.message);
@@ -470,7 +487,7 @@ async function syncFromCloud(statusCallback) {
 
     // 2. Pull techs
     status('PULLING TECHS...');
-    var techQuery = sb.from('techs').select('*');
+    var techQuery = sb.from('techs').select('*').is('deleted_at', null);
     if (lastSync) techQuery = techQuery.gt('updated_at', lastSync);
     var techResult = await techQuery;
     if (techResult.error) throw new Error('TECH PULL FAILED: ' + techResult.error.message);
@@ -487,9 +504,9 @@ async function syncFromCloud(statusCallback) {
       }
     }
 
-    // 3. Pull jobs + materials
+    // 3. Pull jobs + materials (RLS handles role-based scoping)
     status('PULLING JOBS...');
-    var jobQuery = sb.from('jobs').select('*');
+    var jobQuery = sb.from('jobs').select('*').is('deleted_at', null);
     if (lastSync) jobQuery = jobQuery.gt('updated_at', lastSync);
     var jobResult = await jobQuery;
     if (jobResult.error) throw new Error('JOB PULL FAILED: ' + jobResult.error.message);
@@ -552,6 +569,11 @@ async function syncFromCloud(statusCallback) {
           techName: cloudJob.techName,
           materials: cloudJob.materials,
           estimateId: cloudJob.estimateId,
+          createdBy: cloudJob.createdBy,
+          assignedTo: cloudJob.assignedTo,
+          lockedBy: cloudJob.lockedBy,
+          lockedAt: cloudJob.lockedAt,
+          deletedAt: cloudJob.deletedAt,
           updatedAt: cloudJob.updatedAt
         });
         updatedJobs++;
@@ -567,7 +589,7 @@ async function syncFromCloud(statusCallback) {
 
     // 4. D1: Pull estimates
     status('PULLING ESTIMATES...');
-    var estQuery = sb.from('estimates').select('*');
+    var estQuery = sb.from('estimates').select('*').is('deleted_at', null);
     if (lastSync) estQuery = estQuery.gt('updated_at', lastSync);
     var estResult = await estQuery;
     if (estResult.error) throw new Error('ESTIMATE PULL FAILED: ' + estResult.error.message);
@@ -664,6 +686,14 @@ function _handleRemoteChange(table, payload) {
   if (window._syncInProgress) return;
   if (window._syncCooldown) return;
 
+  // D26: If record was soft-deleted, remove local copy
+  if (newRec && newRec.deleted_at) {
+    if (table === 'jobs') { A.removeLocalJob && A.removeLocalJob(newRec.id); }
+    else if (table === 'addresses') { A.removeLocalAddress && A.removeLocalAddress(newRec.id); }
+    else if (table === 'estimates') { A.removeLocalEstimate && A.removeLocalEstimate(newRec.id); }
+    return;
+  }
+
   // D24: Handle material table events (needs oldRec for DELETE, so runs before newRec guard)
   if (table === 'materials') {
     var matRec = newRec || oldRec;
@@ -720,6 +750,11 @@ function _handleRemoteChange(table, payload) {
         techId: cloudJob.techId,
         techName: cloudJob.techName,
         estimateId: cloudJob.estimateId,
+        createdBy: cloudJob.createdBy,
+        assignedTo: cloudJob.assignedTo,
+        lockedBy: cloudJob.lockedBy,
+        lockedAt: cloudJob.lockedAt,
+        deletedAt: cloudJob.deletedAt,
         updatedAt: cloudJob.updatedAt
       });
     } else if (eventType === 'INSERT') {
@@ -752,6 +787,95 @@ function _handleRemoteChange(table, payload) {
   }
 }
 
+// ═══════════════════════════════════════════
+// PHASE C: CHECKOUT LOCKING (D13)
+// Prevents two users from editing the same job simultaneously.
+// Lock is advisory at app level, enforced by RLS at DB level.
+// 30-minute stale timeout. Supervisors can force-unlock.
+// ═══════════════════════════════════════════
+
+var LOCK_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+// Acquire lock on a job. Returns { success: true, job } or { success: false, lockedBy: 'Name' }
+async function acquireLock(jobId) {
+  var sb = getClient();
+  var user = (A.getCurrentUser && A.getCurrentUser()) || null;
+  if (!user) return { success: false, lockedBy: 'UNKNOWN' };
+
+  // Try to lock: only if unlocked, stale (>30min), or already ours
+  var now = new Date().toISOString();
+  var staleThreshold = new Date(Date.now() - LOCK_TIMEOUT_MS).toISOString();
+
+  // Attempt: set lock where (no lock) OR (our lock) OR (stale lock)
+  var result = await sb.from('jobs')
+    .update({ locked_by: user.id, locked_at: now })
+    .eq('id', jobId)
+    .or('locked_by.is.null,locked_by.eq.' + user.id + ',locked_at.lt.' + staleThreshold)
+    .select('id, locked_by, locked_at');
+
+  if (result.error) {
+    console.error('Lock acquire failed:', result.error.message);
+    return { success: false, lockedBy: 'ERROR' };
+  }
+
+  if (result.data && result.data.length > 0) {
+    // Lock acquired — update local cache
+    A.updateJob(jobId, { lockedBy: user.id, lockedAt: now });
+    return { success: true };
+  }
+
+  // Lock not acquired — someone else holds it. Fetch who.
+  var check = await sb.from('jobs').select('locked_by, locked_at').eq('id', jobId).single();
+  if (check.error || !check.data) return { success: false, lockedBy: 'UNKNOWN' };
+
+  // Look up the lock holder's name
+  var holderName = 'ANOTHER USER';
+  if (check.data.locked_by) {
+    var nameResult = await sb.from('users').select('name').eq('id', check.data.locked_by).single();
+    if (nameResult.data && nameResult.data.name) holderName = nameResult.data.name;
+  }
+
+  return { success: false, lockedBy: holderName };
+}
+
+// Release lock on a job (called on navigate away, save, etc.)
+async function releaseLock(jobId) {
+  if (!jobId) return;
+  var sb = getClient();
+  var user = (A.getCurrentUser && A.getCurrentUser()) || null;
+  if (!user) return;
+
+  // Only release if WE hold the lock
+  var result = await sb.from('jobs')
+    .update({ locked_by: null, locked_at: null })
+    .eq('id', jobId)
+    .eq('locked_by', user.id);
+
+  if (!result.error) {
+    A.updateJob(jobId, { lockedBy: null, lockedAt: null });
+  }
+}
+
+// Force-unlock + re-lock to supervisor in ONE atomic call (Silas: no window between)
+async function forceUnlock(jobId) {
+  var sb = getClient();
+  var user = (A.getCurrentUser && A.getCurrentUser()) || null;
+  if (!user || user.role !== 'supervisor') return { success: false };
+
+  var now = new Date().toISOString();
+  var result = await sb.from('jobs')
+    .update({ locked_by: user.id, locked_at: now })
+    .eq('id', jobId)
+    .select('id, locked_by, locked_at');
+
+  if (result.error || !result.data || result.data.length === 0) {
+    return { success: false };
+  }
+
+  A.updateJob(jobId, { lockedBy: user.id, lockedAt: now });
+  return { success: true };
+}
+
 // ── Public API ──
 Object.assign(window, { syncToCloud: syncToCloud, syncFromCloud: syncFromCloud, startRealtime: startRealtime, stopRealtime: stopRealtime });
 window.Astra.getSupabaseUrl = getSupabaseUrl;
@@ -759,6 +883,9 @@ window.Astra.saveSupabaseUrl = saveSupabaseUrl;
 window.Astra.getSupabaseKey = getSupabaseKey;
 window.Astra.saveSupabaseKey = saveSupabaseKey;
 window.Astra.isSyncConfigured = isConfigured;
+window.Astra.acquireLock = acquireLock;
+window.Astra.releaseLock = releaseLock;
+window.Astra.forceUnlock = forceUnlock;
 
 // Auto-connect realtime if configured
 if (isConfigured()) {

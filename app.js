@@ -37,7 +37,7 @@ const ADDRS_KEY = 'astra_addresses';
 const NAV_FREQ_KEY = 'astra_nav_frequency';
 const HOME_BASE_KEY = 'astra_home_base';
 const GMAPS_KEY_STORAGE = 'astra_gmaps_key';
-const STATUSES = ['Not Started','In Progress','Complete','Needs Callback','Waiting on Materials'];
+const STATUSES = ['Not Started','In Progress','Complete','Needs Callback','Waiting on Materials','pending_approval'];
 const MAT_LIB_KEY = 'astra_material_library_rough';
 const MAT_LIB_TRIM_KEY = 'astra_material_library_trim';
 
@@ -496,6 +496,21 @@ function addJob(job) {
   if (window.Astra.invalidateIntelCache) window.Astra.invalidateIntelCache();
 }
 
+// ── D26: Soft delete removal — remove local copy when cloud record is soft-deleted ──
+function removeLocalJob(id) {
+  _cache.jobs = _cache.jobs.filter(function(j) { return j.id !== id; });
+  _idbDelete('jobs', id);
+  if (window.Astra.invalidateIntelCache) window.Astra.invalidateIntelCache();
+}
+function removeLocalAddress(id) {
+  _cache.addresses = _cache.addresses.filter(function(a) { return a.id !== id; });
+  _idbDelete('addresses', id);
+}
+function removeLocalEstimate(id) {
+  _cache.estimates = _cache.estimates.filter(function(e) { return e.id !== id; });
+  _idbDelete('estimates', id);
+}
+
 // ── ESTIMATES CRUD ──
 function loadEstimates() { return _cache.estimates; }
 function getEstimate(id) { return _cache.estimates.find(e => e.id === id); }
@@ -751,7 +766,17 @@ function closeSidebar() {
 
 let skipPushState = false;
 
+// Phase C: Track which job is currently locked by this user for release on nav
+var _lockedJobId = null;
+
 async function goTo(screenId, jobId) {
+  // Phase C: Release lock when navigating away from detail screen
+  if (_lockedJobId && (screenId !== 'screen-detail' || jobId !== _lockedJobId)) {
+    var releaseId = _lockedJobId;
+    _lockedJobId = null;
+    if (window.Astra.releaseLock) window.Astra.releaseLock(releaseId);
+  }
+
   // Step 4: Auth guard — redirect to login if not authenticated
   if (screenId !== 'screen-login' && window.Astra.getCurrentUser && !window.Astra.getCurrentUser()) {
     screenId = 'screen-login';
@@ -1156,11 +1181,18 @@ function saveNewTicket() {
   const techName = techSel.options[techSel.selectedIndex]?.text || '';
   const addressId = findOrCreateAddress(address, addrComponents);
 
+  // Step 5: Stamp creator identity + set status based on role
+  var currentUser = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+  var userId = currentUser ? currentUser.id : null;
+  var userRole = currentUser ? currentUser.role : 'admin';
+  // Tech-created jobs start as pending_approval; supervisor/admin create as active
+  var jobStatus = userRole === 'tech' ? 'pending_approval' : document.getElementById('c-status').value;
+
   const job = {
     id: crypto.randomUUID(), syncId: crypto.randomUUID(),
     address, addressId,
     types: types.length ? types : ['GENERAL'],
-    status: document.getElementById('c-status').value,
+    status: jobStatus,
     date: dateVal,
     techId, techName: techId ? techName : '',
     notes: document.getElementById('c-notes').value,
@@ -1168,6 +1200,8 @@ function saveNewTicket() {
     materials: (window.Astra && window.Astra.getCreateTicketMaterials) ? [...window.Astra.getCreateTicketMaterials()] : [],
     photos: [], drawings: [], videos: [],
     manually_added_to_vector: false,
+    createdBy: userId,
+    assignedTo: userId,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -1185,6 +1219,20 @@ async function renderDetail(jobId) {
   if (!j) return;
   if (!j.videos) j.videos = [];
 
+  const currentUser = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+  const isSupervisor = currentUser && currentUser.role === 'supervisor';
+
+  // Phase C: Attempt lock acquisition
+  var lockResult = { success: true };
+  if (window.Astra.acquireLock) {
+    lockResult = await window.Astra.acquireLock(jobId);
+  }
+  var isLocked = !lockResult.success;
+  var lockedByName = isLocked ? lockResult.lockedBy : '';
+
+  // Track lock for release on navigate away
+  if (!isLocked) _lockedJobId = jobId;
+
   const techs = loadTechs();
   const typeBadges = j.types.map(t => `<span class="badge badge-type">${esc(t).toUpperCase()}</span>`).join('');
   const dateFormatted = j.date ? new Date(j.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase() : '—';
@@ -1198,19 +1246,19 @@ async function renderDetail(jobId) {
       if (item.type === 'pdf') {
         parts.push(`<div class="media-thumb" onclick="openMedia('${jobId}','${type}',${i})" style="display:flex;align-items:center;justify-content:center;background:#2a2a2a;">
           <div style="text-align:center;"><div style="font-size:28px;">📄</div><div style="font-size:10px;color:#888;margin-top:4px;">PDF</div></div>
-          <button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}','${item.id}')">✕</button>
+          ${isLocked ? '' : `<button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}','${item.id}')">✕</button>`}
           <div class="media-thumb-label">${esc(item.name)}</div>
         </div>`);
       } else if (item.type === 'video') {
         parts.push(`<div class="media-thumb" onclick="openMedia('${jobId}','${type}',${i})">
           <video src="${src}" muted preload="metadata"></video>
           <div class="video-badge">▶</div>
-          <button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}','${item.id}')">✕</button>
+          ${isLocked ? '' : `<button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}','${item.id}')">✕</button>`}
         </div>`);
       } else {
         parts.push(`<div class="media-thumb" onclick="openMedia('${jobId}','${type}',${i})">
           <img src="${src}" alt="${esc(item.name)}">
-          <button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}','${item.id}')">✕</button>
+          ${isLocked ? '' : `<button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}','${item.id}')">✕</button>`}
           ${type === 'drawings' ? '<div class="media-thumb-label">' + esc(item.name) + '</div>' : ''}
         </div>`);
       }
@@ -1225,7 +1273,17 @@ async function renderDetail(jobId) {
   const vectorBtnClass = j.manually_added_to_vector ? 'btn-vector in-vector' : 'btn-vector';
   const vectorBtnText = j.manually_added_to_vector ? 'REMOVE FROM VECTOR' : 'ADD TO VECTOR';
 
+  // Phase C: Lock banner
+  var lockBanner = '';
+  if (isLocked) {
+    lockBanner = `<div style="background:#cc3300;color:#fff;padding:14px 16px;border-radius:8px;margin-bottom:16px;font-weight:700;font-size:14px;text-align:center;letter-spacing:0.5px;">
+      LOCKED BY ${esc(lockedByName).toUpperCase()}
+      ${isSupervisor ? `<button onclick="window._forceUnlockJob('${jobId}')" style="display:block;margin:10px auto 0;background:#fff;color:#cc3300;border:none;border-radius:6px;padding:12px 24px;font-weight:700;font-size:13px;min-height:48px;min-width:160px;cursor:pointer;">TAKE OVER</button>` : ''}
+    </div>`;
+  }
+
   document.getElementById('detail-body').innerHTML = `
+    ${lockBanner}
     <div class="detail-header">
       <div class="detail-address">${esc(j.address)}</div>
       <div style="display:flex;gap:12px;margin-bottom:8px;">
@@ -1234,52 +1292,61 @@ async function renderDetail(jobId) {
       </div>
       <div class="card-meta" style="margin-bottom:10px;">
         ${typeBadges}
-        <span class="badge ${statusClass(j.status)} badge-status" onclick="openStatusPicker()">${esc(j.status).toUpperCase()}</span>
+        ${isLocked
+          ? `<span class="badge ${statusClass(j.status)} badge-status">${esc(j.status).toUpperCase()}</span>`
+          : `<span class="badge ${statusClass(j.status)} badge-status" onclick="openStatusPicker()">${esc(j.status).toUpperCase()}</span>`
+        }
       </div>
       <div class="detail-row"><span>DUE DATE</span><span>${dateFormatted}</span></div>
       <div class="detail-row"><span>TECH</span>
-        <select class="select-dark" onchange="updateJob('${jobId}',{techId:this.value,techName:this.options[this.selectedIndex].text})">
-          <option value="">UNASSIGNED</option>
-          ${techs.map(t => `<option value="${t.id}" ${t.id===j.techId?'selected':''}>${esc(t.name)}</option>`).join('')}
-        </select>
+        ${isLocked
+          ? `<span style="color:#aaa;">${esc(j.techName) || 'UNASSIGNED'}</span>`
+          : `<select class="select-dark" onchange="updateJob('${jobId}',{techId:this.value,techName:this.options[this.selectedIndex].text})">
+              <option value="">UNASSIGNED</option>
+              ${techs.map(t => `<option value="${t.id}" ${t.id===j.techId?'selected':''}>${esc(t.name)}</option>`).join('')}
+            </select>`
+        }
       </div>
     </div>
 
-    <button class="${vectorBtnClass}" onclick="toggleVector('${jobId}')">${vectorBtnText}</button>
+    ${isLocked ? '' : `<button class="${vectorBtnClass}" onclick="toggleVector('${jobId}')">${vectorBtnText}</button>`}
 
     <div class="section-title">JOB NOTES</div>
     <div class="notes-box">${esc(j.notes) || '<span style="color:#333;">NO JOB NOTES.</span>'}</div>
 
     <div class="section-title">TECH NOTES</div>
     <div class="field" style="margin-bottom:0;">
-      <textarea id="detail-tech-notes" style="min-height:90px;" placeholder="NOTES FROM THE JOB..." onblur="updateJob('${jobId}',{techNotes:this.value})">${esc(j.techNotes || '')}</textarea>
+      ${isLocked
+        ? `<div class="notes-box">${esc(j.techNotes) || '<span style="color:#333;">NO TECH NOTES.</span>'}</div>`
+        : `<textarea id="detail-tech-notes" style="min-height:90px;" placeholder="NOTES FROM THE JOB..." onblur="updateJob('${jobId}',{techNotes:this.value})">${esc(j.techNotes || '')}</textarea>`
+      }
     </div>
 
     <div class="section-title">PHOTOS${j.photos.length ? ' (' + j.photos.length + ')' : ''}</div>
-    <button class="upload-btn" onclick="document.getElementById('photo-input').click()">ADD PHOTOS</button>
+    ${isLocked ? '' : `<button class="upload-btn" onclick="document.getElementById('photo-input').click()">ADD PHOTOS</button>`}
     ${j.photos.length ? '<div class="media-grid">' + photoThumbs + '</div>' : ''}
 
     <div class="section-title">VIDEOS${j.videos.length ? ' (' + j.videos.length + ')' : ''}</div>
-    <button class="upload-btn" onclick="document.getElementById('video-input').click()">ADD VIDEOS</button>
+    ${isLocked ? '' : `<button class="upload-btn" onclick="document.getElementById('video-input').click()">ADD VIDEOS</button>`}
     ${j.videos.length ? '<div class="media-grid">' + videoThumbs + '</div>' : ''}
 
     <div class="section-title">DRAWINGS${j.drawings.length ? ' (' + j.drawings.length + ')' : ''}</div>
-    <button class="upload-btn" onclick="document.getElementById('drawing-input').click()">UPLOAD DRAWING</button>
+    ${isLocked ? '' : `<button class="upload-btn" onclick="document.getElementById('drawing-input').click()">UPLOAD DRAWING</button>`}
     ${j.drawings.length ? '<div class="media-grid">' + drawingThumbs + '</div>' : ''}
 
     <div class="section-title" onclick="toggleMatSection()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
       <span>MATERIALS${(j.materials||[]).length ? ' (' + (j.materials||[]).length + ')' : ''}</span>
       <span id="mat-section-arrow" style="font-size:14px;color:#555;transition:transform 0.2s;transform:rotate(-90deg);">▼</span>
     </div>
-    <button class="upload-btn" onclick="openMatPicker('${jobId}')">ADD MATERIALS</button>
+    ${isLocked ? '' : `<button class="upload-btn" onclick="openMatPicker('${jobId}')">ADD MATERIALS</button>`}
     <div id="mat-section-collapsible" style="display:none;">
       <div id="job-materials-list"></div>
     </div>
 
-    ${j.archived
+    ${isLocked ? '' : (j.archived
       ? `<button class="btn btn-restore" onclick="unarchiveJob('${jobId}')">RESTORE</button>`
       : `<button class="btn btn-danger" onclick="archiveJob('${jobId}')">ARCHIVE</button>`
-    }
+    )}
     <div class="spacer"></div>
   `;
   if (window.renderJobMaterials) window.renderJobMaterials(jobId);
@@ -1304,6 +1371,28 @@ function toggleVector(jobId) {
   updateJob(jobId, { manually_added_to_vector: !j.manually_added_to_vector });
   renderDetail(jobId);
 }
+
+// Phase C: Force unlock — supervisor takes over a locked job
+window._forceUnlockJob = async function(jobId) {
+  if (!window.Astra.forceUnlock) return;
+  var result = await window.Astra.forceUnlock(jobId);
+  if (result.success) {
+    _lockedJobId = jobId;
+    showToast('LOCK TAKEN OVER', 'success');
+    renderDetail(jobId);
+  } else {
+    showToast('TAKEOVER FAILED', 'error');
+  }
+};
+
+// Phase C: Release lock on page close/refresh (best-effort)
+window.addEventListener('beforeunload', function() {
+  if (_lockedJobId && window.Astra.releaseLock) {
+    // navigator.sendBeacon would be ideal but Supabase JS doesn't support it
+    // This is best-effort — 30min timeout is the safety net
+    window.Astra.releaseLock(_lockedJobId);
+  }
+});
 
 // ═══════════════════════════════════════════
 // SEARCH
@@ -2215,6 +2304,8 @@ Object.assign(window.Astra, {
   loadEstimates, getEstimate, saveEstimate, deleteEstimate,
   // Step 4: Auth support
   _idbConfigGet, _idbConfigPut, _clearCache, _clearAllStores, initDataLayer,
+  // Step 5: Soft delete removal
+  removeLocalJob, removeLocalAddress, removeLocalEstimate,
 });
 
 // ── Public API — expose only what HTML handlers need ──

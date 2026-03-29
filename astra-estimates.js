@@ -1251,6 +1251,12 @@ function _estCreateTicket() {
     };
   });
 
+  // Step 5: Stamp creator identity + role-based status
+  var currentUser = A.getCurrentUser ? A.getCurrentUser() : null;
+  var userId = currentUser ? currentUser.id : null;
+  var userRole = currentUser ? currentUser.role : 'admin';
+  var estJobStatus = userRole === 'tech' ? 'pending_approval' : 'Not Started';
+
   // Create the job
   var job = {
     id: crypto.randomUUID(),
@@ -1258,7 +1264,7 @@ function _estCreateTicket() {
     address: est.address,
     addressId: addressId,
     types: est.jobType ? [est.jobType] : ['GENERAL'],
-    status: 'Not Started',
+    status: estJobStatus,
     date: A.todayStr(),
     techId: '', techName: '',
     notes: est.description || '',
@@ -1267,6 +1273,8 @@ function _estCreateTicket() {
     photos: [], drawings: [], videos: [],
     manually_added_to_vector: false,
     estimateId: est.id,
+    createdBy: userId,
+    assignedTo: userId,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
