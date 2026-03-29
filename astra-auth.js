@@ -231,24 +231,42 @@
                   return _loadUserProfile(authUser.id);
                 });
             } else {
-              // New admin signup — use default account or create one
-              var accountId = DEFAULT_ACCOUNT_ID;
-              if (accountName) {
-                // Update default account name
-                return sb.from('accounts').update({ name: accountName })
-                  .eq('id', DEFAULT_ACCOUNT_ID)
-                  .then(function () {
-                    // Create user row
-                    return sb.from('users').insert({
-                      id: authUser.id,
-                      account_id: accountId,
-                      name: name || '',
-                      email: email,
-                      role: 'admin',
-                      status: 'active'
-                    });
-                  })
-                  .then(function (insertResult) {
+              // New admin signup — check if default account is already claimed
+              return sb.from('users').select('id').eq('account_id', DEFAULT_ACCOUNT_ID).limit(1)
+                .then(function (checkResult) {
+                  var defaultClaimed = checkResult.data && checkResult.data.length > 0;
+
+                  if (defaultClaimed) {
+                    // Default account taken — create a new account for this shop
+                    return sb.from('accounts').insert({ name: accountName || '' })
+                      .select('id').single()
+                      .then(function (newAcct) {
+                        if (newAcct.error) {
+                          _showLoginError('ACCOUNT CREATION FAILED: ' + newAcct.error.message);
+                          return null;
+                        }
+                        return newAcct.data.id;
+                      });
+                  } else {
+                    // First signup — claim default account
+                    if (accountName) {
+                      return sb.from('accounts').update({ name: accountName })
+                        .eq('id', DEFAULT_ACCOUNT_ID)
+                        .then(function () { return DEFAULT_ACCOUNT_ID; });
+                    }
+                    return Promise.resolve(DEFAULT_ACCOUNT_ID);
+                  }
+                })
+                .then(function (accountId) {
+                  if (!accountId) return null;
+                  return sb.from('users').insert({
+                    id: authUser.id,
+                    account_id: accountId,
+                    name: name || '',
+                    email: email,
+                    role: 'admin',
+                    status: 'active'
+                  }).then(function (insertResult) {
                     if (insertResult.error) {
                       _showLoginError('USER CREATION FAILED: ' + insertResult.error.message);
                       return null;
@@ -262,30 +280,7 @@
                       status: 'active'
                     };
                   });
-              } else {
-                // Create user row with default account
-                return sb.from('users').insert({
-                  id: authUser.id,
-                  account_id: accountId,
-                  name: name || '',
-                  email: email,
-                  role: 'admin',
-                  status: 'active'
-                }).then(function (insertResult) {
-                  if (insertResult.error) {
-                    _showLoginError('USER CREATION FAILED: ' + insertResult.error.message);
-                    return null;
-                  }
-                  return {
-                    id: authUser.id,
-                    accountId: accountId,
-                    name: name || '',
-                    email: email,
-                    role: 'admin',
-                    status: 'active'
-                  };
                 });
-              }
             }
           })
           .then(function (profile) {
@@ -299,8 +294,12 @@
 
             _setLoginLoading(false);
 
-            // Auto-login after signup (Supabase auto-confirms in dev mode)
-            A.goTo('screen-jobs');
+            // D29: After signup, show onboarding if no jobs exist (first-time user)
+            if (A.loadJobs().length === 0) {
+              A.goTo('screen-onboarding');
+            } else {
+              A.goTo('screen-jobs');
+            }
             if (A.showToast) A.showToast('WELCOME TO ASTRA');
             return true;
           });

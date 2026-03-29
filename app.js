@@ -1884,6 +1884,32 @@ async function renderSettings() {
   `;
 }
 
+// D29: Onboarding — save company, home base, first tech name
+function completeOnboarding() {
+  var company = (document.getElementById('onboard-company') || {}).value || '';
+  var homeBase = (document.getElementById('onboard-homebase') || {}).value || '';
+  var techName = (document.getElementById('onboard-techname') || {}).value || '';
+
+  // Save company name to pricebook
+  if (company.trim()) {
+    var pb = window.Astra.loadPricebookConfig ? (window.Astra.loadPricebookConfig() || {}) : {};
+    pb.companyName = company.trim();
+    if (window.Astra.savePricebookConfig) window.Astra.savePricebookConfig(pb);
+  }
+
+  // Save home base address
+  if (homeBase.trim()) saveHomeBase(homeBase.trim());
+
+  // Update first tech name (replace DEFAULT TECH)
+  if (techName.trim() && _cache.techs.length > 0) {
+    _cache.techs[0].name = techName.trim();
+    _idbPut('techs', _cache.techs[0]);
+  }
+
+  showToast('SHOP SET UP — CREATE YOUR FIRST JOB');
+  goTo('screen-create');
+}
+
 async function hardReload() {
   showToast('RELOADING APP...', 'info');
   if ('caches' in window) {
@@ -2212,6 +2238,8 @@ Object.assign(window, {
   exportData, importData,
   // Cloud sync
   runSyncPush, runSyncPull,
+  // D29: Onboarding
+  completeOnboarding,
   // Settings
   saveGmapsKey, saveHomeBase, hardReload, _applyUpdate,
 });

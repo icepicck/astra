@@ -895,6 +895,34 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
   </div>
 </div>
 
+<!-- ══════════════ SCREEN: ONBOARDING (D29) ══════════════ -->
+<div id="screen-onboarding" class="screen">
+  <div class="screen-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:0 16px;">
+    <div style="width:100%;max-width:320px;">
+      <div style="text-align:center;margin-bottom:32px;">
+        <div style="font-size:28px;font-weight:900;color:#FF6B00;letter-spacing:3px;">SET UP YOUR SHOP</div>
+        <div style="font-size:11px;color:#555;letter-spacing:1.5px;margin-top:6px;">60 SECONDS — THEN YOU'RE BUILDING ESTIMATES</div>
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label style="font-size:10px;font-weight:800;color:#999;letter-spacing:1.5px;">COMPANY NAME</label>
+        <input type="text" id="onboard-company" placeholder="YOUR BUSINESS NAME" autocomplete="organization" style="margin-top:4px;">
+      </div>
+      <div class="field" style="margin-bottom:14px;">
+        <label style="font-size:10px;font-weight:800;color:#999;letter-spacing:1.5px;">HOME BASE ADDRESS</label>
+        <input type="text" id="onboard-homebase" placeholder="SHOP OR HOME ADDRESS" autocomplete="street-address" style="margin-top:4px;">
+      </div>
+      <div class="field" style="margin-bottom:20px;">
+        <label style="font-size:10px;font-weight:800;color:#999;letter-spacing:1.5px;">YOUR NAME (FIRST TECH)</label>
+        <input type="text" id="onboard-techname" placeholder="FIRST LAST" autocomplete="name" style="margin-top:4px;">
+      </div>
+      <button class="btn btn-primary" onclick="completeOnboarding()" style="width:100%;background:#FF6B00;color:#fff;padding:14px;border:none;border-radius:10px;font-size:14px;font-weight:800;letter-spacing:2px;cursor:pointer;min-height:48px;">LET'S GO</button>
+      <div style="text-align:center;margin-top:16px;">
+        <span onclick="goTo('screen-jobs')" style="color:#555;cursor:pointer;font-size:11px;font-weight:600;letter-spacing:1px;">SKIP FOR NOW</span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════ SCREEN: HOME ══════════════ -->
 <div id="screen-jobs" class="screen">
   <div class="screen-body">
