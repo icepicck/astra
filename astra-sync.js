@@ -24,15 +24,18 @@ function getLastSync() { return localStorage.getItem(LAST_SYNC_KEY) || ''; }
 function setLastSync() { localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString()); }
 function isConfigured() { return !!(getSupabaseUrl() && getSupabaseKey()); }
 
-// ── Supabase Client (lazy singleton) ──
+// ── Supabase Client (lazy singleton, shared with auth module) ──
 var _client = null;
 function getClient() {
+  // Step 4: Use shared client from auth module if available
+  if (window._astraSupabaseClient) { _client = window._astraSupabaseClient; return _client; }
   if (_client) return _client;
   var url = getSupabaseUrl();
   var key = getSupabaseKey();
   if (!url || !key) throw new Error('SUPABASE NOT CONFIGURED — ADD URL AND KEY IN SETTINGS.');
   if (!window.supabase || !window.supabase.createClient) throw new Error('SUPABASE LIBRARY NOT LOADED.');
   _client = window.supabase.createClient(url, key);
+  window._astraSupabaseClient = _client; // Share with auth module
   return _client;
 }
 
@@ -40,9 +43,15 @@ function getClient() {
 // FIELD MAPPING: local camelCase ↔ Postgres snake_case
 // ═══════════════════════════════════════════
 
+// Step 4: Helper to get account_id for cloud writes
+function _acctId() {
+  return (A.getAccountId && A.getAccountId()) || null;
+}
+
 function jobToCloud(j) {
   return {
     id: j.id,
+    account_id: _acctId(),
     address: j.address || '',
     address_id: j.addressId || null,
     types: j.types || [],
@@ -58,6 +67,8 @@ function jobToCloud(j) {
     video_meta: (j.videos || []).map(function(v) { return { id: v.id, name: v.name, type: v.type, addedAt: v.addedAt }; }),
     manually_added_to_vector: !!j.manually_added_to_vector,
     estimate_id: j.estimateId || null,
+    created_by: j.createdBy || null,
+    assigned_to: j.assignedTo || null,
     created_at: j.createdAt || new Date().toISOString(),
     updated_at: j.updatedAt || new Date().toISOString()
   };
@@ -90,6 +101,7 @@ function jobFromCloud(r) {
 function addrToCloud(a) {
   return {
     id: a.id,
+    account_id: _acctId(),
     address: a.address || '',
     street: a.street || '',
     suite: a.suite || '',
@@ -136,6 +148,7 @@ function addrFromCloud(r) {
 function techToCloud(t) {
   return {
     id: t.id,
+    account_id: _acctId(),
     name: t.name || '',
     phone: t.phone || '',
     license: t.license || '',
@@ -159,6 +172,7 @@ function techFromCloud(r) {
 function estimateToCloud(e) {
   return {
     id: e.id,
+    account_id: _acctId(),
     address: e.address || '',
     address_id: e.addressId || null,
     customer_name: e.customerName || '',
@@ -337,6 +351,7 @@ async function syncToCloud(statusCallback) {
         var m = job.materials[mi];
         matRecords.push({
           job_id: job.id,
+          account_id: _acctId(),
           material_id: m.materialId || crypto.randomUUID(),
           item_id: m.itemId || '',
           name: m.name || '',

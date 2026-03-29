@@ -832,8 +832,55 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
   </button>
 </div>
 
+<!-- ══════════════ SCREEN: LOGIN ══════════════ -->
+<div id="screen-login" class="screen active">
+  <div class="screen-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:0 16px;">
+    <div style="width:100%;max-width:320px;">
+      <div style="text-align:center;margin-bottom:40px;">
+        <div style="font-size:36px;font-weight:900;color:#FF6B00;letter-spacing:4px;">ASTRA</div>
+        <div style="font-size:11px;color:#555;letter-spacing:2px;margin-top:4px;">COST INTELLIGENCE ENGINE</div>
+      </div>
+      <div id="login-error" style="color:#c0392b;font-size:12px;font-weight:700;text-align:center;margin-bottom:12px;display:none;letter-spacing:0.5px;"></div>
+      <div id="login-form">
+        <div class="field" style="margin-bottom:12px;">
+          <input type="email" id="login-email" placeholder="EMAIL" autocomplete="email" name="astra-xemail">
+        </div>
+        <div class="field" style="margin-bottom:16px;">
+          <input type="password" id="login-password" placeholder="PASSWORD" autocomplete="current-password" name="astra-xpass">
+        </div>
+        <button class="btn btn-primary" id="login-btn" style="width:100%;background:#FF6B00;color:#fff;padding:14px;border:none;border-radius:10px;font-size:14px;font-weight:800;letter-spacing:2px;cursor:pointer;min-height:48px;" onclick="doLogin()">SIGN IN</button>
+        <div style="text-align:center;margin-top:20px;">
+          <span onclick="showSignupForm()" style="color:#FF6B00;cursor:pointer;font-size:12px;font-weight:700;letter-spacing:1px;">FIRST TIME? SET UP ACCOUNT</span>
+        </div>
+      </div>
+      <div id="signup-form" style="display:none;">
+        <div class="field" style="margin-bottom:12px;">
+          <label>YOUR NAME</label>
+          <input type="text" id="signup-name" placeholder="FIRST LAST" autocomplete="name" name="astra-xsname">
+        </div>
+        <div class="field" style="margin-bottom:12px;">
+          <label>SHOP / COMPANY</label>
+          <input type="text" id="signup-account" placeholder="YOUR BUSINESS NAME" autocomplete="organization" name="astra-xsacct">
+        </div>
+        <div class="field" style="margin-bottom:12px;">
+          <label>EMAIL</label>
+          <input type="email" id="signup-email" placeholder="EMAIL" autocomplete="email" name="astra-xsemail">
+        </div>
+        <div class="field" style="margin-bottom:16px;">
+          <label>PASSWORD</label>
+          <input type="password" id="signup-password" placeholder="6+ CHARACTERS" autocomplete="new-password" name="astra-xspass">
+        </div>
+        <button class="btn btn-primary" id="signup-btn" style="width:100%;background:#FF6B00;color:#fff;padding:14px;border:none;border-radius:10px;font-size:14px;font-weight:800;letter-spacing:2px;cursor:pointer;min-height:48px;" onclick="doSignup()">CREATE ACCOUNT</button>
+        <div style="text-align:center;margin-top:20px;">
+          <span onclick="showLoginForm()" style="color:#FF6B00;cursor:pointer;font-size:12px;font-weight:700;letter-spacing:1px;">ALREADY HAVE AN ACCOUNT? SIGN IN</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════ SCREEN: HOME ══════════════ -->
-<div id="screen-jobs" class="screen active">
+<div id="screen-jobs" class="screen">
   <div class="screen-body">
     <div class="date-toggle" id="home-toggle">
       <button class="date-toggle-btn active" onclick="setHomeView('daily')">DAILY</button>
@@ -1065,11 +1112,15 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
     <div class="section-title">STORAGE</div>
     <div id="storage-info" class="dash-card" style="margin-bottom:16px;"></div>
 
+    <div class="section-title">ACCOUNT</div>
+    <div id="settings-user-info" class="dash-card" style="margin-bottom:12px;"></div>
+    <button class="btn btn-secondary" style="margin-bottom:16px;border-color:#c0392b;color:#c0392b;" onclick="doLogout()">SIGN OUT</button>
+
     <div class="section-title">APP</div>
     <button class="btn btn-secondary" style="margin-bottom:16px;" onclick="hardReload()">RELOAD APP</button>
 
     <div style="color:#333;font-size:12px;text-align:center;margin-top:24px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">
-      ASTRA v0.6
+      ASTRA v0.7
     </div>
     <div style="height:24px;"></div>
   </div>
@@ -1143,6 +1194,8 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
 <script src="astra-estimates.js"></script>
 <!-- D20: Vendored locally — no CDN dependency -->
 <script src="supabase.min.js"></script>
+<!-- Step 4: Auth must load after supabase, before sync -->
+<script src="astra-auth.js"></script>
 <script src="astra-sync.js"></script>
 </body>
 </html>

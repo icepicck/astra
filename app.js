@@ -99,6 +99,29 @@ function savePricebookConfig(pb) {
 const _cache = { jobs: [], techs: [], addresses: [], estimates: [] };
 let _astraDB = null;
 
+// Step 4: Cache-clear functions for auth logout
+function _clearCache() {
+  _cache.jobs = [];
+  _cache.techs = [];
+  _cache.addresses = [];
+  _cache.estimates = [];
+  _configCache = {};
+}
+
+function _clearAllStores() {
+  if (!_astraDB) return;
+  try {
+    var stores = ['jobs', 'techs', 'addresses', 'estimates'];
+    stores.forEach(function(s) {
+      var tx = _astraDB.transaction(s, 'readwrite');
+      tx.objectStore(s).clear();
+    });
+    // Clear config store
+    var cfgTx = _astraDB.transaction('_config', 'readwrite');
+    cfgTx.objectStore('_config').clear();
+  } catch (e) { console.error('Clear stores failed:', e); }
+}
+
 function _openAstraDB() {
   return new Promise((resolve, reject) => {
     if (_astraDB) { resolve(_astraDB); return; }
@@ -598,7 +621,25 @@ initDataLayer()
   .then(() => window.autoLoadBuiltInLibraries && window.autoLoadBuiltInLibraries())
   .then(() => openMediaDB())
   .then(() => migrateLegacyMedia())
-  .then(() => { renderJobList(); cleanOrphanedMedia(); })
+  .then(() => {
+    // Step 4: Auth gate — check for session before showing app
+    if (window.Astra.checkAuth) {
+      return window.Astra.checkAuth().then(function(authenticated) {
+        if (authenticated) {
+          // Show global nav (hidden by login screen)
+          var nav = document.getElementById('global-nav');
+          if (nav) nav.style.display = '';
+          renderJobList();
+          cleanOrphanedMedia();
+        }
+        // If not authenticated, checkAuth() already showed login screen
+      });
+    } else {
+      // Auth module not loaded — proceed without auth (dev/testing)
+      renderJobList();
+      cleanOrphanedMedia();
+    }
+  })
   .catch(e => console.error('Init failed:', e));
 
 // ═══════════════════════════════════════════
@@ -676,6 +717,14 @@ function closeSidebar() {
 let skipPushState = false;
 
 async function goTo(screenId, jobId) {
+  // Step 4: Auth guard — redirect to login if not authenticated
+  if (screenId !== 'screen-login' && window.Astra.getCurrentUser && !window.Astra.getCurrentUser()) {
+    screenId = 'screen-login';
+  }
+  // Show/hide global nav based on screen
+  var nav = document.getElementById('global-nav');
+  if (nav) nav.style.display = screenId === 'screen-login' ? 'none' : '';
+
   closeSidebar();
   await initScreen(screenId, jobId);
 
@@ -1737,6 +1786,20 @@ function toggleChip(el) { el.classList.toggle('selected'); }
 // SETTINGS / EXPORT / IMPORT
 // ═══════════════════════════════════════════
 async function renderSettings() {
+  // Step 4: Show current user info
+  var userInfoEl = document.getElementById('settings-user-info');
+  if (userInfoEl) {
+    var user = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+    if (user) {
+      userInfoEl.innerHTML =
+        '<div class="dash-row"><div class="dash-row-label">NAME</div><div class="dash-row-value">' + esc(user.name || '—') + '</div></div>' +
+        '<div class="dash-row"><div class="dash-row-label">EMAIL</div><div class="dash-row-value" style="font-size:12px;">' + esc(user.email || '—') + '</div></div>' +
+        '<div class="dash-row"><div class="dash-row-label">ROLE</div><div class="dash-row-value" style="color:#FF6B00;text-transform:uppercase;">' + esc(user.role || '—') + '</div></div>';
+    } else {
+      userInfoEl.innerHTML = '<div class="dash-row"><div class="dash-row-label">STATUS</div><div class="dash-row-value">NOT SIGNED IN</div></div>';
+    }
+  }
+
   const jobs = loadJobs();
   const active = jobs.filter(j => !j.archived).length;
   const archived = jobs.filter(j => j.archived).length;
@@ -2088,6 +2151,8 @@ Object.assign(window.Astra, {
   MAT_LIB_KEY, MAT_LIB_TRIM_KEY, loadMaterialLibrary, loadRoughLibrary, loadTrimLibrary,
   saveRoughLibrary, saveTrimLibrary, loadPricebookConfig, savePricebookConfig,
   loadEstimates, getEstimate, saveEstimate, deleteEstimate,
+  // Step 4: Auth support
+  _idbConfigGet, _idbConfigPut, _clearCache, _clearAllStores, initDataLayer,
 });
 
 // ── Public API — expose only what HTML handlers need ──
