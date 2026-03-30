@@ -490,12 +490,40 @@ function _idbPutRetry(storeName, item) {
   if (!_astraDB) return;
   setTimeout(function() {
     try {
-      const tx = _astraDB.transaction(storeName, 'readwrite');
-      tx.objectStore(storeName).put(item);
-      tx.oncomplete = function() { showToast('SAVE RECOVERED'); };
-      tx.onabort = tx.onerror = function() {
-        console.error('IDB retry FAILED (' + storeName + '):', tx.error);
-        showToast('SAVE FAILED — DATA NOT SAVED. DO NOT CLOSE APP.', 'error');
+      // E1: Check if original write actually committed before retrying
+      var checkTx = _astraDB.transaction(storeName, 'readonly');
+      var key = item.id || item.key; // jobs/estimates use .id, _syncMeta uses .key
+      var getReq = checkTx.objectStore(storeName).get(key);
+      getReq.onsuccess = function() {
+        var existing = getReq.result;
+        if (existing && existing.updatedAt && existing.updatedAt === item.updatedAt) {
+          // Original write committed — skip retry to prevent double-write
+          console.log('[ASTRA] IDB retry skipped — original write confirmed (' + storeName + ')');
+          return;
+        }
+        // Original write did NOT commit — perform the retry
+        try {
+          var retryTx = _astraDB.transaction(storeName, 'readwrite');
+          retryTx.objectStore(storeName).put(item);
+          retryTx.oncomplete = function() { showToast('SAVE RECOVERED'); };
+          retryTx.onabort = retryTx.onerror = function() {
+            console.error('IDB retry FAILED (' + storeName + '):', retryTx.error);
+            showToast('SAVE FAILED — DATA NOT SAVED. DO NOT CLOSE APP.', 'error');
+          };
+        } catch (e2) {
+          console.error('IDB retry error (' + storeName + '):', e2);
+          showToast('SAVE FAILED — DATA NOT SAVED. DO NOT CLOSE APP.', 'error');
+        }
+      };
+      getReq.onerror = function() {
+        // Can't verify — retry anyway (better to risk double-write than data loss)
+        var retryTx = _astraDB.transaction(storeName, 'readwrite');
+        retryTx.objectStore(storeName).put(item);
+        retryTx.oncomplete = function() { showToast('SAVE RECOVERED'); };
+        retryTx.onabort = retryTx.onerror = function() {
+          console.error('IDB retry FAILED (' + storeName + '):', retryTx.error);
+          showToast('SAVE FAILED — DATA NOT SAVED. DO NOT CLOSE APP.', 'error');
+        };
       };
     } catch (e) {
       console.error('IDB retry error (' + storeName + '):', e);

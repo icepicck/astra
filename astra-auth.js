@@ -7,6 +7,7 @@
 
   var A = window.Astra;
   var DEFAULT_ACCOUNT_ID = '00000000-0000-0000-0000-000000000001';
+  var OFFLINE_SESSION_MAX_DAYS = 7; // SEC-003: Max days a cached session can survive without server validation
 
   // ── Hardcoded defaults — survives cache clear ──
   // Anon key is public by design. RLS is the real security.
@@ -43,14 +44,24 @@
     return A._idbConfigGet('currentUser');
   }
 
-  function _saveCachedUser(user) {
+  function _saveCachedUser(user, serverValidated) {
     if (!A._idbConfigPut) return;
+    if (serverValidated) user._lastServerValidation = new Date().toISOString();
     A._idbConfigPut('currentUser', user);
   }
 
   function _clearCachedUser() {
     _currentUser = null;
     if (A._idbConfigPut) A._idbConfigPut('currentUser', null);
+  }
+
+  // E2: Offline session expiry check (SEC-003)
+  function _isSessionExpired(cached) {
+    if (!cached || !cached._lastServerValidation) return true; // No timestamp = never validated = expired
+    var validated = new Date(cached._lastServerValidation).getTime();
+    var now = Date.now();
+    var maxAge = OFFLINE_SESSION_MAX_DAYS * 24 * 60 * 60 * 1000;
+    return (now - validated) > maxAge;
   }
 
   // ═══════════════════════════════════════════
@@ -64,10 +75,11 @@
       if (!sb) {
         // Supabase not configured — check for cached user (offline)
         _loadCachedUser().then(function (cached) {
-          if (cached) {
+          if (cached && !_isSessionExpired(cached)) {
             _currentUser = cached;
             resolve(true);
           } else {
+            if (cached) _clearCachedUser(); // E2: expired — wipe stale session
             _showLogin();
             resolve(false);
           }
@@ -82,15 +94,16 @@
           _loadUserProfile(session.user.id).then(function (user) {
             if (user) {
               _currentUser = user;
-              _saveCachedUser(user);
+              _saveCachedUser(user, true); // E2: server-validated — stamp it
               resolve(true);
             } else {
               // Auth session exists but no user profile — might need to complete signup
               _loadCachedUser().then(function (cached) {
-                if (cached) {
+                if (cached && !_isSessionExpired(cached)) {
                   _currentUser = cached;
                   resolve(true);
                 } else {
+                  if (cached) _clearCachedUser();
                   _showLogin();
                   resolve(false);
                 }
@@ -100,10 +113,11 @@
         } else {
           // No session — check IDB for cached user (offline mode)
           _loadCachedUser().then(function (cached) {
-            if (cached) {
+            if (cached && !_isSessionExpired(cached)) {
               _currentUser = cached;
               resolve(true);
             } else {
+              if (cached) _clearCachedUser();
               _showLogin();
               resolve(false);
             }
@@ -112,10 +126,11 @@
       }).catch(function () {
         // Network error — try cached user
         _loadCachedUser().then(function (cached) {
-          if (cached) {
+          if (cached && !_isSessionExpired(cached)) {
             _currentUser = cached;
             resolve(true);
           } else {
+            if (cached) _clearCachedUser();
             _showLogin();
             resolve(false);
           }
@@ -156,7 +171,7 @@
         return false;
       }
       _currentUser = profile;
-      _saveCachedUser(profile);
+      _saveCachedUser(profile, true); // E2c: login is server-validated
       return _rebuildFromCloud().then(function() {
         _setLoginLoading(false);
         A.goTo('screen-jobs');
@@ -257,12 +272,28 @@
         return sb.from('users').select('*').eq('email', email).eq('status', 'invited').single()
           .then(function (inviteResult) {
             if (inviteResult.data) {
-              // Invited tech — link to existing row
+              // Invited tech — link to existing row (E3: with retry)
               return sb.from('users').update({
                 id: authUser.id,
                 status: 'active'
               }).eq('email', email).eq('status', 'invited')
-                .then(function () {
+                .then(function (updateResult) {
+                  if (updateResult.error) {
+                    // E3: Retry once after 1s — RLS race on invited row
+                    console.warn('[ASTRA AUTH] Invited-tech update failed, retrying...', updateResult.error.message);
+                    return new Promise(function (r) { setTimeout(r, 1000); })
+                      .then(function () {
+                        return sb.from('users').update({ id: authUser.id, status: 'active' })
+                          .eq('email', email).eq('status', 'invited');
+                      })
+                      .then(function (retry) {
+                        if (retry.error) {
+                          console.error('[ASTRA AUTH] Invited-tech retry failed:', retry.error.message);
+                          if (A.showToast) A.showToast('PROFILE LINK FAILED — LOG OUT AND BACK IN', 'error');
+                        }
+                        return _loadUserProfile(authUser.id);
+                      });
+                  }
                   return _loadUserProfile(authUser.id);
                 });
             } else {
@@ -294,26 +325,39 @@
                 })
                 .then(function (accountId) {
                   if (!accountId) return null;
-                  return sb.from('users').insert({
+                  var userRow = {
                     id: authUser.id,
                     account_id: accountId,
                     name: name || '',
                     email: email,
                     role: 'admin',
                     status: 'active'
-                  }).then(function (insertResult) {
+                  };
+                  var profileStub = {
+                    id: authUser.id,
+                    accountId: accountId,
+                    name: name || '',
+                    email: email,
+                    role: 'admin',
+                    status: 'active'
+                  };
+                  return sb.from('users').insert(userRow).then(function (insertResult) {
                     if (insertResult.error) {
-                      _showLoginError('USER CREATION FAILED: ' + insertResult.error.message);
-                      return null;
+                      // E3: Retry once after 1s — RLS propagation race
+                      console.warn('[ASTRA AUTH] User insert failed, retrying...', insertResult.error.message);
+                      return new Promise(function (r) { setTimeout(r, 1000); })
+                        .then(function () { return sb.from('users').insert(userRow); })
+                        .then(function (retry) {
+                          if (retry.error) {
+                            console.error('[ASTRA AUTH] User insert retry failed:', retry.error.message);
+                            if (A.showToast) A.showToast('PROFILE SAVE FAILED — LOG OUT AND BACK IN', 'error');
+                            // Return stub so app doesn't brick — profile will sync on next login
+                            return profileStub;
+                          }
+                          return profileStub;
+                        });
                     }
-                    return {
-                      id: authUser.id,
-                      accountId: accountId,
-                      name: name || '',
-                      email: email,
-                      role: 'admin',
-                      status: 'active'
-                    };
+                    return profileStub;
                   });
                 });
             }
@@ -325,7 +369,7 @@
             }
 
             _currentUser = profile;
-            _saveCachedUser(profile);
+            _saveCachedUser(profile, true); // E2c: signup is server-validated
 
             _setLoginLoading(false);
 
@@ -420,8 +464,9 @@
         if (A._clearCache) A._clearCache();
         _showLogin();
       } else if (event === 'TOKEN_REFRESHED') {
-        // Token refreshed silently — no action needed
-        console.log('[ASTRA AUTH] Token refreshed');
+        // E2c: Token refresh proves server connectivity — re-stamp cached user
+        if (_currentUser) _saveCachedUser(_currentUser, true);
+        console.log('[ASTRA AUTH] Token refreshed — session validation renewed');
       }
     });
   }
