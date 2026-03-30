@@ -345,6 +345,8 @@ function _debouncedAutoSync() {
 }
 
 async function _runAutoSync() {
+  // T2-C1: Drain any pending lock releases before syncing
+  if (_pendingLockReleases.length > 0) _processPendingReleases();
   // Guards: don't auto-sync if not configured, already syncing, or not dirty
   if (!_syncDirty) return;
   if (window._syncInProgress) return;
@@ -975,12 +977,28 @@ let skipPushState = false;
 // Phase C: Track which job is currently locked by this user for release on nav
 var _lockedJobId = null;
 
+// T2-C1 (BUG-012): Lock release retry queue — ensures locks don't leak
+var _pendingLockReleases = [];
+async function _processPendingReleases() {
+  while (_pendingLockReleases.length > 0) {
+    var jobId = _pendingLockReleases[0];
+    try {
+      if (window.Astra.releaseLock) await window.Astra.releaseLock(jobId);
+      _pendingLockReleases.shift(); // success — remove from queue
+    } catch(e) {
+      console.warn('[ASTRA] Lock release failed, will retry:', e);
+      break; // retry on next navigation or sync cycle
+    }
+  }
+}
+
 async function goTo(screenId, jobId) {
   // Phase C: Release lock when navigating away from detail screen
+  // T2-C1: Queue release instead of fire-and-forget
   if (_lockedJobId && (screenId !== 'screen-detail' || jobId !== _lockedJobId)) {
-    var releaseId = _lockedJobId;
+    _pendingLockReleases.push(_lockedJobId);
     _lockedJobId = null;
-    if (window.Astra.releaseLock) window.Astra.releaseLock(releaseId);
+    _processPendingReleases();
   }
 
   // Step 4: Auth guard — redirect to login if not authenticated
@@ -1099,8 +1117,9 @@ function todayStr() {
 // ═══════════════════════════════════════════
 function setHomeView(view) {
   homeView = view;
+  var views = ['daily', 'threeday', 'weekly'];
   document.querySelectorAll('#home-toggle .date-toggle-btn').forEach((btn, i) => {
-    btn.classList.toggle('active', (i === 0 && view === 'daily') || (i === 1 && view === 'weekly'));
+    btn.classList.toggle('active', views[i] === view);
   });
   renderJobList();
 }
@@ -1145,6 +1164,32 @@ function _renderGroupedList(allJobs, el, view, opts) {
       return;
     }
     el.innerHTML = jobs.map(j => jobCard(j)).join('');
+  } else if (view === 'threeday') {
+    // T2-E1 (H1): 3-day upcoming view
+    var todayDate = new Date(); todayDate.setHours(0,0,0,0);
+    var threeDayEnd = new Date(todayDate); threeDayEnd.setDate(threeDayEnd.getDate() + 2); threeDayEnd.setHours(23,59,59,999);
+    var upcoming = allJobs.filter(function(j) {
+      if (!j.date) return false;
+      var d = new Date(j.date + 'T00:00:00');
+      return d >= todayDate && d <= threeDayEnd;
+    });
+    if (upcoming.length === 0) {
+      el.innerHTML = '<div class="empty-state"><div>—</div><div>NO TICKETS IN NEXT 3 DAYS</div></div>';
+      return;
+    }
+    // Group by day
+    var dayLabels = ['TODAY', 'TOMORROW', 'DAY AFTER'];
+    var html = '';
+    for (var di = 0; di < 3; di++) {
+      var dayDate = new Date(todayDate); dayDate.setDate(dayDate.getDate() + di);
+      var dayStr = dayDate.getFullYear() + '-' + String(dayDate.getMonth() + 1).padStart(2, '0') + '-' + String(dayDate.getDate()).padStart(2, '0');
+      var dayJobs = upcoming.filter(function(j) { return j.date === dayStr; });
+      if (dayJobs.length) {
+        html += '<div style="font-size:11px;color:#555;font-weight:700;letter-spacing:1.5px;padding:10px 0 6px;text-transform:uppercase;">' + dayLabels[di] + ' — ' + dayJobs.length + ' TICKET' + (dayJobs.length > 1 ? 'S' : '') + '</div>';
+        html += dayJobs.map(function(j) { return jobCard(j); }).join('');
+      }
+    }
+    el.innerHTML = html;
   } else {
     const grouped = {};
     allJobs.forEach(j => {
@@ -1397,9 +1442,97 @@ function saveNewTicket() {
   goTo('screen-jobs');
 }
 
+// T2-E3 (C2): Save & New — saves ticket then resets form for next entry
+function saveAndNew() {
+  var street = document.getElementById('c-street').value.trim();
+  if (!street) { document.getElementById('c-street').focus(); return; }
+  var dateVal = document.getElementById('c-date').value;
+  if (!dateVal) {
+    document.getElementById('c-date-error').classList.add('visible');
+    document.getElementById('c-date').focus();
+    return;
+  }
+  // Save the job (same as saveNewTicket but don't navigate away)
+  var address = buildFullAddress();
+  var addrComponents = {
+    street: street, suite: document.getElementById('c-suite').value.trim(),
+    city: document.getElementById('c-city').value.trim(),
+    state: document.getElementById('c-state').value,
+    zip: document.getElementById('c-zip').value.trim()
+  };
+  var types = [];
+  document.querySelectorAll('#c-types .chip.selected').forEach(function(c) { types.push(c.textContent); });
+  var techSel = document.getElementById('c-tech');
+  var techId = techSel.value;
+  var techName = techSel.options[techSel.selectedIndex] ? techSel.options[techSel.selectedIndex].text : '';
+  var addressId = findOrCreateAddress(address, addrComponents);
+  var currentUser = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+  var userId = currentUser ? currentUser.id : null;
+  var userRole = currentUser ? currentUser.role : 'admin';
+  var jobStatus = userRole === 'tech' ? 'pending_approval' : document.getElementById('c-status').value;
+
+  var job = {
+    id: crypto.randomUUID(), syncId: crypto.randomUUID(),
+    address: address, addressId: addressId,
+    types: types.length ? types : ['GENERAL'],
+    status: jobStatus, date: dateVal,
+    techId: techId, techName: techId ? techName : '',
+    notes: document.getElementById('c-notes').value,
+    techNotes: '',
+    materials: (window.Astra && window.Astra.getCreateTicketMaterials) ? window.Astra.getCreateTicketMaterials().slice() : [],
+    photos: [], drawings: [], videos: [],
+    manually_added_to_vector: false,
+    createdBy: userId, assignedTo: userId,
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+  };
+  if (window.Astra && window.Astra.clearCreateTicketMaterials) window.Astra.clearCreateTicketMaterials();
+  addJob(job);
+  showToast('TICKET SAVED — READY FOR NEXT');
+  // Reset form but keep address (same property multi-ticket scenario)
+  document.querySelectorAll('#c-types .chip.selected').forEach(function(c) { c.classList.remove('selected'); });
+  document.getElementById('c-notes').value = '';
+  document.getElementById('c-date').value = '';
+  document.getElementById('c-date-error').classList.remove('visible');
+  var matList = document.getElementById('create-materials-list');
+  if (matList) matList.innerHTML = '';
+}
+
 // ═══════════════════════════════════════════
 // TICKET DETAIL
 // ═══════════════════════════════════════════
+// T2-D1: Collapsible section helper
+function _collapsible(title, id, content, defaultOpen) {
+  return '<div class="collapse-section" id="sec-' + id + '">'
+    + '<div class="collapse-header" onclick="_toggleSection(\'' + id + '\')" style="min-height:48px;display:flex;align-items:center;cursor:pointer;padding:12px 0;border-bottom:1px solid #2a2a2a;user-select:none;">'
+    + '<span class="collapse-arrow" id="arrow-' + id + '" style="font-size:10px;color:#555;transition:transform 0.2s;margin-right:10px;' + (defaultOpen ? '' : 'transform:rotate(-90deg);') + '">▼</span>'
+    + '<span style="font-size:12px;font-weight:800;color:#888;text-transform:uppercase;letter-spacing:1.5px;">' + title + '</span>'
+    + '</div>'
+    + '<div class="collapse-body" id="body-' + id + '" style="' + (defaultOpen ? '' : 'display:none;') + 'padding:12px 0;">'
+    + content
+    + '</div></div>';
+}
+
+function _toggleSection(id) {
+  var body = document.getElementById('body-' + id);
+  var arrow = document.getElementById('arrow-' + id);
+  if (!body) return;
+  if (body.style.display === 'none') {
+    body.style.display = '';
+    if (arrow) arrow.style.transform = '';
+  } else {
+    body.style.display = 'none';
+    if (arrow) arrow.style.transform = 'rotate(-90deg)';
+  }
+}
+
+// D7: Subtle "SAVED" indicator for tech notes
+function _showTechNotesSaved() {
+  var el = document.getElementById('tech-notes-saved');
+  if (!el) return;
+  el.style.display = '';
+  setTimeout(function() { if (el) el.style.display = 'none'; }, 2000);
+}
+
 async function renderDetail(jobId) {
   const j = getJob(jobId);
   if (!j) return;
@@ -1429,7 +1562,8 @@ async function renderDetail(jobId) {
       const item = items[i];
       const data = await getMediaBlob(item.id);
       // Step 7A: Cloud placeholder — blob exists in cloud but not on this device
-      if (!data && item.synced === false) {
+      // T2-C3 (BUG-023): Also handle 'cloud-only' state
+      if (!data && (item.synced === false || item.synced === 'cloud-only')) {
         parts.push(`<div class="media-thumb" onclick="lazyDownloadMedia('${jobId}','${type}',${i})" style="display:flex;align-items:center;justify-content:center;background:#1a1a2e;cursor:pointer;">
           <div style="text-align:center;"><div style="font-size:24px;color:#555;">&#9729;</div><div style="font-size:10px;color:#555;margin-top:4px;letter-spacing:1px;">TAP TO DOWNLOAD</div></div>
           ${isLocked ? '' : `<button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}','${item.id}')">✕</button>`}
@@ -1487,75 +1621,97 @@ async function renderDetail(jobId) {
     </div>`;
   }
 
-  document.getElementById('detail-body').innerHTML = `
-    ${lockBanner}
-    ${approvalBar}
-    <div class="detail-header">
-      <div class="detail-address">${esc(j.address)}</div>
-      <div style="display:flex;gap:12px;margin-bottom:8px;">
-        ${j.addressId ? `<button class="btn-navigate" onclick="goTo('screen-addr-detail','${j.addressId}')">PROPERTY</button>` : ''}
-        <button class="btn-navigate" onclick="navigateTo('${esc(j.address).replace(/'/g, "\\'")}')">NAVIGATE</button>
-      </div>
-      <div class="card-meta" style="margin-bottom:10px;">
-        ${typeBadges}
-        ${isLocked
-          ? `<span class="badge ${statusClass(j.status)} badge-status">${esc(j.status).toUpperCase()}</span>`
-          : `<span class="badge ${statusClass(j.status)} badge-status" onclick="openStatusPicker()">${esc(j.status).toUpperCase()}</span>`
-        }
-      </div>
-      <div class="detail-row"><span>DUE DATE</span><span>${dateFormatted}</span></div>
-      <div class="detail-row"><span>TECH</span>
-        ${isLocked
-          ? `<span style="color:#aaa;">${esc(j.techName) || 'UNASSIGNED'}</span>`
-          : `<select class="select-dark" onchange="updateJob('${jobId}',{techId:this.value,techName:this.options[this.selectedIndex].text})">
-              <option value="">UNASSIGNED</option>
-              ${techs.map(t => `<option value="${t.id}" ${t.id===j.techId?'selected':''}>${esc(t.name)}</option>`).join('')}
-            </select>`
-        }
-      </div>
-    </div>
+  // T2-D1: Collapsible sections + jump nav + notes distinction
+  var hasMedia = j.photos.length || j.drawings.length || j.videos.length;
+  var mediaCount = j.photos.length + j.drawings.length + j.videos.length;
+  var matCount = (j.materials || []).length;
 
-    ${isLocked ? '' : `<button class="${vectorBtnClass}" onclick="toggleVector('${jobId}')">${vectorBtnText}</button>`}
+  // Combined media section content (D3: single MEDIA section)
+  var mediaContent = '';
+  if (j.photos.length || !isLocked) {
+    mediaContent += '<div style="font-size:11px;color:#555;font-weight:700;letter-spacing:1px;margin:8px 0 6px;text-transform:uppercase;">PHOTOS' + (j.photos.length ? ' (' + j.photos.length + ')' : '') + '</div>';
+    mediaContent += (isLocked ? '' : '<button class="upload-btn" onclick="document.getElementById(\'photo-input\').click()">ADD PHOTOS</button>');
+    mediaContent += (j.photos.length ? '<div class="media-grid">' + photoThumbs + '</div>' : '');
+  }
+  if (j.videos.length || !isLocked) {
+    mediaContent += '<div style="font-size:11px;color:#555;font-weight:700;letter-spacing:1px;margin:12px 0 6px;text-transform:uppercase;">VIDEOS' + (j.videos.length ? ' (' + j.videos.length + ')' : '') + '</div>';
+    mediaContent += (isLocked ? '' : '<button class="upload-btn" onclick="document.getElementById(\'video-input\').click()">ADD VIDEOS</button>');
+    mediaContent += (j.videos.length ? '<div class="media-grid">' + videoThumbs + '</div>' : '');
+  }
+  if (j.drawings.length || !isLocked) {
+    mediaContent += '<div style="font-size:11px;color:#555;font-weight:700;letter-spacing:1px;margin:12px 0 6px;text-transform:uppercase;">DRAWINGS' + (j.drawings.length ? ' (' + j.drawings.length + ')' : '') + '</div>';
+    mediaContent += (isLocked ? '' : '<button class="upload-btn" onclick="document.getElementById(\'drawing-input\').click()">UPLOAD DRAWING</button>');
+    mediaContent += (j.drawings.length ? '<div class="media-grid">' + drawingThumbs + '</div>' : '');
+  }
 
-    <div class="section-title">JOB NOTES</div>
-    <div class="notes-box">${esc(j.notes) || '<span style="color:#333;">NO JOB NOTES.</span>'}</div>
+  // Notes section (D5: visual distinction between supervisor and tech notes)
+  var notesContent = '';
+  notesContent += '<div style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;padding:12px;margin-bottom:12px;">'
+    + '<div style="font-size:10px;color:#555;font-weight:700;letter-spacing:1px;margin-bottom:6px;">SUPERVISOR NOTES — READ ONLY</div>'
+    + '<div style="color:#999;font-size:14px;line-height:1.5;">' + (esc(j.notes) || '<span style="color:#333;">NO JOB NOTES.</span>') + '</div>'
+    + '</div>';
+  notesContent += '<div style="background:#222;border:1px solid #333;border-radius:8px;padding:12px;">'
+    + '<div style="font-size:10px;color:#FF6B00;font-weight:700;letter-spacing:1px;margin-bottom:6px;">YOUR NOTES <span id="tech-notes-saved" style="color:#2d8a4e;display:none;">SAVED ✓</span></div>'
+    + (isLocked
+      ? '<div style="color:#aaa;font-size:14px;line-height:1.5;">' + (esc(j.techNotes) || '<span style="color:#333;">NO TECH NOTES.</span>') + '</div>'
+      : '<textarea id="detail-tech-notes" style="min-height:90px;" placeholder="NOTES FROM THE JOB..." onblur="updateJob(\'' + jobId + '\',{techNotes:this.value});_showTechNotesSaved()">' + esc(j.techNotes || '') + '</textarea>')
+    + '</div>';
 
-    <div class="section-title">TECH NOTES</div>
-    <div class="field" style="margin-bottom:0;">
-      ${isLocked
-        ? `<div class="notes-box">${esc(j.techNotes) || '<span style="color:#333;">NO TECH NOTES.</span>'}</div>`
-        : `<textarea id="detail-tech-notes" style="min-height:90px;" placeholder="NOTES FROM THE JOB..." onblur="updateJob('${jobId}',{techNotes:this.value})">${esc(j.techNotes || '')}</textarea>`
-      }
-    </div>
+  // Materials section
+  var matsContent = (isLocked ? '' : '<button class="upload-btn" onclick="openMatPicker(\'' + jobId + '\')">ADD MATERIALS</button>')
+    + '<div id="dedup-banner-' + jobId + '">' + (isSupervisor && window.renderDedupBanner ? renderDedupBanner(jobId) : '') + '</div>'
+    + '<div id="job-materials-list"></div>';
 
-    <div class="section-title">PHOTOS${j.photos.length ? ' (' + j.photos.length + ')' : ''}</div>
-    ${isLocked ? '' : `<button class="upload-btn" onclick="document.getElementById('photo-input').click()">ADD PHOTOS</button>`}
-    ${j.photos.length ? '<div class="media-grid">' + photoThumbs + '</div>' : ''}
+  // Actions section
+  var actionsContent = '';
+  if (!isLocked) {
+    actionsContent += '<button class="' + vectorBtnClass + '" onclick="toggleVector(\'' + jobId + '\')">' + vectorBtnText + '</button>';
+    if (j.estimateId) {
+      actionsContent += '<button class="btn btn-secondary" style="margin-top:8px;" onclick="goTo(\'screen-estimate-builder\',\'' + j.estimateId + '\')">VIEW LINKED ESTIMATE</button>';
+    }
+    actionsContent += j.archived
+      ? '<button class="btn btn-restore" onclick="unarchiveJob(\'' + jobId + '\')">RESTORE</button>'
+      : '<button class="btn btn-danger" onclick="archiveJob(\'' + jobId + '\')">ARCHIVE</button>';
+  }
 
-    <div class="section-title">VIDEOS${j.videos.length ? ' (' + j.videos.length + ')' : ''}</div>
-    ${isLocked ? '' : `<button class="upload-btn" onclick="document.getElementById('video-input').click()">ADD VIDEOS</button>`}
-    ${j.videos.length ? '<div class="media-grid">' + videoThumbs + '</div>' : ''}
+  document.getElementById('detail-body').innerHTML =
+    lockBanner
+    + approvalBar
+    + '<div class="detail-header">'
+    + '<div class="detail-address">' + esc(j.address) + '</div>'
+    + '<div style="display:flex;gap:12px;margin-bottom:8px;">'
+    + (j.addressId ? '<button class="btn-navigate" onclick="goTo(\'screen-addr-detail\',\'' + j.addressId + '\')">PROPERTY</button>' : '')
+    + '<button class="btn-navigate" onclick="navigateTo(\'' + esc(j.address).replace(/'/g, "\\'") + '\')">NAVIGATE</button>'
+    + '</div>'
+    + '<div class="card-meta" style="margin-bottom:10px;">'
+    + typeBadges
+    + (isLocked
+      ? '<span class="badge ' + statusClass(j.status) + ' badge-status">' + esc(j.status).toUpperCase() + '</span>'
+      : '<span class="badge ' + statusClass(j.status) + ' badge-status" onclick="openStatusPicker()">' + esc(j.status).toUpperCase() + '</span>')
+    + '</div>'
+    + '<div class="detail-row"><span>DUE DATE</span><span>' + dateFormatted + '</span></div>'
+    + '<div class="detail-row"><span>TECH</span>'
+    + (isLocked
+      ? '<span style="color:#aaa;">' + (esc(j.techName) || 'UNASSIGNED') + '</span>'
+      : '<select class="select-dark" onchange="updateJob(\'' + jobId + '\',{techId:this.value,techName:this.options[this.selectedIndex].text})">'
+        + '<option value="">UNASSIGNED</option>'
+        + techs.map(function(t) { return '<option value="' + t.id + '" ' + (t.id===j.techId?'selected':'') + '>' + esc(t.name) + '</option>'; }).join('')
+        + '</select>')
+    + '</div>'
+    + '</div>'
+    // Jump nav
+    + '<div style="display:flex;gap:8px;padding:8px 0;overflow-x:auto;margin-bottom:4px;">'
+    + '<button class="chip" onclick="document.getElementById(\'sec-notes\').scrollIntoView({behavior:\'smooth\'})" style="min-height:36px;padding:6px 12px;font-size:11px;">NOTES</button>'
+    + '<button class="chip" onclick="document.getElementById(\'sec-media\').scrollIntoView({behavior:\'smooth\'})" style="min-height:36px;padding:6px 12px;font-size:11px;">MEDIA' + (mediaCount ? ' (' + mediaCount + ')' : '') + '</button>'
+    + '<button class="chip" onclick="document.getElementById(\'sec-materials\').scrollIntoView({behavior:\'smooth\'})" style="min-height:36px;padding:6px 12px;font-size:11px;">MATERIALS' + (matCount ? ' (' + matCount + ')' : '') + '</button>'
+    + '</div>'
+    // Collapsible sections
+    + _collapsible('NOTES', 'notes', notesContent, true)
+    + _collapsible('MEDIA' + (mediaCount ? ' (' + mediaCount + ')' : ''), 'media', mediaContent, hasMedia)
+    + _collapsible('MATERIALS' + (matCount ? ' (' + matCount + ')' : ''), 'materials', matsContent, false)
+    + (actionsContent ? _collapsible('ACTIONS', 'actions', actionsContent, false) : '')
+    + '<div class="spacer"></div>';
 
-    <div class="section-title">DRAWINGS${j.drawings.length ? ' (' + j.drawings.length + ')' : ''}</div>
-    ${isLocked ? '' : `<button class="upload-btn" onclick="document.getElementById('drawing-input').click()">UPLOAD DRAWING</button>`}
-    ${j.drawings.length ? '<div class="media-grid">' + drawingThumbs + '</div>' : ''}
-
-    <div class="section-title" onclick="toggleMatSection()" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
-      <span>MATERIALS${(j.materials||[]).length ? ' (' + (j.materials||[]).length + ')' : ''}</span>
-      <span id="mat-section-arrow" style="font-size:14px;color:#555;transition:transform 0.2s;transform:rotate(-90deg);">▼</span>
-    </div>
-    ${isLocked ? '' : `<button class="upload-btn" onclick="openMatPicker('${jobId}')">ADD MATERIALS</button>`}
-    <div id="mat-section-collapsible" style="display:none;">
-      <div id="dedup-banner-${jobId}">${isSupervisor && window.renderDedupBanner ? renderDedupBanner(jobId) : ''}</div>
-      <div id="job-materials-list"></div>
-    </div>
-
-    ${isLocked ? '' : (j.archived
-      ? `<button class="btn btn-restore" onclick="unarchiveJob('${jobId}')">RESTORE</button>`
-      : `<button class="btn btn-danger" onclick="archiveJob('${jobId}')">ARCHIVE</button>`
-    )}
-    <div class="spacer"></div>
-  `;
   if (window.renderJobMaterials) window.renderJobMaterials(jobId);
 }
 
@@ -1737,7 +1893,7 @@ function renderAddrDetail(addrId) {
     </div>
     <div class="section-title">PROPERTY INFO</div>
     <div class="dash-card" style="padding:8px 14px;">${fields}</div>
-    ${window.renderAddrMaterialRollup ? window.renderAddrMaterialRollup(addrId) : ''}
+    ${window.renderAddrMaterialRollup ? _collapsible('MATERIAL ROLLUP', 'addr-mats', window.renderAddrMaterialRollup(addrId), false) : ''}
     <div class="section-title">WORK HISTORY (${jobs.length})</div>
     ${ticketList}
     <div class="spacer"></div>
@@ -2391,6 +2547,23 @@ async function renderSettings() {
     warningHtml = '<div class="dash-row" style="margin-top:8px;"><div class="dash-row-label" style="color:#c0392b;">⚠ STORAGE HIGH</div><div class="dash-row-value" style="color:#c0392b;">ARCHIVE OLD MEDIA</div></div>';
   }
 
+  // T2-D2 (SET2): Role-aware settings sections
+  var settingsToolsEl = document.getElementById('settings-tools');
+  if (settingsToolsEl) {
+    var toolsUser = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+    var toolsRole = toolsUser ? toolsUser.role : 'tech';
+    // Tech sees nothing in tools section; supervisor/admin see everything
+    settingsToolsEl.style.display = (toolsRole === 'supervisor' || toolsRole === 'admin' || toolsRole === 'owner') ? '' : 'none';
+  }
+
+  // T2-B6 (SET3): Show Supabase config only to admin/owner
+  var supaConfigEl = document.getElementById('supabase-config-admin');
+  if (supaConfigEl) {
+    var configUser = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+    var configRole = configUser ? configUser.role : 'tech';
+    supaConfigEl.style.display = (configRole === 'admin' || configRole === 'owner') ? '' : 'none';
+  }
+
   // Step 7C: Show dev settings for admin only
   var devEl = document.getElementById('dev-settings');
   if (devEl) {
@@ -2618,6 +2791,22 @@ async function importData(input) {
       if (invalid.length > 0) { showInfoModal('INVALID BACKUP', invalid.length + ' JOBS MISSING ID OR ADDRESS.'); return; }
       if (data.techs && !Array.isArray(data.techs)) { showInfoModal('INVALID BACKUP', 'TECHS NOT AN ARRAY.'); return; }
       if (data.addresses && !Array.isArray(data.addresses)) { showInfoModal('INVALID BACKUP', 'ADDRESSES NOT AN ARRAY.'); return; }
+      // T2-A1: Deep structural validation before destructive replaceAll
+      var importErrors = [];
+      if (!data.jobs.every(function(j) { return j && typeof j === 'object' && typeof j.id === 'string' && j.id.length > 0 && (!j.materials || Array.isArray(j.materials)) && (!j.types || Array.isArray(j.types)); })) {
+        importErrors.push('JOBS: INVALID STRUCTURE');
+      }
+      if (data.techs && !data.techs.every(function(t) { return t && typeof t === 'object' && typeof t.id === 'string' && t.id.length > 0; })) {
+        importErrors.push('TECHS: INVALID STRUCTURE');
+      }
+      if (data.addresses && !data.addresses.every(function(a) { return a && typeof a === 'object' && typeof a.id === 'string' && a.id.length > 0; })) {
+        importErrors.push('ADDRESSES: INVALID STRUCTURE');
+      }
+      if (importErrors.length) {
+        showInfoModal('IMPORT FAILED', importErrors.join('\n'));
+        return;
+      }
+
       showConfirmModal('RESTORE BACKUP', 'REPLACE ALL DATA WITH BACKUP? (' + data.jobs.length + ' TICKETS)', 'REPLACE', async function() {
         data.jobs.forEach(j => {
           if (!j.photos) j.photos = [];
@@ -2867,6 +3056,21 @@ function _showUpdateBanner() {
   document.body.appendChild(banner);
 }
 
+// ── T2-B2 (SEC-006): Inactivity timeout ──
+var INACTIVITY_TIMEOUT_MS = 8 * 60 * 60 * 1000; // 8 hours
+var _lastActivity = Date.now();
+['click', 'touchstart', 'keydown'].forEach(function(evt) {
+  document.addEventListener(evt, function() { _lastActivity = Date.now(); }, { passive: true });
+});
+document.addEventListener('visibilitychange', function() {
+  if (!document.hidden && (Date.now() - _lastActivity) > INACTIVITY_TIMEOUT_MS) {
+    if (window.Astra.getCurrentUser && window.Astra.getCurrentUser()) {
+      showInfoModal('SESSION EXPIRED', 'YOU HAVE BEEN IDLE. PLEASE SIGN IN AGAIN.');
+      if (window.logout) window.logout();
+    }
+  }
+});
+
 // ── Shared namespace for sub-modules (maps, materials) ──
 Object.assign(window.Astra, {
   loadJobs, loadAddresses, updateAddress, addAddress, getJob, updateJob, addJob, loadTechs, addTech,
@@ -2889,14 +3093,14 @@ Object.assign(window, {
   // Navigation
   goTo, toggleSidebar, closeSidebar, setHomeView, setArchiveView,
   // Ticket CRUD
-  saveNewTicket, updateJob, archiveJob, unarchiveJob,
+  saveNewTicket, saveAndNew, updateJob, archiveJob, unarchiveJob,
   toggleVector, openStatusPicker, closeStatusPicker, pickStatus,
   // Address
   updateAddress, addrAutocomplete, pickAddr, navigateTo, renderAddressList, autoExpand,
   // Search
   debouncedSearch,
   // Materials (core-side)
-  toggleMatSection,
+  toggleMatSection, _toggleSection, _showTechNotesSaved,
   // Chips & toggles
   toggleChip, toggleWeek,
   // Media
@@ -2924,12 +3128,14 @@ Object.assign(window, {
   lazyDownloadMedia,
 });
 
-// ── Test API (diagnostics.html only) ──
-Object.assign(window.Astra, {
-  _test: {
-    runSearch, esc, todayStr, getISOWeek,
-    saveMediaBlob, getMediaBlob, deleteMediaBlob, getAllMediaBlobs, clearAllMediaBlobs, getMediaDBSize,
-  }
-});
+// ── Test API (diagnostics.html only) ── T2-B4 (SEC-024): Debug-gated
+if (localStorage.getItem('astra_debug') === 'true') {
+  Object.assign(window.Astra, {
+    _test: {
+      runSearch, esc, todayStr, getISOWeek,
+      saveMediaBlob, getMediaBlob, deleteMediaBlob, getAllMediaBlobs, clearAllMediaBlobs, getMediaDBSize,
+    }
+  });
+}
 
 })();

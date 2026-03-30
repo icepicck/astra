@@ -102,6 +102,7 @@ body {
   display: flex; align-items: center; justify-content: center;
 }
 .sidebar-item {
+  position: relative; /* T2-E2 (S4): anchor for absolute badge */
   display: flex; align-items: center; gap: 14px;
   padding: 0 20px; min-height: 56px;
   font-size: 15px; font-weight: 700; letter-spacing: 1.5px;
@@ -1156,6 +1157,7 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
   <div class="screen-body">
     <div class="date-toggle" id="home-toggle">
       <button class="date-toggle-btn active" onclick="setHomeView('daily')">DAILY</button>
+      <button class="date-toggle-btn" onclick="setHomeView('threeday')">3-DAY</button>
       <button class="date-toggle-btn" onclick="setHomeView('weekly')">WEEKLY</button>
     </div>
     <div id="approval-filter" style="display:none;"></div>
@@ -1265,7 +1267,10 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
     <div class="section-title" style="margin-top:16px;">MATERIALS</div>
     <button class="upload-btn" onclick="openMatPicker('_new_')">ADD MATERIALS</button>
     <div id="create-materials-list"></div>
-    <button class="btn btn-primary" style="margin-top:16px;" onclick="saveNewTicket()">SAVE</button>
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button class="btn btn-primary" style="flex:1;" onclick="saveNewTicket()">SAVE</button>
+      <button class="btn" style="flex:1;background:none;border:2px solid #FF6B00;color:#FF6B00;" onclick="saveAndNew()">SAVE & NEW</button>
+    </div>
     <div style="height:24px;"></div>
   </div>
 </div>
@@ -1339,6 +1344,8 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
     <div class="section-title">DATA</div>
     <div id="settings-stats" class="dash-card" style="margin-bottom:16px;"></div>
 
+    <!-- T2-D2: Role-gated settings sections -->
+    <div id="settings-tools" style="display:none;">
     <div class="section-title">HOME BASE</div>
     <div class="dash-card" style="margin-bottom:16px;padding:14px;">
       <div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">ORIGIN FOR VECTOR ROUTE OPTIMIZATION</div>
@@ -1353,18 +1360,21 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
     <button class="btn btn-secondary" style="margin-bottom:16px;" onclick="document.getElementById('import-input').click()">IMPORT</button>
     <input type="file" class="hidden-input" id="import-input" accept=".json" onchange="importData(this)">
 
+    <!-- T2-B6: Cloud sync section — Supabase config hidden for non-admin, sync buttons visible to all -->
     <div class="section-title">CLOUD SYNC</div>
     <div class="dash-card" style="margin-bottom:16px;padding:14px;">
-      <div style="font-size:12px;color:#FF6B00;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">SUPABASE — ONE DB, EVERY DEVICE</div>
-      <div class="field" style="margin-bottom:10px;">
-        <label>PROJECT URL</label>
-        <input type="text" id="supabase-url" name="astra-xsurl" autocomplete="nope" placeholder="https://xyz.supabase.co" style="font-size:13px;"
-          value="" onblur="Astra.saveSupabaseUrl(this.value)">
-      </div>
-      <div class="field" style="margin-bottom:12px;">
-        <label>ANON KEY</label>
-        <input type="text" id="supabase-key" name="astra-xskey" autocomplete="nope" placeholder="eyJhbGciOi..." style="font-size:13px;"
-          value="" onblur="Astra.saveSupabaseKey(this.value)">
+      <div id="supabase-config-admin" style="display:none;">
+        <div style="font-size:12px;color:#FF6B00;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">SUPABASE — ONE DB, EVERY DEVICE</div>
+        <div class="field" style="margin-bottom:10px;">
+          <label>PROJECT URL</label>
+          <input type="text" id="supabase-url" name="astra-xsurl" autocomplete="nope" placeholder="https://xyz.supabase.co" style="font-size:13px;"
+            value="" onblur="Astra.saveSupabaseUrl(this.value)">
+        </div>
+        <div class="field" style="margin-bottom:12px;">
+          <label>ANON KEY</label>
+          <input type="text" id="supabase-key" name="astra-xskey" autocomplete="nope" placeholder="eyJhbGciOi..." style="font-size:13px;"
+            value="" onblur="Astra.saveSupabaseKey(this.value)">
+        </div>
       </div>
       <div id="sync-status" style="font-size:12px;color:#555;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;display:none;"></div>
       <button class="btn btn-primary" style="margin-bottom:10px;background:#FF6B00;" id="sync-push-btn" onclick="runSyncPush()">PUSH TO CLOUD</button>
@@ -1401,6 +1411,8 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
       <svg viewBox="0 0 24 24"><path d="M9 7h6m0 10v-3m-3 3h.01M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
       ESTIMATES
     </button>
+
+    </div><!-- /settings-tools -->
 
     <div class="section-title">STORAGE</div>
     <div id="storage-info" class="dash-card" style="margin-bottom:16px;"></div>

@@ -413,10 +413,27 @@ async function syncToCloud(statusCallback) {
     if (filteredJobs.length) await batchUpsert('jobs', filteredJobs);
 
     // 4. Materials — D3: UPSERT with material_id instead of delete-all/re-insert
+    // T2-C2 (BUG-019): Only push materials that actually changed
     status('PUSHING MATERIALS...');
     var matRecords = [];
     var pushedJobIds = {}; // track which jobs we're pushing
     filteredJobs.forEach(function(j) { pushedJobIds[j.id] = true; });
+
+    // Fetch existing cloud material timestamps for changed jobs
+    var cloudMatMap = {};
+    var changedJobIdList = Object.keys(pushedJobIds);
+    if (changedJobIdList.length > 0 && changedJobIdList.length <= 50) {
+      // Only do the optimization for reasonable batch sizes
+      var cloudMatsResult = await getClient().from('materials')
+        .select('job_id, material_id, updated_at')
+        .in('job_id', changedJobIdList)
+        .eq('account_id', _acctId());
+      if (cloudMatsResult.data) {
+        cloudMatsResult.data.forEach(function(cm) {
+          cloudMatMap[cm.job_id + '|' + cm.material_id] = cm.updated_at;
+        });
+      }
+    }
 
     for (var ji = 0; ji < jobs.length; ji++) {
       var job = jobs[ji];
@@ -425,10 +442,14 @@ async function syncToCloud(statusCallback) {
       if (!job.materials || !job.materials.length) continue;
       for (var mi = 0; mi < job.materials.length; mi++) {
         var m = job.materials[mi];
+        var matId = m.materialId || crypto.randomUUID();
+        // T2-C2: Skip if cloud already has this exact version
+        var cloudTs = cloudMatMap[job.id + '|' + matId];
+        if (cloudTs && m.updatedAt && m.updatedAt <= cloudTs) continue;
         matRecords.push({
           job_id: job.id,
           account_id: _acctId(),
-          material_id: m.materialId || crypto.randomUUID(),
+          material_id: matId,
           item_id: m.itemId || '',
           name: m.name || '',
           qty: m.qty || 1,
@@ -491,7 +512,7 @@ async function syncToCloud(statusCallback) {
           var mArr = mJob[mType] || [];
           for (var mk = 0; mk < mArr.length; mk++) {
             var mEntry = mArr[mk];
-            if (mEntry.synced === true) continue;
+            if (mEntry.synced === true || mEntry.synced === 'cloud-only') continue; // T2-C3: Skip already-synced and cloud-only
             // Get blob from local IDB
             var mBlob = await A.getMediaBlob(mEntry.id);
             if (!mBlob) continue; // No local blob — nothing to upload
@@ -699,7 +720,7 @@ async function syncFromCloud(statusCallback) {
             for (var li = 0; li < localMedia.length; li++) localIds[localMedia[li].id] = true;
             for (var ci = 0; ci < cloudMedia.length; ci++) {
               if (!localIds[cloudMedia[ci].id]) {
-                cloudMedia[ci].synced = false; // Blob not on this device yet
+                cloudMedia[ci].synced = 'cloud-only'; // T2-C3 (BUG-023): Exists in cloud, no local blob
                 localMedia.push(cloudMedia[ci]);
                 mediaMerged = true;
               }
@@ -962,38 +983,38 @@ function _handleRemoteChange(table, payload) {
 var LOCK_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
 
 // Acquire lock on a job. Returns { success: true, job } or { success: false, lockedBy: 'Name' }
+// T2-B5 (SEC-019): Server-side lock enforcement via RPC
+// Eliminates clock skew (BUG-026) — server uses now() for all timestamps
 async function acquireLock(jobId) {
   var sb = getClient();
   var user = (A.getCurrentUser && A.getCurrentUser()) || null;
   if (!user) return { success: false, lockedBy: 'UNKNOWN' };
 
-  // Try to lock: only if unlocked, stale (>30min), or already ours
-  var now = new Date().toISOString();
-  var staleThreshold = new Date(Date.now() - LOCK_TIMEOUT_MS).toISOString();
-
-  // Attempt: set lock where (no lock) OR (our lock) OR (stale lock)
-  var result = await sb.from('jobs')
-    .update({ locked_by: user.id, locked_at: now })
-    .eq('id', jobId)
-    .or('locked_by.is.null,locked_by.eq.' + user.id + ',locked_at.lt.' + staleThreshold)
-    .select('id, locked_by, locked_at');
+  var result = await sb.rpc('acquire_lock', { p_job_id: jobId, p_user_id: user.id });
 
   if (result.error) {
     console.error('Lock acquire failed:', result.error.message);
-    return { success: false, lockedBy: 'ERROR' };
-  }
-
-  if (result.data && result.data.length > 0) {
-    // Lock acquired — update local cache
-    A.updateJob(jobId, { lockedBy: user.id, lockedAt: now });
+    // Fallback to client-side lock if RPC not deployed yet
+    var now = new Date().toISOString();
+    var staleThreshold = new Date(Date.now() - LOCK_TIMEOUT_MS).toISOString();
+    var fallback = await sb.from('jobs')
+      .update({ locked_by: user.id, locked_at: now })
+      .eq('id', jobId)
+      .or('locked_by.is.null,locked_by.eq.' + user.id + ',locked_at.lt.' + staleThreshold)
+      .select('id');
+    if (fallback.data && fallback.data.length > 0) {
+      A.updateJob(jobId, { lockedBy: user.id, lockedAt: now });
+      return { success: true };
+    }
+  } else if (result.data === true) {
+    A.updateJob(jobId, { lockedBy: user.id, lockedAt: new Date().toISOString() });
     return { success: true };
   }
 
-  // Lock not acquired — someone else holds it. Fetch who.
+  // Lock not acquired — fetch holder name
   var check = await sb.from('jobs').select('locked_by, locked_at').eq('id', jobId).single();
   if (check.error || !check.data) return { success: false, lockedBy: 'UNKNOWN' };
 
-  // Look up the lock holder's name
   var holderName = 'ANOTHER USER';
   if (check.data.locked_by) {
     var nameResult = await sb.from('users').select('name').eq('id', check.data.locked_by).single();
@@ -1004,21 +1025,22 @@ async function acquireLock(jobId) {
 }
 
 // Release lock on a job (called on navigate away, save, etc.)
+// T2-B5: Uses server-side RPC with client-side fallback
 async function releaseLock(jobId) {
   if (!jobId) return;
   var sb = getClient();
   var user = (A.getCurrentUser && A.getCurrentUser()) || null;
   if (!user) return;
 
-  // Only release if WE hold the lock
-  var result = await sb.from('jobs')
-    .update({ locked_by: null, locked_at: null })
-    .eq('id', jobId)
-    .eq('locked_by', user.id);
-
-  if (!result.error) {
-    A.updateJob(jobId, { lockedBy: null, lockedAt: null });
+  var result = await sb.rpc('release_lock', { p_job_id: jobId, p_user_id: user.id });
+  if (result.error) {
+    // Fallback to direct update if RPC not deployed yet
+    await sb.from('jobs')
+      .update({ locked_by: null, locked_at: null })
+      .eq('id', jobId)
+      .eq('locked_by', user.id);
   }
+  A.updateJob(jobId, { lockedBy: null, lockedAt: null });
 }
 
 // Force-unlock + re-lock to supervisor in ONE atomic call (Silas: no window between)

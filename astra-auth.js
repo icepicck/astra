@@ -171,6 +171,7 @@
         return false;
       }
       _currentUser = profile;
+      _loginAttempts = 0; // T2-B1: Reset on success
       _saveCachedUser(profile, true); // E2c: login is server-validated
       return _rebuildFromCloud().then(function() {
         _setLoginLoading(false);
@@ -234,7 +235,12 @@
         });
       })
       .catch(function (e) {
-        _showLoginError(e.message || 'LOGIN FAILED');
+        // T2-B1: Surface Supabase rate limit errors clearly
+        var msg = (e.message || 'LOGIN FAILED');
+        if (e.status === 429 || msg.indexOf('rate') !== -1 || msg.indexOf('429') !== -1) {
+          msg = 'TOO MANY ATTEMPTS — WAIT A FEW MINUTES';
+        }
+        _showLoginError(msg);
         _setLoginLoading(false);
         return false;
       });
@@ -523,12 +529,27 @@
   // HTML ONCLICK HANDLERS
   // ═══════════════════════════════════════════
 
+  // T2-B1 (SEC-001): Client-side login rate limiting
+  var _loginAttempts = 0;
+  var _loginCooldownUntil = 0;
+
   function doLogin() {
+    // Rate limit check
+    if (Date.now() < _loginCooldownUntil) {
+      var secsLeft = Math.ceil((_loginCooldownUntil - Date.now()) / 1000);
+      _showLoginError('TOO MANY ATTEMPTS. WAIT ' + secsLeft + ' SECONDS.');
+      return;
+    }
     var email = (document.getElementById('login-email') || {}).value || '';
     var password = (document.getElementById('login-password') || {}).value || '';
     if (!email || !password) {
       _showLoginError('ENTER EMAIL AND PASSWORD');
       return;
+    }
+    _loginAttempts++;
+    if (_loginAttempts >= 5) {
+      _loginCooldownUntil = Date.now() + 60000; // 1 minute cooldown
+      _loginAttempts = 0;
     }
     login(email.trim(), password);
   }
@@ -674,13 +695,49 @@
     }
   }
 
+  // T2-B3 (SEC-009): Password verification modal for sensitive actions
+  function _showPasswordVerifyModal(callback) {
+    var title = document.getElementById('modal-title');
+    var msg = document.getElementById('modal-message');
+    var actions = document.getElementById('modal-actions');
+    if (!title || !msg || !actions) return;
+    title.textContent = 'VERIFY PASSWORD';
+    msg.innerHTML = '<input type="password" id="verify-password" placeholder="ENTER YOUR PASSWORD" '
+      + 'style="width:100%;min-height:48px;padding:12px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-size:15px;font-family:inherit;box-sizing:border-box;margin-top:8px;" />';
+    actions.innerHTML = '<button class="modal-btn modal-btn-confirm" onclick="_verifyPasswordConfirm()">VERIFY</button>'
+      + '<button class="modal-btn modal-btn-cancel" onclick="_closeModal()">CANCEL</button>';
+    window._verifyPasswordCallback = callback;
+    document.getElementById('modal-backdrop').classList.add('active');
+    document.getElementById('modal-sheet').classList.add('active');
+    setTimeout(function() { var el = document.getElementById('verify-password'); if (el) el.focus(); }, 200);
+  }
+
+  function _verifyPasswordConfirm() {
+    var pw = (document.getElementById('verify-password') || {}).value || '';
+    if (!pw) return;
+    var sb = _getClient();
+    var email = _currentUser ? _currentUser.email : '';
+    if (!sb || !email) { _closeModal(); return; }
+    sb.auth.signInWithPassword({ email: email, password: pw }).then(function(result) {
+      _closeModal();
+      if (result.error) {
+        if (A.showToast) A.showToast('INCORRECT PASSWORD', 'error');
+        return;
+      }
+      if (window._verifyPasswordCallback) window._verifyPasswordCallback();
+    });
+  }
+
   // Toggle MFA from settings button
   function toggleMfa() {
     isMfaEnabled().then(function(enabled) {
       if (enabled) {
-        showConfirmModal('DISABLE 2FA', 'REMOVE TWO-FACTOR AUTHENTICATION?', 'DISABLE', function() {
-          unenrollMfa();
-        }, { destructive: true });
+        // SEC-009: Require password verification before disabling 2FA
+        _showPasswordVerifyModal(function() {
+          showConfirmModal('DISABLE 2FA', 'REMOVE TWO-FACTOR AUTHENTICATION?', 'DISABLE', function() {
+            unenrollMfa();
+          }, { destructive: true });
+        });
       } else {
         enrollMfa();
       }
@@ -787,7 +844,9 @@
     // Step 7E: MFA
     doMfaVerify: doMfaVerify,
     doMfaEnrollVerify: doMfaEnrollVerify,
-    toggleMfa: toggleMfa
+    toggleMfa: toggleMfa,
+    // T2-B3: Password verify modal for onclick handlers
+    _verifyPasswordConfirm: _verifyPasswordConfirm
   });
 
 })();

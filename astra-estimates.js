@@ -299,6 +299,8 @@ function _estPickAddr(addrId) {
 // ══════════════════════════════════════════
 
 function _captureFormState() {
+  // T2-A2 (BUG-034): Only capture when estimate builder is active
+  if (!document.getElementById('estimate-builder-body')) return;
   const est = _state.currentEstimate;
   if (!est) return;
   // Text fields
@@ -568,15 +570,20 @@ function _attachBlurListeners() {
   const body = document.getElementById('estimate-builder-body');
   if (!body) return;
   _blurAttached = true;
+  // T2-E5 (FAT-024): Debounce blur handler to batch rapid focus changes
+  var _blurDebounceTimer = null;
   body.addEventListener('blur', function(e) {
     var el = e.target;
     if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
     if (el.readOnly) return;
-    _captureFormState();
-    recalc(_state.currentEstimate);
-    _refreshComputedFields();
-    // Auto-save to IDB so work isn't lost
-    A.saveEstimate(_state.currentEstimate);
+    clearTimeout(_blurDebounceTimer);
+    _blurDebounceTimer = setTimeout(function() {
+      _captureFormState();
+      recalc(_state.currentEstimate);
+      _refreshComputedFields();
+      // Auto-save to IDB so work isn't lost
+      A.saveEstimate(_state.currentEstimate);
+    }, 200);
   }, true);
 }
 
@@ -764,7 +771,9 @@ function _querySimilarJobs(jobType) {
   // Aggregate materials across all matching jobs
   var matMap = {};
   jobs.forEach(function(j) {
-    j.materials.forEach(function(m) {
+    // T2-A3 (BUG-035): Exclude zero-qty materials from averages
+    var validMats = j.materials.filter(function(m) { return m.qty > 0; });
+    validMats.forEach(function(m) {
       var key = (m.itemId || m.name) + '|' + (m.variant || '');
       if (!matMap[key]) {
         matMap[key] = { itemId: m.itemId, name: m.name, variant: m.variant || null, unit: m.unit || 'EA', totalQty: 0, jobCount: 0 };
@@ -1479,14 +1488,16 @@ Object.assign(window, {
 // D28: Expose cache invalidation for app.js to call on job save
 window.Astra.invalidateIntelCache = function() { _intelCache = {}; };
 
-// ── Test API (diagnostics.html only) ──
-window.Astra._testEst = {
-  newEstimate: newEstimate,
-  recalc: recalc,
-  loadPricebook: loadPricebook,
-  savePricebook: savePricebook,
-  defaultPricebook: defaultPricebook,
-  _getAllLibraryItems: _getAllLibraryItems,
-};
+// ── Test API (diagnostics.html only) ── T2-B4 (SEC-024): Debug-gated
+if (localStorage.getItem('astra_debug') === 'true') {
+  window.Astra._testEst = {
+    newEstimate: newEstimate,
+    recalc: recalc,
+    loadPricebook: loadPricebook,
+    savePricebook: savePricebook,
+    defaultPricebook: defaultPricebook,
+    _getAllLibraryItems: _getAllLibraryItems,
+  };
+}
 
 })();
