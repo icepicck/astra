@@ -899,8 +899,6 @@ function _handleRemoteChange(table, payload) {
       cloudJob.photos = []; cloudJob.drawings = []; cloudJob.videos = [];
       A.addJob(cloudJob);
     }
-    A.showToast('SYNCED: ' + (cloudJob.address || 'JOB').substring(0, 30));
-
     // Step 7D: Generate notifications for relevant realtime job events
     var currentUser = (A.getCurrentUser && A.getCurrentUser()) || null;
     if (currentUser && A.addNotification && oldRec) {
@@ -951,7 +949,6 @@ function _handleRemoteChange(table, payload) {
     } else if (eventType === 'INSERT') {
       A.saveEstimate(cloudEst);
     }
-    A.showToast('SYNCED: ESTIMATE ' + (cloudEst.address || '').substring(0, 20));
   }
 }
 
