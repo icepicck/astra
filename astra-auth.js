@@ -147,6 +147,24 @@
   // LOGIN
   // ═══════════════════════════════════════════
 
+  // Step 7E: Extracted profile load + app entry (used after password and after MFA verify)
+  function _completeLogin(authUserId) {
+    return _loadUserProfile(authUserId).then(function(profile) {
+      if (!profile) {
+        _showLoginError('NO USER PROFILE FOUND. CONTACT YOUR SUPERVISOR.');
+        _setLoginLoading(false);
+        return false;
+      }
+      _currentUser = profile;
+      _saveCachedUser(profile);
+      return _rebuildFromCloud().then(function() {
+        _setLoginLoading(false);
+        A.goTo('screen-jobs');
+        return true;
+      });
+    });
+  }
+
   function login(email, password) {
     var sb = _getClient();
     if (!sb) {
@@ -165,22 +183,39 @@
         }
 
         var user = result.data.user;
-        return _loadUserProfile(user.id).then(function (profile) {
-          if (!profile) {
-            _showLoginError('NO USER PROFILE FOUND. CONTACT YOUR SUPERVISOR.');
-            _setLoginLoading(false);
-            return false;
+
+        // Step 7E: Check if MFA is required (user has TOTP enrolled)
+        return sb.auth.mfa.getAuthenticatorAssuranceLevel().then(function(aalResult) {
+          if (aalResult.data && aalResult.data.nextLevel === 'aal2' && aalResult.data.currentLevel === 'aal1') {
+            // MFA required — show challenge screen
+            return sb.auth.mfa.listFactors().then(function(factorsResult) {
+              if (factorsResult.error || !factorsResult.data) {
+                _showLoginError('MFA ERROR');
+                _setLoginLoading(false);
+                return false;
+              }
+              var totpFactors = (factorsResult.data.totp || []).filter(function(f) { return f.status === 'verified'; });
+              if (!totpFactors.length) {
+                // No verified factors — proceed without MFA (shouldn't happen but be safe)
+                return _completeLogin(user.id);
+              }
+              var factorId = totpFactors[0].id;
+              return sb.auth.mfa.challenge({ factorId: factorId }).then(function(challengeResult) {
+                if (challengeResult.error) {
+                  _showLoginError('MFA CHALLENGE FAILED');
+                  _setLoginLoading(false);
+                  return false;
+                }
+                _setLoginLoading(false);
+                _showMfaChallenge(factorId, challengeResult.data.id, function() {
+                  _completeLogin(user.id);
+                });
+                return 'mfa_pending';
+              });
+            });
           }
-
-          _currentUser = profile;
-          _saveCachedUser(profile);
-
-          // Rebuild local data from cloud
-          return _rebuildFromCloud().then(function () {
-            _setLoginLoading(false);
-            A.goTo('screen-jobs');
-            return true;
-          });
+          // No MFA required — proceed with login
+          return _completeLogin(user.id);
         });
       })
       .catch(function (e) {
@@ -489,8 +524,187 @@
   }
 
   function doLogout() {
-    if (confirm('SIGN OUT OF ASTRA?')) {
+    showConfirmModal('SIGN OUT', 'SIGN OUT OF ASTRA?', 'SIGN OUT', function() {
       logout();
+    }, { destructive: true });
+  }
+
+  // ═══════════════════════════════════════════
+  // STEP 7E: 2FA / TOTP (Supabase MFA)
+  // ═══════════════════════════════════════════
+
+  // Pending MFA state used during login challenge flow
+  var _mfaPending = null; // { factorId, challengeId, onSuccess }
+
+  // Check if current user has MFA enrolled (any verified TOTP factor)
+  async function isMfaEnabled() {
+    var sb = _getClient();
+    if (!sb) return false;
+    try {
+      var result = await sb.auth.mfa.listFactors();
+      if (result.error || !result.data) return false;
+      var totp = (result.data.totp || []).filter(function(f) { return f.factor_type === 'totp' && f.status === 'verified'; });
+      return totp.length > 0;
+    } catch (e) { return false; }
+  }
+
+  // Start MFA enrollment — shows QR code setup screen
+  async function enrollMfa() {
+    var sb = _getClient();
+    if (!sb) { A.showToast('NOT CONNECTED', 'error'); return; }
+    try {
+      var result = await sb.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'ASTRA' });
+      if (result.error) { A.showToast('ENROLLMENT FAILED: ' + result.error.message, 'error'); return; }
+      var factor = result.data;
+      // Show QR code and secret on setup screen
+      var qrContainer = document.getElementById('mfa-qr-container');
+      if (qrContainer) qrContainer.innerHTML = '<img src="' + factor.totp.qr_code + '" alt="QR CODE">';
+      var secretDisplay = document.getElementById('mfa-secret-display');
+      if (secretDisplay) secretDisplay.textContent = factor.totp.secret;
+      var codeInput = document.getElementById('mfa-setup-code');
+      if (codeInput) codeInput.value = '';
+      var errorEl = document.getElementById('mfa-setup-error');
+      if (errorEl) errorEl.textContent = '';
+      // Store factor ID for verification step
+      _mfaPending = { factorId: factor.id };
+      A.goTo('screen-2fa-setup');
+    } catch (e) {
+      A.showToast('ENROLLMENT ERROR: ' + e.message, 'error');
+    }
+  }
+
+  // Complete MFA enrollment — verify the first code to confirm setup
+  async function doMfaEnrollVerify() {
+    var sb = _getClient();
+    if (!sb || !_mfaPending) return;
+    var codeInput = document.getElementById('mfa-setup-code');
+    var code = codeInput ? codeInput.value.trim() : '';
+    var errorEl = document.getElementById('mfa-setup-error');
+    if (code.length !== 6 || !/^\d{6}$/.test(code)) {
+      if (errorEl) errorEl.textContent = 'ENTER A 6-DIGIT CODE';
+      return;
+    }
+    try {
+      // Challenge then verify to confirm enrollment
+      var challengeResult = await sb.auth.mfa.challenge({ factorId: _mfaPending.factorId });
+      if (challengeResult.error) {
+        if (errorEl) errorEl.textContent = 'CHALLENGE FAILED: ' + challengeResult.error.message;
+        return;
+      }
+      var verifyResult = await sb.auth.mfa.verify({
+        factorId: _mfaPending.factorId,
+        challengeId: challengeResult.data.id,
+        code: code
+      });
+      if (verifyResult.error) {
+        if (errorEl) errorEl.textContent = 'INVALID CODE — TRY AGAIN';
+        if (codeInput) codeInput.value = '';
+        return;
+      }
+      // Success — MFA is now enrolled and verified
+      _mfaPending = null;
+      A.showToast('2FA ENABLED', 'success');
+      A.goTo('screen-settings');
+    } catch (e) {
+      if (errorEl) errorEl.textContent = 'ERROR: ' + e.message;
+    }
+  }
+
+  // Disable MFA — unenroll all TOTP factors
+  async function unenrollMfa() {
+    var sb = _getClient();
+    if (!sb) return;
+    try {
+      var result = await sb.auth.mfa.listFactors();
+      if (result.error || !result.data) return;
+      var totp = result.data.totp || [];
+      for (var i = 0; i < totp.length; i++) {
+        await sb.auth.mfa.unenroll({ factorId: totp[i].id });
+      }
+      A.showToast('2FA DISABLED');
+      // Refresh settings UI if visible
+      if (window.renderSettings) window.renderSettings();
+    } catch (e) {
+      A.showToast('DISABLE FAILED: ' + e.message, 'error');
+    }
+  }
+
+  // Toggle MFA from settings button
+  function toggleMfa() {
+    isMfaEnabled().then(function(enabled) {
+      if (enabled) {
+        showConfirmModal('DISABLE 2FA', 'REMOVE TWO-FACTOR AUTHENTICATION?', 'DISABLE', function() {
+          unenrollMfa();
+        }, { destructive: true });
+      } else {
+        enrollMfa();
+      }
+    });
+  }
+
+  // Show MFA challenge screen during login flow
+  function _showMfaChallenge(factorId, challengeId, onSuccess) {
+    _mfaPending = { factorId: factorId, challengeId: challengeId, onSuccess: onSuccess };
+    var codeInput = document.getElementById('mfa-challenge-code');
+    if (codeInput) codeInput.value = '';
+    var errorEl = document.getElementById('mfa-challenge-error');
+    if (errorEl) errorEl.textContent = '';
+    // Show challenge screen
+    document.querySelectorAll('.screen').forEach(function(s) { s.classList.remove('active'); });
+    var screen = document.getElementById('screen-2fa-challenge');
+    if (screen) screen.classList.add('active');
+    // Focus code input
+    setTimeout(function() { if (codeInput) codeInput.focus(); }, 300);
+  }
+
+  // Verify MFA code during login challenge
+  async function doMfaVerify() {
+    var sb = _getClient();
+    if (!sb || !_mfaPending) return;
+    var codeInput = document.getElementById('mfa-challenge-code');
+    var code = codeInput ? codeInput.value.trim() : '';
+    var errorEl = document.getElementById('mfa-challenge-error');
+    if (code.length !== 6 || !/^\d{6}$/.test(code)) {
+      if (errorEl) errorEl.textContent = 'ENTER A 6-DIGIT CODE';
+      return;
+    }
+    var btn = document.getElementById('mfa-challenge-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'VERIFYING...'; }
+    try {
+      var result = await sb.auth.mfa.verify({
+        factorId: _mfaPending.factorId,
+        challengeId: _mfaPending.challengeId,
+        code: code
+      });
+      if (result.error) {
+        if (errorEl) errorEl.textContent = 'INVALID CODE — TRY AGAIN';
+        if (codeInput) codeInput.value = '';
+        if (btn) { btn.disabled = false; btn.textContent = 'VERIFY'; }
+        return;
+      }
+      // MFA verified — proceed with app entry
+      var onSuccess = _mfaPending.onSuccess;
+      _mfaPending = null;
+      if (btn) { btn.disabled = false; btn.textContent = 'VERIFY'; }
+      if (onSuccess) onSuccess();
+    } catch (e) {
+      if (errorEl) errorEl.textContent = 'ERROR: ' + e.message;
+      if (btn) { btn.disabled = false; btn.textContent = 'VERIFY'; }
+    }
+  }
+
+  // Update the MFA status display in settings
+  async function updateMfaStatus() {
+    var enabled = await isMfaEnabled();
+    var label = document.getElementById('mfa-status-label');
+    var btn = document.getElementById('mfa-toggle-btn');
+    if (label) {
+      label.textContent = enabled ? '2FA: ENABLED' : '2FA: DISABLED';
+      label.className = 'security-status ' + (enabled ? 'enabled' : 'disabled');
+    }
+    if (btn) {
+      btn.textContent = enabled ? 'DISABLE 2FA' : 'ENABLE 2FA';
+      btn.className = 'security-btn ' + (enabled ? 'security-btn-disable' : 'security-btn-enable');
     }
   }
 
@@ -510,7 +724,10 @@
     getAccountId: getAccountId,
     inviteTech: inviteTech,
     _idbConfigGet: A._idbConfigGet,
-    _idbConfigPut: A._idbConfigPut
+    _idbConfigPut: A._idbConfigPut,
+    // Step 7E: MFA
+    isMfaEnabled: isMfaEnabled,
+    updateMfaStatus: updateMfaStatus
   });
 
   Object.assign(window, {
@@ -518,7 +735,11 @@
     doSignup: doSignup,
     doLogout: doLogout,
     showSignupForm: showSignupForm,
-    showLoginForm: showLoginForm
+    showLoginForm: showLoginForm,
+    // Step 7E: MFA
+    doMfaVerify: doMfaVerify,
+    doMfaEnrollVerify: doMfaEnrollVerify,
+    toggleMfa: toggleMfa
   });
 
 })();

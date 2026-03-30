@@ -272,6 +272,53 @@ async function batchUpsert(table, records, conflictCol) {
   return total;
 }
 
+// ── Step 7A: Media blob sync helpers (Supabase Storage) ──
+// Upload a media blob to Supabase Storage. Returns true on success, false on failure (silent).
+async function _uploadMediaBlob(acctId, mediaId, blobData) {
+  try {
+    var sb = getClient();
+    var path = acctId + '/' + mediaId;
+    var blob = blobData;
+    // Convert base64 data URI strings to Blob for upload
+    if (typeof blobData === 'string') {
+      var resp = await fetch(blobData);
+      blob = await resp.blob();
+    }
+    var contentType = (blob && blob.type) ? blob.type : 'application/octet-stream';
+    var result = await sb.storage.from('job-media').upload(path, blob, { contentType: contentType, upsert: true });
+    if (result.error) { console.warn('Media upload failed:', mediaId, result.error.message); return false; }
+    return true;
+  } catch (e) {
+    console.warn('Media upload error:', mediaId, e);
+    return false;
+  }
+}
+
+// Delete a media blob from Supabase Storage. Silent on failure.
+async function _deleteCloudMedia(acctId, mediaId) {
+  try {
+    var sb = getClient();
+    var path = acctId + '/' + mediaId;
+    await sb.storage.from('job-media').remove([path]);
+  } catch (e) {
+    console.warn('Media cloud delete error:', mediaId, e);
+  }
+}
+
+// Download a media blob from Supabase Storage. Returns Blob on success, null on failure.
+async function downloadMediaBlob(acctId, mediaId) {
+  try {
+    var sb = getClient();
+    var path = acctId + '/' + mediaId;
+    var result = await sb.storage.from('job-media').download(path);
+    if (result.error) { console.warn('Media download failed:', mediaId, result.error.message); return null; }
+    return result.data;
+  } catch (e) {
+    console.warn('Media download error:', mediaId, e);
+    return null;
+  }
+}
+
 // ── D14: Ensure every local material has a materialId ──
 // Backfills missing IDs so we can upsert instead of nuke-and-rebuild
 function _ensureMaterialIds(jobs) {
@@ -330,6 +377,13 @@ async function syncToCloud(statusCallback) {
     var addresses = A.loadAddresses();
     var techs = A.loadTechs();
     var estimates = A.loadEstimates();
+
+    // Step 5 D6: Role-based push filter — techs only push their own jobs
+    var user = (A.getCurrentUser && A.getCurrentUser()) || {};
+    var role = user.role || 'admin';
+    if (role === 'tech' && user.id) {
+      jobs = jobs.filter(function(j) { return j.assignedTo === user.id || j.createdBy === user.id; });
+    }
 
     // D14: Backfill materialIds on any jobs missing them
     if (_ensureMaterialIds(jobs)) {
@@ -424,6 +478,55 @@ async function syncToCloud(statusCallback) {
     var filteredEsts = _filterByTimestamp(estRecords, cloudEstTimes, 'updated_at');
     if (filteredEsts.length) await batchUpsert('estimates', filteredEsts);
 
+    // 6. Step 7A: Media blob sync — upload unsynced blobs to Supabase Storage
+    if (acct) {
+      status('SYNCING MEDIA...');
+      var mediaUploaded = 0;
+      var allJobs = A.loadJobs ? A.loadJobs() : [];
+      for (var mi = 0; mi < allJobs.length; mi++) {
+        var mJob = allJobs[mi];
+        var mediaTypes = ['photos', 'drawings', 'videos'];
+        var jobDirty = false;
+        for (var mt = 0; mt < mediaTypes.length; mt++) {
+          var mType = mediaTypes[mt];
+          var mArr = mJob[mType] || [];
+          for (var mk = 0; mk < mArr.length; mk++) {
+            var mEntry = mArr[mk];
+            if (mEntry.synced === true) continue;
+            // Get blob from local IDB
+            var mBlob = await A.getMediaBlob(mEntry.id);
+            if (!mBlob) continue; // No local blob — nothing to upload
+            var uploaded = await _uploadMediaBlob(acct, mEntry.id, mBlob);
+            if (uploaded) {
+              mEntry.synced = true;
+              jobDirty = true;
+              mediaUploaded++;
+            }
+          }
+        }
+        // Persist synced flags back to IDB
+        if (jobDirty) {
+          A.updateJob(mJob.id, { photos: mJob.photos, drawings: mJob.drawings, videos: mJob.videos });
+        }
+      }
+
+      // Process pending cloud media deletes
+      var pendingDeletes = JSON.parse(localStorage.getItem('astra_pending_media_deletes') || '[]');
+      if (pendingDeletes.length) {
+        var remaining = [];
+        for (var pd = 0; pd < pendingDeletes.length; pd++) {
+          try {
+            await _deleteCloudMedia(pendingDeletes[pd].accountId, pendingDeletes[pd].mediaId);
+          } catch (e) {
+            remaining.push(pendingDeletes[pd]); // Retry next push
+          }
+        }
+        localStorage.setItem('astra_pending_media_deletes', JSON.stringify(remaining));
+      }
+
+      if (mediaUploaded) console.log('Media sync: uploaded', mediaUploaded, 'blobs');
+    }
+
     setLastSync();
     window._syncInProgress = false;
     // Suppress realtime toasts briefly — push triggers cloud events back to us
@@ -504,9 +607,15 @@ async function syncFromCloud(statusCallback) {
       }
     }
 
-    // 3. Pull jobs + materials (RLS handles role-based scoping)
+    // 3. Pull jobs + materials
+    // RLS is the security boundary. Client filter below is an optimization to reduce payload.
     status('PULLING JOBS...');
+    var pullUser = (A.getCurrentUser && A.getCurrentUser()) || {};
+    var pullRole = pullUser.role || 'admin';
     var jobQuery = sb.from('jobs').select('*').is('deleted_at', null);
+    if (pullRole === 'tech' && pullUser.id) {
+      jobQuery = jobQuery.or('assigned_to.eq.' + pullUser.id + ',created_by.eq.' + pullUser.id);
+    }
     if (lastSync) jobQuery = jobQuery.gt('updated_at', lastSync);
     var jobResult = await jobQuery;
     if (jobResult.error) throw new Error('JOB PULL FAILED: ' + jobResult.error.message);
@@ -576,6 +685,33 @@ async function syncFromCloud(statusCallback) {
           deletedAt: cloudJob.deletedAt,
           updatedAt: cloudJob.updatedAt
         });
+
+        // Step 7A: Merge cloud media metadata into local job
+        // New media from other devices gets synced:false so lazy download triggers
+        var refreshedLocal = A.getJob(cr.id);
+        if (refreshedLocal) {
+          var mediaMerged = false;
+          var mTypes = ['photos', 'drawings', 'videos'];
+          for (var mti = 0; mti < mTypes.length; mti++) {
+            var mKey = mTypes[mti];
+            var localMedia = refreshedLocal[mKey] || [];
+            var cloudMedia = cloudJob[mKey] || [];
+            var localIds = {};
+            for (var li = 0; li < localMedia.length; li++) localIds[localMedia[li].id] = true;
+            for (var ci = 0; ci < cloudMedia.length; ci++) {
+              if (!localIds[cloudMedia[ci].id]) {
+                cloudMedia[ci].synced = false; // Blob not on this device yet
+                localMedia.push(cloudMedia[ci]);
+                mediaMerged = true;
+              }
+            }
+            if (mediaMerged) refreshedLocal[mKey] = localMedia;
+          }
+          if (mediaMerged) {
+            A.updateJob(cr.id, { photos: refreshedLocal.photos, drawings: refreshedLocal.drawings, videos: refreshedLocal.videos });
+          }
+        }
+
         updatedJobs++;
       } else {
         // New job from cloud — local photos/drawings/videos will be empty (blobs are device-local)
@@ -660,6 +796,9 @@ function startRealtime() {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'estimates' }, function(payload) {
         _handleRemoteChange('estimates', payload);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'materials' }, function(payload) {
+        _handleRemoteChange('materials', payload);
       })
       .subscribe(function(status) {
         if (status === 'SUBSCRIBED') {
@@ -762,6 +901,36 @@ function _handleRemoteChange(table, payload) {
       A.addJob(cloudJob);
     }
     A.showToast('SYNCED: ' + (cloudJob.address || 'JOB').substring(0, 30));
+
+    // Step 7D: Generate notifications for relevant realtime job events
+    var currentUser = (A.getCurrentUser && A.getCurrentUser()) || null;
+    if (currentUser && A.addNotification && oldRec) {
+      var addr = (cloudJob.address || 'JOB').substring(0, 35);
+      var jobTypes = (cloudJob.types || []).join(', ');
+      var detail = addr + (jobTypes ? ' — ' + jobTypes : '');
+
+      // Approval: pending_approval → active status (not by current user)
+      if (oldRec.status === 'pending_approval' && newRec.status !== 'pending_approval' && !newRec.archived) {
+        if (newRec.created_by === currentUser.id && newRec.created_by !== (oldRec.locked_by || newRec.assigned_to)) {
+          A.addNotification({ type: 'approval', title: 'JOB APPROVED', message: detail, jobId: newRec.id });
+        }
+      }
+
+      // Rejection: pending_approval → archived
+      if (oldRec.status === 'pending_approval' && newRec.archived && newRec.created_by === currentUser.id) {
+        A.addNotification({ type: 'rejection', title: 'JOB REJECTED', message: detail, jobId: newRec.id });
+      }
+
+      // Lock takeover: someone else took my lock
+      if (oldRec.locked_by === currentUser.id && newRec.locked_by && newRec.locked_by !== currentUser.id) {
+        A.addNotification({ type: 'lock_takeover', title: 'LOCK TAKEN', message: detail + ' — ANOTHER USER TOOK OVER', jobId: newRec.id });
+      }
+
+      // Assignment: job newly assigned to me
+      if (newRec.assigned_to === currentUser.id && oldRec.assigned_to !== currentUser.id) {
+        A.addNotification({ type: 'assignment', title: 'JOB ASSIGNED', message: detail, jobId: newRec.id });
+      }
+    }
 
   } else if (table === 'addresses') {
     var localAddrs = A.loadAddresses();
@@ -886,6 +1055,7 @@ window.Astra.isSyncConfigured = isConfigured;
 window.Astra.acquireLock = acquireLock;
 window.Astra.releaseLock = releaseLock;
 window.Astra.forceUnlock = forceUnlock;
+window.Astra.downloadMediaBlob = downloadMediaBlob; // Step 7A: lazy download from Storage
 
 // Auto-connect realtime if configured
 if (isConfigured()) {

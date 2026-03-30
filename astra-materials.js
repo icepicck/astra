@@ -21,17 +21,17 @@ function importMaterialLibrary(input) {
     try {
       const data = JSON.parse(reader.result);
       if (!data.categories || !Array.isArray(data.categories)) {
-        alert('INVALID MATERIAL JSON.');
+        showInfoModal('INVALID FILE', 'INVALID MATERIAL JSON.');
         return;
       }
       const phase = (data.phase || 'ROUGH').toUpperCase();
       const key = phase === 'TRIM' ? A.MAT_LIB_TRIM_KEY : A.MAT_LIB_KEY;
       localStorage.setItem(key, JSON.stringify(data));
       const count = data.categories.reduce((s,c) => s + c.items.length, 0);
-      alert('IMPORTED: ' + phase + ' (' + data.categories.length + ' CATEGORIES, ' + count + ' ITEMS)');
+      showInfoModal('IMPORT COMPLETE', phase + ': ' + data.categories.length + ' CATEGORIES, ' + count + ' ITEMS');
       renderMaterials();
     } catch (e) {
-      alert('IMPORT FAILED: ' + e.message);
+      showInfoModal('IMPORT FAILED', e.message);
     }
     input.value = '';
   };
@@ -161,13 +161,13 @@ function renderJobMaterials(jobId) {
       html += `<div class="mat-row">
         <span class="mat-name">${A.esc(m.name)}${m.variant ? ' <span style="color:#FF6B00;font-size:11px;">(' + A.esc(m.variant) + ')</span>' : ''}${m.partRef ? ' <span style="color:#444;font-size:10px;">#' + A.esc(m.partRef) + '</span>' : ''}</span>
         <div class="mat-controls">
-          <button class="qty-btn" onclick="adjustMatQty('${jobId}','${m.itemId}',-1)">−</button>
+          <button class="qty-btn" onclick="adjustMatQty('${jobId}','${m.materialId}',-1)">−</button>
           <input type="number" inputmode="numeric" class="qty-input" value="${m.qty}" min="1"
-            onchange="setMatQty('${jobId}','${m.itemId}',this.value)"
-            onblur="setMatQty('${jobId}','${m.itemId}',this.value)"
+            onchange="setMatQty('${jobId}','${m.materialId}',this.value)"
+            onblur="setMatQty('${jobId}','${m.materialId}',this.value)"
             onfocus="this.select()">
           <span class="qty-unit">${A.esc(m.unit)}</span>
-          <button class="remove-btn" onclick="removeMatFromJob('${jobId}','${m.itemId}')">✕</button>
+          <button class="remove-btn" onclick="removeMatFromJob('${jobId}','${m.materialId}')">✕</button>
         </div>
       </div>`;
     }
@@ -175,18 +175,18 @@ function renderJobMaterials(jobId) {
   el.innerHTML = html;
 }
 
-function adjustMatQty(jobId, itemId, delta) {
+function adjustMatQty(jobId, matId, delta) {
   const mats = getJobMaterials(jobId);
-  const m = mats.find(x => x.itemId === itemId);
+  const m = mats.find(x => x.materialId === matId);
   if (!m) return;
   m.qty = Math.max(1, m.qty + delta);
   setJobMaterials(jobId, mats);
   renderJobMaterials(jobId);
 }
 
-function setMatQty(jobId, itemId, val) {
+function setMatQty(jobId, matId, val) {
   const mats = getJobMaterials(jobId);
-  const m = mats.find(x => x.itemId === itemId);
+  const m = mats.find(x => x.materialId === matId);
   if (!m) return;
   const qty = Math.max(1, parseInt(val) || 1);
   if (m.qty === qty) return;
@@ -195,16 +195,17 @@ function setMatQty(jobId, itemId, val) {
   renderJobMaterials(jobId);
 }
 
-function removeMatFromJob(jobId, itemId) {
-  if (!confirm('REMOVE THIS MATERIAL?')) return;
-  const mats = getJobMaterials(jobId).filter(x => x.itemId !== itemId);
-  setJobMaterials(jobId, mats);
-  renderJobMaterials(jobId);
+function removeMatFromJob(jobId, matId) {
+  showConfirmModal('REMOVE MATERIAL', 'REMOVE THIS MATERIAL?', 'REMOVE', function() {
+    const mats = getJobMaterials(jobId).filter(x => x.materialId !== matId);
+    setJobMaterials(jobId, mats);
+    renderJobMaterials(jobId);
+  }, { destructive: true });
 }
 
 function openMatPicker(jobId) {
   const lib = A.loadMaterialLibrary();
-  if (!lib) { alert('NO MATERIAL LIBRARY. IMPORT IN MATERIALS SCREEN.'); return; }
+  if (!lib) { showInfoModal('NO LIBRARY', 'NO MATERIAL LIBRARY. IMPORT IN MATERIALS SCREEN.'); return; }
   const existing = getJobMaterials(jobId).map(m => m.itemId);
   let overlay = document.getElementById('mat-picker-overlay');
   if (!overlay) {
@@ -602,6 +603,102 @@ function renderAddrMaterialRollup(addrId) {
   return html;
 }
 
+// ═══════════════════════════════════════════
+// Step 6B: Material dedup — detect overlapping materials
+// on sibling jobs (same address + same day)
+// ═══════════════════════════════════════════
+function detectMaterialOverlap(jobId) {
+  var job = A.getJob(jobId);
+  if (!job || !job.materials || !job.materials.length || !job.addressId) return [];
+  var allJobs = A.loadJobs();
+  var siblings = allJobs.filter(function(j) {
+    return j.id !== jobId && j.addressId === job.addressId && j.date === job.date && !j.archived;
+  });
+  var overlaps = [];
+  for (var si = 0; si < siblings.length; si++) {
+    var sib = siblings[si];
+    var sibMats = sib.materials || [];
+    for (var smi = 0; smi < sibMats.length; smi++) {
+      var sm = sibMats[smi];
+      for (var jmi = 0; jmi < job.materials.length; jmi++) {
+        var jm = job.materials[jmi];
+        if (jm.deduplicated) continue;
+        var matchType = null;
+        if (sm.itemId && jm.itemId && sm.itemId === jm.itemId) matchType = 'itemId';
+        else if (sm.name && jm.name && sm.name.toLowerCase() === jm.name.toLowerCase()) matchType = 'name';
+        if (matchType) {
+          overlaps.push({
+            sibJobId: sib.id, sibAddress: sib.address,
+            sibMaterial: sm, jobMaterial: jm, matchType: matchType
+          });
+        }
+      }
+    }
+  }
+  return overlaps;
+}
+
+function renderDedupBanner(jobId) {
+  var overlaps = detectMaterialOverlap(jobId);
+  if (!overlaps.length) return '';
+  var html = '<div style="background:#1a1a1a;border:1px solid #c0392b;border-radius:12px;padding:14px;margin-bottom:12px;">';
+  html += '<div style="font-size:11px;font-weight:800;color:#c0392b;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;">MATERIAL OVERLAP DETECTED</div>';
+  for (var i = 0; i < overlaps.length; i++) {
+    var o = overlaps[i];
+    html += '<div style="padding:8px 0;border-bottom:1px solid #2a2a2a;">';
+    html += '<div style="font-size:13px;color:#e0e0e0;font-weight:600;">' + A.esc(o.jobMaterial.name) + ' ×' + o.jobMaterial.qty + '</div>';
+    html += '<div style="font-size:11px;color:#666;">ALSO ON: ' + A.esc(o.sibAddress || '').substring(0, 30) + '</div>';
+    html += '<div style="display:flex;gap:6px;margin-top:6px;">';
+    html += '<button style="flex:1;min-height:40px;border:none;border-radius:8px;background:#c0392b;color:#fff;font-size:12px;font-weight:700;cursor:pointer;" onclick="dedupRemove(\'' + jobId + '\',\'' + o.jobMaterial.materialId + '\')">REMOVE</button>';
+    html += '<button style="flex:1;min-height:40px;border:none;border-radius:8px;background:#FF6B00;color:#fff;font-size:12px;font-weight:700;cursor:pointer;" onclick="dedupCombine(\'' + jobId + '\',\'' + o.jobMaterial.materialId + '\',\'' + o.sibJobId + '\',\'' + o.sibMaterial.materialId + '\')">COMBINE</button>';
+    html += '<button style="flex:1;min-height:40px;border:none;border-radius:8px;background:#333;color:#999;font-size:12px;font-weight:700;cursor:pointer;" onclick="dedupKeep(\'' + jobId + '\',\'' + o.jobMaterial.materialId + '\')">KEEP</button>';
+    html += '</div></div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function dedupRemove(jobId, materialId) {
+  var mats = getJobMaterials(jobId).filter(function(m) { return m.materialId !== materialId; });
+  setJobMaterials(jobId, mats);
+  renderJobMaterials(jobId);
+  A.showToast('MATERIAL REMOVED');
+  // Re-render dedup banner
+  var banner = document.getElementById('dedup-banner-' + jobId);
+  if (banner) banner.innerHTML = renderDedupBanner(jobId);
+}
+
+function dedupCombine(jobId, matId, sibJobId, sibMatId) {
+  var jobMats = getJobMaterials(jobId);
+  var mat = jobMats.find(function(m) { return m.materialId === matId; });
+  var sibJob = A.getJob(sibJobId);
+  var sibMat = sibJob ? (sibJob.materials || []).find(function(m) { return m.materialId === sibMatId; }) : null;
+  if (mat && sibMat) {
+    mat.qty = (mat.qty || 0) + (sibMat.qty || 0);
+    mat.deduplicated = true;
+    setJobMaterials(jobId, jobMats);
+    // Remove from sibling
+    var sibMats = (sibJob.materials || []).filter(function(m) { return m.materialId !== sibMatId; });
+    A.updateJob(sibJobId, { materials: sibMats });
+  }
+  renderJobMaterials(jobId);
+  A.showToast('MATERIALS COMBINED');
+  var banner = document.getElementById('dedup-banner-' + jobId);
+  if (banner) banner.innerHTML = renderDedupBanner(jobId);
+}
+
+function dedupKeep(jobId, materialId) {
+  var jobMats = getJobMaterials(jobId);
+  var mat = jobMats.find(function(m) { return m.materialId === materialId; });
+  if (mat) {
+    mat.deduplicated = true;
+    setJobMaterials(jobId, jobMats);
+  }
+  A.showToast('KEPT SEPARATE');
+  var banner = document.getElementById('dedup-banner-' + jobId);
+  if (banner) banner.innerHTML = renderDedupBanner(jobId);
+}
+
 // ── Public API ──
 Object.assign(window, {
   renderMaterials, renderJobMaterials, autoLoadBuiltInLibraries,
@@ -609,6 +706,8 @@ Object.assign(window, {
   adjustMatQty, setMatQty, removeMatFromJob, applyBulkTemplate,
   addMatToJob, filterMaterials, importMaterialLibrary,
   renderAddrMaterialRollup, _setMatPhase, _setMatPickerPhase,
+  detectMaterialOverlap, renderDedupBanner,
+  dedupRemove, dedupCombine, dedupKeep,
   _matStepQty, _matAddFromPicker, _matLongPress, _matLongStop,
 });
 Object.defineProperty(window, '_matPickerActiveItem', {

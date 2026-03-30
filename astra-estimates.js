@@ -674,11 +674,12 @@ function _estSave() {
 
 function deleteCurrentEstimate() {
   if (!_state.currentEstimate) return;
-  if (!confirm('DELETE THIS ESTIMATE?')) return;
-  A.deleteEstimate(_state.currentEstimate.id);
-  _state.currentEstimate = null;
-  A.showToast('ESTIMATE DELETED');
-  A.goTo('screen-estimates');
+  showConfirmModal('DELETE ESTIMATE', 'DELETE THIS ESTIMATE?', 'DELETE', function() {
+    A.deleteEstimate(_state.currentEstimate.id);
+    _state.currentEstimate = null;
+    A.showToast('ESTIMATE DELETED');
+    A.goTo('screen-estimates');
+  }, { destructive: true });
 }
 
 // ═══════════════════════════════════════════
@@ -765,9 +766,9 @@ function _querySimilarJobs(jobType) {
   var matMap = {};
   jobs.forEach(function(j) {
     j.materials.forEach(function(m) {
-      var key = m.itemId || m.name;
+      var key = (m.itemId || m.name) + '|' + (m.variant || '');
       if (!matMap[key]) {
-        matMap[key] = { itemId: m.itemId, name: m.name, unit: m.unit || 'EA', totalQty: 0, jobCount: 0 };
+        matMap[key] = { itemId: m.itemId, name: m.name, variant: m.variant || null, unit: m.unit || 'EA', totalQty: 0, jobCount: 0 };
       }
       matMap[key].totalQty += (m.qty || 1);
       matMap[key].jobCount += 1;
@@ -810,9 +811,9 @@ function _queryAddressJobs(addressId) {
   var matMap = {};
   jobs.forEach(function(j) {
     j.materials.forEach(function(m) {
-      var key = m.itemId || m.name;
+      var key = (m.itemId || m.name) + '|' + (m.variant || '');
       if (!matMap[key]) {
-        matMap[key] = { itemId: m.itemId, name: m.name, unit: m.unit || 'EA', lastQty: m.qty || 1, uses: 0 };
+        matMap[key] = { itemId: m.itemId, name: m.name, variant: m.variant || null, unit: m.unit || 'EA', lastQty: m.qty || 1, uses: 0 };
       }
       matMap[key].lastQty = m.qty || 1;
       matMap[key].uses += 1;
@@ -875,12 +876,12 @@ function _renderIntelSection(est) {
       html += '<div class="est-intel-header"><span class="est-intel-icon">📊</span> ' + (isSeed ? '' : 'SIMILAR ') + A.esc(est.jobType) + ' JOBS <span class="est-intel-count">' + sourceLabel + ': ' + similar.jobCount + ' JOB' + (similar.jobCount !== 1 ? 'S' : '') + '</span></div>';
       html += '<div class="est-intel-mats">';
       similar.materials.slice(0, 10).forEach(function(m) {
-        var alreadyAdded = est.materials.some(function(em) { return (em.itemId === m.itemId) || (em.name === m.name); });
+        var alreadyAdded = est.materials.some(function(em) { return ((em.itemId === m.itemId) || (em.name === m.name)) && (em.variant || '') === (m.variant || ''); });
         html += '<div class="est-intel-mat-row' + (alreadyAdded ? ' added' : '') + '">';
-        html += '<span class="est-intel-mat-name">' + A.esc(m.name) + '</span>';
+        html += '<span class="est-intel-mat-name">' + A.esc(m.name) + (m.variant ? ' <span style="color:#999;font-size:11px;">(' + A.esc(m.variant) + ')</span>' : '') + '</span>';
         html += '<span class="est-intel-mat-qty">AVG ' + m.avgQty + ' ' + A.esc(m.unit) + '</span>';
         if (!alreadyAdded) {
-          html += '<button class="est-intel-add-btn" onclick="window._estImportMat(\'' + A.esc(m.itemId) + '\',\'' + A.esc(m.name) + '\',\'' + A.esc(m.unit) + '\',' + m.avgQty + ')">+</button>';
+          html += '<button class="est-intel-add-btn" onclick="window._estImportMat(\'' + A.esc(m.itemId) + '\',\'' + A.esc(m.name) + '\',\'' + A.esc(m.unit) + '\',' + m.avgQty + ',\'' + A.esc(m.variant || '') + '\')">+</button>';
         } else {
           html += '<span class="est-intel-added">✓</span>';
         }
@@ -889,7 +890,7 @@ function _renderIntelSection(est) {
       html += '</div>';
       if (similar.materials.length > 0) {
         var unadded = similar.materials.filter(function(m) {
-          return !est.materials.some(function(em) { return (em.itemId === m.itemId) || (em.name === m.name); });
+          return !est.materials.some(function(em) { return ((em.itemId === m.itemId) || (em.name === m.name)) && (em.variant || '') === (m.variant || ''); });
         });
         if (unadded.length > 0) {
           html += '<button class="btn btn-secondary" style="width:100%;margin-top:8px;font-size:12px;" onclick="window._estImportAllSimilar()">LOAD ALL ' + unadded.length + ' MATERIALS</button>';
@@ -907,12 +908,12 @@ function _renderIntelSection(est) {
       html += '<div class="est-intel-header"><span class="est-intel-icon">📍</span> PREVIOUSLY AT ADDRESS <span class="est-intel-count">' + addrData.jobCount + ' JOB' + (addrData.jobCount !== 1 ? 'S' : '') + '</span></div>';
       html += '<div class="est-intel-mats">';
       addrData.materials.slice(0, 10).forEach(function(m) {
-        var alreadyAdded = est.materials.some(function(em) { return (em.itemId === m.itemId) || (em.name === m.name); });
+        var alreadyAdded = est.materials.some(function(em) { return ((em.itemId === m.itemId) || (em.name === m.name)) && (em.variant || '') === (m.variant || ''); });
         html += '<div class="est-intel-mat-row' + (alreadyAdded ? ' added' : '') + '">';
-        html += '<span class="est-intel-mat-name">' + A.esc(m.name) + '</span>';
+        html += '<span class="est-intel-mat-name">' + A.esc(m.name) + (m.variant ? ' <span style="color:#999;font-size:11px;">(' + A.esc(m.variant) + ')</span>' : '') + '</span>';
         html += '<span class="est-intel-mat-qty">LAST: ' + m.lastQty + ' ' + A.esc(m.unit) + '</span>';
         if (!alreadyAdded) {
-          html += '<button class="est-intel-add-btn" onclick="window._estImportMat(\'' + A.esc(m.itemId) + '\',\'' + A.esc(m.name) + '\',\'' + A.esc(m.unit) + '\',' + m.lastQty + ')">+</button>';
+          html += '<button class="est-intel-add-btn" onclick="window._estImportMat(\'' + A.esc(m.itemId) + '\',\'' + A.esc(m.name) + '\',\'' + A.esc(m.unit) + '\',' + m.lastQty + ',\'' + A.esc(m.variant || '') + '\')">+</button>';
         } else {
           html += '<span class="est-intel-added">✓</span>';
         }
@@ -920,7 +921,7 @@ function _renderIntelSection(est) {
       });
       html += '</div>';
       var unaddedAddr = addrData.materials.filter(function(m) {
-        return !est.materials.some(function(em) { return (em.itemId === m.itemId) || (em.name === m.name); });
+        return !est.materials.some(function(em) { return ((em.itemId === m.itemId) || (em.name === m.name)) && (em.variant || '') === (m.variant || ''); });
       });
       if (unaddedAddr.length > 0) {
         html += '<button class="btn btn-secondary" style="width:100%;margin-top:8px;font-size:12px;" onclick="window._estImportAllAddress()">LOAD ALL ' + unaddedAddr.length + ' MATERIALS</button>';
@@ -934,11 +935,11 @@ function _renderIntelSection(est) {
 
 // ── Import helpers ──
 
-function _estImportMat(itemId, name, unit, qty) {
+function _estImportMat(itemId, name, unit, qty, variant) {
   if (!_state.currentEstimate) return;
   _captureFormState();
   var pb = loadPricebook();
-  _state.currentEstimate.materials.push({
+  var mat = {
     itemId: itemId,
     name: name,
     qty: qty,
@@ -946,10 +947,12 @@ function _estImportMat(itemId, name, unit, qty) {
     unitCost: 0,
     markup: pb.materialMarkup,
     lineTotal: 0
-  });
+  };
+  if (variant) mat.variant = variant;
+  _state.currentEstimate.materials.push(mat);
   recalc(_state.currentEstimate);
   renderEstimateBuilder(_state.currentEstimate.id);
-  A.showToast('ADDED: ' + name);
+  A.showToast('ADDED: ' + name + (variant ? ' (' + variant + ')' : ''));
 }
 
 function _estImportAllSimilar() {
@@ -960,9 +963,9 @@ function _estImportAllSimilar() {
   var pb = loadPricebook();
   var count = 0;
   similar.materials.forEach(function(m) {
-    var alreadyAdded = est.materials.some(function(em) { return (em.itemId === m.itemId) || (em.name === m.name); });
+    var alreadyAdded = est.materials.some(function(em) { return ((em.itemId === m.itemId) || (em.name === m.name)) && (em.variant || '') === (m.variant || ''); });
     if (!alreadyAdded) {
-      est.materials.push({
+      var mat = {
         itemId: m.itemId,
         name: m.name,
         qty: m.avgQty,
@@ -970,7 +973,9 @@ function _estImportAllSimilar() {
         unitCost: 0,
         markup: pb.materialMarkup,
         lineTotal: 0
-      });
+      };
+      if (m.variant) mat.variant = m.variant;
+      est.materials.push(mat);
       count++;
     }
   });
@@ -987,9 +992,9 @@ function _estImportAllAddress() {
   var pb = loadPricebook();
   var count = 0;
   addrData.materials.forEach(function(m) {
-    var alreadyAdded = est.materials.some(function(em) { return (em.itemId === m.itemId) || (em.name === m.name); });
+    var alreadyAdded = est.materials.some(function(em) { return ((em.itemId === m.itemId) || (em.name === m.name)) && (em.variant || '') === (m.variant || ''); });
     if (!alreadyAdded) {
-      est.materials.push({
+      var mat = {
         itemId: m.itemId,
         name: m.name,
         qty: m.lastQty,
@@ -997,7 +1002,9 @@ function _estImportAllAddress() {
         unitCost: 0,
         markup: pb.materialMarkup,
         lineTotal: 0
-      });
+      };
+      if (m.variant) mat.variant = m.variant;
+      est.materials.push(mat);
       count++;
     }
   });
@@ -1314,17 +1321,17 @@ function _renderComparison(est) {
   // Materials comparison
   var estMats = {};
   est.materials.forEach(function(m) {
-    var key = m.itemId || m.name;
-    estMats[key] = { name: m.name, estQty: parseFloat(m.qty) || 0, unit: m.unit || 'EA', actQty: 0 };
+    var key = (m.itemId || m.name) + '|' + (m.variant || '');
+    estMats[key] = { name: m.name, variant: m.variant || null, estQty: parseFloat(m.qty) || 0, unit: m.unit || 'EA', actQty: 0 };
   });
 
   var jobMats = job.materials || [];
   jobMats.forEach(function(m) {
-    var key = m.itemId || m.name;
+    var key = (m.itemId || m.name) + '|' + (m.variant || '');
     if (estMats[key]) {
       estMats[key].actQty = parseFloat(m.qty) || 0;
     } else {
-      estMats[key] = { name: m.name, estQty: 0, unit: m.unit || 'EA', actQty: parseFloat(m.qty) || 0 };
+      estMats[key] = { name: m.name, variant: m.variant || null, estQty: 0, unit: m.unit || 'EA', actQty: parseFloat(m.qty) || 0 };
     }
   });
 
@@ -1347,7 +1354,7 @@ function _renderComparison(est) {
       totalEst += m.estQty;
       totalAct += m.actQty;
       html += '<tr style="border-bottom:1px solid #222;">';
-      html += '<td style="font-size:12px;color:#ccc;padding:6px 0;">' + A.esc(m.name) + '</td>';
+      html += '<td style="font-size:12px;color:#ccc;padding:6px 0;">' + A.esc(m.name) + (m.variant ? ' <span style="color:#777;font-size:10px;">(' + A.esc(m.variant) + ')</span>' : '') + '</td>';
       html += '<td style="text-align:right;font-size:12px;color:#888;padding:6px 0;">' + m.estQty + '</td>';
       html += '<td style="text-align:right;font-size:12px;color:#e0e0e0;font-weight:600;padding:6px 0;">' + m.actQty + '</td>';
       html += '<td style="text-align:right;font-size:12px;color:' + diffColor + ';font-weight:700;padding:6px 0;">' + diffStr + '</td>';

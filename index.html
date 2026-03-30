@@ -424,6 +424,195 @@ input[type="number"] { -moz-appearance: textfield; }
 .status-option:active { background: rgba(255,107,0,0.15); }
 .status-option .badge { margin-right: 10px; }
 
+/* ── Custom modal (D16) ── */
+.modal-backdrop {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6); z-index: 300;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.2s;
+}
+.modal-backdrop.active { opacity: 1; pointer-events: auto; }
+.modal-sheet {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: #222; border-radius: 16px 16px 0 0;
+  padding: 20px 16px 24px; z-index: 301;
+  transform: translateY(100%);
+  transition: transform 0.2s ease;
+  border-top: 1px solid #333;
+  max-height: 60vh; overflow-y: auto;
+}
+.modal-sheet.active { transform: translateY(0); }
+.modal-title {
+  text-align: center; margin-bottom: 8px; font-size: 12px; color: #555;
+  text-transform: uppercase; font-weight: 800; letter-spacing: 1.5px;
+}
+.modal-message {
+  text-align: center; font-size: 15px; color: #999; padding: 4px 0 20px;
+  line-height: 1.4;
+}
+.modal-actions { display: flex; flex-direction: column; gap: 8px; }
+.modal-btn {
+  min-height: 48px; width: 100%; border: none; border-radius: 10px;
+  font-size: 15px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.5px; cursor: pointer; transition: opacity 0.15s;
+  font-family: inherit;
+}
+.modal-btn:active { opacity: 0.8; }
+.modal-btn-confirm { background: #FF6B00; color: #fff; }
+.modal-btn-destructive { background: #c0392b; color: #fff; }
+.modal-btn-cancel {
+  background: transparent; border: 1px solid #333; color: #999;
+}
+
+/* ── Step 7D: Notification center ── */
+.nav-bell {
+  background: none; border: none; padding: 6px; cursor: pointer;
+  position: relative; display: flex; align-items: center;
+}
+.notif-badge {
+  position: absolute; top: 0; right: 0;
+  background: #c0392b; color: #fff; font-size: 9px; font-weight: 800;
+  min-width: 16px; height: 16px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 3px; line-height: 1;
+}
+.notif-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 16px 8px; border-bottom: 1px solid #222;
+}
+.notif-header-title { font-size: 14px; font-weight: 800; letter-spacing: 1.5px; color: #888; }
+.notif-mark-read {
+  background: none; border: 1px solid #333; color: #666; font-size: 11px;
+  font-weight: 700; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+  font-family: inherit; letter-spacing: 0.5px; min-height: 36px;
+}
+.notif-mark-read:active { background: #222; }
+.notif-list { padding: 8px 16px; }
+.notif-card {
+  background: #1a1a1a; border-radius: 10px; padding: 14px 16px;
+  margin-bottom: 8px; cursor: pointer; border-left: 3px solid #333;
+  min-height: 48px; transition: background 0.15s;
+}
+.notif-card:active { background: #222; }
+.notif-card.unread { background: #1f1f2e; border-left-color: #FF6B00; }
+.notif-card.type-approval { border-left-color: #2d8a4e; }
+.notif-card.type-rejection { border-left-color: #c0392b; }
+.notif-card.type-changes_requested { border-left-color: #e67e22; }
+.notif-card.type-lock_takeover { border-left-color: #e74c3c; }
+.notif-card.type-assignment { border-left-color: #3498db; }
+.notif-card-title {
+  font-size: 13px; font-weight: 700; color: #ccc;
+  letter-spacing: 0.5px; margin-bottom: 4px;
+}
+.notif-card.unread .notif-card-title { color: #fff; }
+.notif-card-msg { font-size: 12px; color: #666; margin-bottom: 6px; }
+.notif-card.unread .notif-card-msg { color: #999; }
+.notif-card-time { font-size: 10px; color: #444; letter-spacing: 0.5px; }
+.notif-empty {
+  text-align: center; padding: 60px 20px; color: #444;
+  font-size: 14px; font-weight: 700; letter-spacing: 1px;
+}
+
+/* ── Step 7E: 2FA / TOTP ── */
+.mfa-container {
+  max-width: 400px; margin: 0 auto; padding: 40px 24px;
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center;
+}
+.mfa-title {
+  font-size: 20px; font-weight: 800; color: #FF6B00;
+  letter-spacing: 2px; margin-bottom: 8px;
+}
+.mfa-subtitle {
+  font-size: 12px; color: #666; letter-spacing: 1px;
+  margin-bottom: 32px; line-height: 1.5;
+}
+.mfa-code-input {
+  width: 200px; text-align: center; font-size: 28px; font-weight: 700;
+  letter-spacing: 8px; padding: 14px; border-radius: 10px;
+  border: 1px solid #333; background: #1a1a1a; color: #fff;
+  font-family: 'Courier New', monospace; margin-bottom: 20px;
+}
+.mfa-code-input:focus { border-color: #FF6B00; outline: none; }
+.mfa-code-input::placeholder { letter-spacing: 2px; font-size: 16px; color: #444; }
+.mfa-btn {
+  width: 100%; min-height: 48px; border: none; border-radius: 10px;
+  font-size: 15px; font-weight: 700; cursor: pointer;
+  font-family: inherit; letter-spacing: 1px; text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.mfa-btn-primary { background: #FF6B00; color: #fff; }
+.mfa-btn-primary:active { background: #e55d00; }
+.mfa-btn-cancel { background: transparent; border: 1px solid #333; color: #666; }
+.mfa-btn-cancel:active { background: #222; }
+.mfa-error {
+  color: #c0392b; font-size: 12px; font-weight: 700;
+  letter-spacing: 0.5px; margin-bottom: 16px; min-height: 18px;
+}
+.mfa-qr-container {
+  background: #fff; border-radius: 12px; padding: 16px;
+  margin-bottom: 20px; display: inline-block;
+}
+.mfa-qr-container img { display: block; width: 200px; height: 200px; }
+.mfa-secret {
+  font-family: 'Courier New', monospace; font-size: 13px;
+  color: #888; letter-spacing: 2px; word-break: break-all;
+  background: #1a1a1a; padding: 10px 16px; border-radius: 8px;
+  border: 1px solid #333; margin-bottom: 24px; user-select: all;
+}
+.mfa-instructions {
+  font-size: 11px; color: #555; letter-spacing: 0.5px;
+  margin-bottom: 20px; line-height: 1.6;
+}
+.security-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 0;
+}
+.security-status {
+  font-size: 13px; font-weight: 700; letter-spacing: 1px;
+}
+.security-status.enabled { color: #2d8a4e; }
+.security-status.disabled { color: #666; }
+.security-btn {
+  min-height: 40px; padding: 0 20px; border: none; border-radius: 8px;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+  font-family: inherit; letter-spacing: 0.5px;
+}
+.security-btn-enable { background: #FF6B00; color: #fff; }
+.security-btn-enable:active { background: #e55d00; }
+.security-btn-disable { background: #333; color: #999; }
+.security-btn-disable:active { background: #444; }
+
+/* ── Approval pipeline (Step 5D) ── */
+.approval-badge {
+  position: absolute; top: 2px; right: 2px;
+  background: #c0392b; color: #fff; font-size: 10px; font-weight: 800;
+  min-width: 18px; height: 18px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 4px; line-height: 1;
+}
+.approval-bar {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-bottom: 16px; padding: 16px;
+  background: #1a1a1a; border-radius: 12px;
+  border: 1px solid #6a4c93;
+}
+.approval-bar-title {
+  font-size: 11px; font-weight: 800; color: #6a4c93;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  text-align: center; margin-bottom: 4px;
+}
+.approval-btn {
+  min-height: 48px; width: 100%; border: none; border-radius: 10px;
+  font-size: 15px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.5px; cursor: pointer; font-family: inherit;
+  transition: opacity 0.15s;
+}
+.approval-btn:active { opacity: 0.8; }
+.approval-btn-approve { background: #FF6B00; color: #fff; }
+.approval-btn-changes { background: transparent; border: 1px solid #555; color: #aaa; }
+.approval-btn-reject { background: #c0392b; color: #fff; }
+
 /* ── Search ── */
 .search-bar { position: relative; margin-bottom: 14px; }
 .search-bar input {
@@ -812,6 +1001,12 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
 <nav id="global-nav">
   <div class="nav-logo" onclick="goTo('screen-jobs')">ASTRA</div>
   <div class="nav-shortcuts" id="nav-shortcuts"></div>
+  <button class="nav-bell" id="nav-bell" onclick="goTo('screen-notifications')" style="position:relative;">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+    </svg>
+    <span class="notif-badge" id="notif-badge" style="display:none;"></span>
+  </button>
   <span id="sync-indicator" class="sync-indicator sync-hidden"></span>
   <button class="nav-hamburger" id="hamburger-btn" onclick="toggleSidebar()">☰</button>
 </nav>
@@ -823,8 +1018,9 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
     <span>ASTRA</span>
     <button class="sidebar-close" onclick="closeSidebar()">✕</button>
   </div>
-  <button class="sidebar-item" data-screen="screen-jobs" onclick="goTo('screen-jobs');closeSidebar()">
+  <button class="sidebar-item" data-screen="screen-jobs" onclick="goTo('screen-jobs');closeSidebar()" style="position:relative;">
     <span class="sidebar-icon"><svg viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1m-2 0h2"/></svg></span> HOME
+    <span class="approval-badge" id="sidebar-approval-badge" style="display:none;"></span>
   </button>
   <button class="sidebar-item" data-screen="screen-search" onclick="goTo('screen-search');closeSidebar()">
     <span class="sidebar-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span> SEARCH
@@ -896,6 +1092,37 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
   </div>
 </div>
 
+<!-- ══════════════ SCREEN: 2FA CHALLENGE (Step 7E) ══════════════ -->
+<div id="screen-2fa-challenge" class="screen">
+  <div class="screen-body" style="display:flex;align-items:center;justify-content:center;height:100%;">
+    <div class="mfa-container">
+      <div class="mfa-title">VERIFICATION CODE</div>
+      <div class="mfa-subtitle">ENTER THE 6-DIGIT CODE FROM YOUR AUTHENTICATOR APP</div>
+      <div class="mfa-error" id="mfa-challenge-error"></div>
+      <input type="text" class="mfa-code-input" id="mfa-challenge-code" inputmode="numeric" maxlength="6" pattern="[0-9]*" autocomplete="one-time-code" placeholder="000000">
+      <button class="mfa-btn mfa-btn-primary" id="mfa-challenge-btn" onclick="doMfaVerify()">VERIFY</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ SCREEN: 2FA SETUP (Step 7E) ══════════════ -->
+<div id="screen-2fa-setup" class="screen">
+  <div class="screen-body" style="display:flex;align-items:center;justify-content:center;height:100%;">
+    <div class="mfa-container">
+      <div class="mfa-title">SET UP 2FA</div>
+      <div class="mfa-instructions">SCAN THIS QR CODE WITH YOUR AUTHENTICATOR APP<br>(GOOGLE AUTHENTICATOR, AUTHY, ETC.)</div>
+      <div class="mfa-qr-container" id="mfa-qr-container"></div>
+      <div class="mfa-instructions">OR ENTER THIS SECRET MANUALLY:</div>
+      <div class="mfa-secret" id="mfa-secret-display"></div>
+      <div class="mfa-instructions">THEN ENTER THE 6-DIGIT CODE BELOW TO CONFIRM:</div>
+      <div class="mfa-error" id="mfa-setup-error"></div>
+      <input type="text" class="mfa-code-input" id="mfa-setup-code" inputmode="numeric" maxlength="6" pattern="[0-9]*" autocomplete="one-time-code" placeholder="000000">
+      <button class="mfa-btn mfa-btn-primary" id="mfa-setup-btn" onclick="doMfaEnrollVerify()">VERIFY &amp; ENABLE</button>
+      <button class="mfa-btn mfa-btn-cancel" onclick="goTo('screen-settings')">CANCEL</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════════ SCREEN: ONBOARDING (D29) ══════════════ -->
 <div id="screen-onboarding" class="screen">
   <div class="screen-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:0 16px;">
@@ -931,6 +1158,7 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
       <button class="date-toggle-btn active" onclick="setHomeView('daily')">DAILY</button>
       <button class="date-toggle-btn" onclick="setHomeView('weekly')">WEEKLY</button>
     </div>
+    <div id="approval-filter" style="display:none;"></div>
     <div id="jobs-body"></div>
   </div>
   <button class="fab" onclick="goTo('screen-create')" aria-label="New ticket">+</button>
@@ -1094,6 +1322,17 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
   <div class="screen-body" id="dashboard-body"></div>
 </div>
 
+<!-- ══════════════ SCREEN: NOTIFICATIONS (Step 7D) ══════════════ -->
+<div id="screen-notifications" class="screen">
+  <div class="screen-body">
+    <div class="notif-header">
+      <div class="notif-header-title">NOTIFICATIONS</div>
+      <button class="notif-mark-read" onclick="markAllNotifsRead();renderNotifications()">MARK ALL READ</button>
+    </div>
+    <div class="notif-list" id="notif-list"></div>
+  </div>
+</div>
+
 <!-- ══════════════ SCREEN: SETTINGS ══════════════ -->
 <div id="screen-settings" class="screen">
   <div class="screen-body" id="settings-body">
@@ -1148,6 +1387,15 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
       <input type="file" class="hidden-input" id="material-import-input" accept=".json" onchange="importMaterialLibrary(this)">
     </div>
 
+    <div class="section-title">HISTORICAL DATA</div>
+    <div class="dash-card" style="margin-bottom:16px;padding:14px;">
+      <div style="font-size:12px;color:#444;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">IMPORT JOB HISTORY (JSON)</div>
+      <div style="font-size:11px;color:#333;margin-bottom:10px;">IMPORTS AS COMPLETED JOBS TO FEED THE PREDICTION ENGINE.</div>
+      <div id="import-preview" style="display:none;margin-bottom:10px;"></div>
+      <button class="btn btn-secondary" style="margin-bottom:0;" onclick="document.getElementById('history-import-input').click()">IMPORT JOB HISTORY</button>
+      <input type="file" class="hidden-input" id="history-import-input" accept=".json" onchange="importHistoricalJobs(this)">
+    </div>
+
     <div class="section-title">MODULES</div>
     <button class="est-settings-btn" onclick="goTo('screen-estimates')">
       <svg viewBox="0 0 24 24"><path d="M9 7h6m0 10v-3m-3 3h.01M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
@@ -1161,8 +1409,28 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
     <div id="settings-user-info" class="dash-card" style="margin-bottom:12px;"></div>
     <button class="btn btn-secondary" style="margin-bottom:16px;border-color:#c0392b;color:#c0392b;" onclick="doLogout()">SIGN OUT</button>
 
+    <div class="section-title">SECURITY</div>
+    <div class="dash-card" style="margin-bottom:16px;">
+      <div class="security-row" id="mfa-status-row">
+        <span class="security-status disabled" id="mfa-status-label">2FA: DISABLED</span>
+        <button class="security-btn security-btn-enable" id="mfa-toggle-btn" onclick="toggleMfa()">ENABLE 2FA</button>
+      </div>
+    </div>
+
     <div class="section-title">APP</div>
     <button class="btn btn-secondary" style="margin-bottom:16px;" onclick="hardReload()">RELOAD APP</button>
+
+    <!-- Step 7C: Developer settings (admin-only) -->
+    <div id="dev-settings" style="display:none;">
+      <div class="section-title" style="color:#FF6B00;">DEVELOPER</div>
+      <div class="dash-card" style="margin-bottom:12px;">
+        <div id="dev-sync-info"></div>
+      </div>
+      <button class="btn btn-secondary" style="margin-bottom:8px;" onclick="devClearCache()">CLEAR CACHE</button>
+      <button class="btn btn-secondary" style="margin-bottom:8px;" onclick="devForceSync()">FORCE SYNC</button>
+      <button class="btn btn-secondary" style="margin-bottom:8px;" onclick="devToggleDebug()">TOGGLE DEBUG LOGS</button>
+      <button class="btn btn-secondary" style="margin-bottom:16px;border-color:#c0392b;color:#c0392b;" onclick="devClearAllData()">WIPE LOCAL DATA</button>
+    </div>
 
     <div style="color:#333;font-size:12px;text-align:center;margin-top:24px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">
       ASTRA v0.7
@@ -1218,11 +1486,15 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
 <div class="status-picker-backdrop" id="sp-backdrop" onclick="closeStatusPicker()"></div>
 <div class="status-picker" id="sp-picker">
   <div class="status-picker-title">UPDATE STATUS</div>
-  <button class="status-option" onclick="pickStatus('Not Started')"><span class="badge badge-not-started">NOT STARTED</span></button>
-  <button class="status-option" onclick="pickStatus('In Progress')"><span class="badge badge-in-progress">IN PROGRESS</span></button>
-  <button class="status-option" onclick="pickStatus('Complete')"><span class="badge badge-complete">COMPLETE</span></button>
-  <button class="status-option" onclick="pickStatus('Needs Callback')"><span class="badge badge-needs-callback">NEEDS CALLBACK</span></button>
-  <button class="status-option" onclick="pickStatus('Waiting on Materials')"><span class="badge badge-waiting-on-materials">WAITING ON MATERIALS</span></button>
+  <div id="sp-options"></div>
+</div>
+
+<!-- ══════════════ CUSTOM MODAL (D16) ══════════════ -->
+<div class="modal-backdrop" id="modal-backdrop" onclick="_closeModal()"></div>
+<div class="modal-sheet" id="modal-sheet">
+  <div class="modal-title" id="modal-title"></div>
+  <div class="modal-message" id="modal-message"></div>
+  <div class="modal-actions" id="modal-actions"></div>
 </div>
 
 <!-- Hidden file inputs -->

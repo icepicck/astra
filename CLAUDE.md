@@ -42,12 +42,12 @@ Target user: solo electricians and small shops (1–6 techs) who bleed margin be
 ```
 / (root — deployable files only)
   index.html              — App shell: HTML screens + CSS (~64K)
-  app.js                  — Core IIFE: data layer, nav, ticket CRUD, settings, search, dashboard, media (~2,200 lines)
-  astra-auth.js           — Authentication IIFE: Supabase Auth, session management, account setup (~520 lines)
-  astra-estimates.js      — Estimates IIFE: builder, price book, intelligence engine, recalc() (~1,460 lines)
-  astra-maps.js           — Maps IIFE: Google Maps, Vector route, geocoding (~200 lines)
-  astra-materials.js      — Materials IIFE: catalog, picker, job materials, bulk templates (~620 lines)
-  astra-sync.js           — Sync IIFE: Supabase push/pull, realtime subscriptions (~700 lines)
+  app.js                  — Core IIFE: data layer, nav, ticket CRUD, settings, search, dashboard, media, notifications (~2,950 lines)
+  astra-auth.js           — Authentication IIFE: Supabase Auth, session management, account setup, 2FA/TOTP (~745 lines)
+  astra-estimates.js      — Estimates IIFE: builder, price book, intelligence engine, recalc() (~1,495 lines)
+  astra-maps.js           — Maps IIFE: Google Maps, Vector route, geocoding, address dedup (~370 lines)
+  astra-materials.js      — Materials IIFE: catalog, picker, job materials, bulk templates, material dedup (~725 lines)
+  astra-sync.js           — Sync IIFE: Supabase push/pull, realtime subscriptions, media blob sync (~1,065 lines)
   sw.js                   — Service worker
   manifest.json           — PWA manifest
   supabase.min.js         — Vendored Supabase client (pinned version)
@@ -80,7 +80,7 @@ Target user: solo electricians and small shops (1–6 techs) who bleed margin be
 
 ## DATA MODEL
 
-### IndexedDB: `astra_db` (version 4)
+### IndexedDB: `astra_db` (version 5)
 
 | Store | Key | Contents |
 |-------|-----|----------|
@@ -90,6 +90,7 @@ Target user: solo electricians and small shops (1–6 techs) who bleed margin be
 | `estimates` | `id` (UUID) | Estimates — address, customer info, materials[], labor, adjustments, overhead, profit, tax, status, linkedJobId |
 | `_config` | string key | Material library (rough + trim), price book, cached user profile |
 | `_syncMeta` | string key | Dirty flag, sync state, retry queue metadata |
+| `notifications` | `id` (UUID) | In-app notifications — type, title, message, jobId, read, createdAt |
 
 ### IndexedDB: `astra_media` (version 1)
 
@@ -158,6 +159,24 @@ All tables carry `account_id`. RLS policies enforce `account_id = auth.jwt() -> 
 - Offline: cached session token skips login. Re-auth only on token expiry. No indefinite sessions — stolen device with expired token requires re-authentication. The device is the threat surface when offline; session expiry is the boundary.
 - First-time setup by admin only. Techs get invite link.
 - Cache invalidation on auth state change.
+- 2FA/TOTP via Supabase MFA. Enrollment QR + manual secret in settings. Login challenge screen. Enable/disable toggle.
+
+**Multi-User (implemented in Step 5):**
+- Role-based sync filters (tech sees own jobs, supervisor sees all).
+- Ticket locking: lock on edit, release on save/timeout. Supervisor force-unlock.
+- Custom modals replacing all `confirm()` dialogs. 48px buttons.
+- Approval pipeline: tech creates `pending_approval`, supervisor approves/rejects/requests changes.
+- RBAC: tech, supervisor, admin roles with scoped permissions.
+
+**Cost Intelligence Protection (implemented in Step 6):**
+- Fuzzy address dedup: haversine distance + normalized string matching. Supervisor resolves.
+- Material dedup: detect overlaps on same address/same day. Remove/Combine/Keep. `deduplicated` flag.
+
+**Beyond MVP (implemented in Step 7):**
+- Media blob sync via Supabase Storage. Upload on push, lazy download on view. Cloud placeholder thumbnails.
+- In-app notification center. Bell icon + unread badge. Persistent IDB-backed. Triggered by realtime events.
+- Historical job import for cold-start seed data. Variant parsing from name strings.
+- Developer settings (admin-only).
 
 ---
 
@@ -177,8 +196,8 @@ All tables carry `account_id`. RLS policies enforce `account_id = auth.jwt() -> 
 
 | ID | Issue | Resolution | Step | Status |
 |----|-------|-----------|------|--------|
-| D6 | Sync pulls ALL data unfiltered. | Role-based sync filters in astra-sync.js. | 5 | 🔲 NEXT |
-| D7 | Realtime subscriptions have no auth gating. | RLS policies auto-filter realtime. | 5 | 🔲 NEXT |
+| D6 | Sync pulls ALL data unfiltered. | Role-based sync filters in astra-sync.js. | 5 | ✅ DONE |
+| D7 | Realtime subscriptions have no auth gating. | RLS policies auto-filter realtime. | 5 | ✅ DONE |
 | D8 | No automatic sync. | Auto-push on data changes. Persistent retry queue. | 2 | ✅ DONE |
 | D9 | Error handler shows ALL errors as red toasts. | Categorized: network/sync → silent. | 2 | ✅ DONE |
 
@@ -186,12 +205,12 @@ All tables carry `account_id`. RLS policies enforce `account_id = auth.jwt() -> 
 
 | ID | Issue | Resolution | Step | Status |
 |----|-------|-----------|------|--------|
-| D10 | `_cache` is global singleton. No invalidation on auth change. | Cache clear + rebuild from IDB on login/logout. | 5 | 🔲 NEXT |
+| D10 | `_cache` is global singleton. No invalidation on auth change. | Cache clear + rebuild from IDB on login/logout. | 5 | ✅ DONE |
 | D11 | `addJob()` uses `unshift()` — order depends on insert, not date. | Sort by date at render time. | 3 | ✅ DONE |
-| D12 | Address matching could create duplicates in multi-user. | Fuzzy match + supervisor resolves near-dupes. | 6 | 🔲 FUTURE |
-| D13 | No ticket locking. Two people can edit same ticket. | Lock on edit, release on save/timeout. Supervisor force-unlock. | 5 | 🔲 NEXT |
+| D12 | Address matching could create duplicates in multi-user. | Fuzzy match + supervisor resolves near-dupes. | 6 | ✅ DONE |
+| D13 | No ticket locking. Two people can edit same ticket. | Lock on edit, release on save/timeout. Supervisor force-unlock. | 5 | ✅ DONE |
 | D14 | Individual materials have no unique cloud ID. | Added `material_id` UUID. | 1 | ✅ DONE |
-| D16 | `confirm()` dialogs are blocking and hostile on mobile. | Custom modals with 48px buttons. **ELEVATED from Low.** | 5 | 🔲 NEXT |
+| D16 | `confirm()` dialogs are blocking and hostile on mobile. | Custom modals with 48px buttons. **ELEVATED from Low.** | 5 | ✅ DONE |
 
 ### LOW — Polish
 
@@ -199,7 +218,7 @@ All tables carry `account_id`. RLS policies enforce `account_id = auth.jwt() -> 
 |----|-------|-----------|------|--------|
 | D15 | Material library + price book in localStorage. | Migrated to IDB. | 3 | ✅ DONE |
 | D17 | Vector board midnight clear only runs on app init. | Check on goTo or set midnight setTimeout. | 3 | ✅ DONE |
-| D18 | Media blobs are device-local only. | Future: Supabase Storage. Not blocking. | 7 | 🔲 FUTURE |
+| D18 | Media blobs are device-local only. | Supabase Storage sync. Upload on push, lazy download on view. | 7 | ✅ DONE |
 | D19 | Hardcoded "Mike Torres" tech on fresh install. | Prompt for name or seed "DEFAULT TECH." | 3 | ✅ DONE |
 | D20 | Supabase client loaded from unpinned CDN. | Pinned and vendored locally. | 3 | ✅ DONE |
 | D21 | Photo compression unbounded. | Capped at 2MB. Monitor usage. | 3 | ✅ DONE |
@@ -216,68 +235,36 @@ STEP 1: DATA SAFETY           ✅ COMPLETE
 STEP 2: INFRASTRUCTURE        ✅ COMPLETE
 STEP 3: HOUSEKEEPING          ✅ COMPLETE
 STEP 4: AUTHENTICATION        ✅ COMPLETE
-STEP 5: MULTI-USER            🔲 NEXT — architecture locked, not started
-STEP 6: COST INTEL PROTECTION 🔲 FUTURE
-STEP 7: BEYOND MVP            🔲 FUTURE
+STEP 5: MULTI-USER            ✅ COMPLETE
+STEP 6: COST INTEL PROTECTION ✅ COMPLETE
+STEP 7: BEYOND MVP            ✅ COMPLETE
 ```
+
+**ALL STEPS COMPLETE.** Full roadmap shipped.
 
 ---
 
-### STEPS 1–4: COMPLETE ✅
+### STEPS 1–7: ALL COMPLETE ✅
 
-Steps 1 through 4 are implemented and verified. Verification criteria for reference:
+All steps implemented and verified. Summary:
 
 - **Step 1 (Data Safety):** Estimates sync bidirectionally. Materials survive interrupted push. Pricebook saves clean.
 - **Step 2 (Infrastructure):** Airplane mode → create 5 jobs + materials + estimate → reconnect → all syncs automatically. Zero error toasts during offline. Retry queue persists across restart.
 - **Step 3 (Housekeeping):** Fresh install — no "Mike Torres." Material library in IDB. Jobs sort by date. Supabase client vendored.
 - **Step 4 (Authentication):** Cross-account isolation verified. RLS blocks direct API queries. Logout clears cache, login rebuilds.
+- **Step 5 (Multi-User):** Role-based sync (D6/D7), ticket locking (D13), cache invalidation (D10), custom modals (D16). RBAC: tech/supervisor/admin. Approval pipeline with three-second rule. Lock-on-edit with supervisor force-unlock.
+- **Step 6 (Cost Intel Protection):** Fuzzy address dedup via geocode proximity + normalized string (D12). Material dedup with supervisor resolution: Remove/Combine/Keep. `deduplicated` flag gates cost intelligence.
+- **Step 7 (Beyond MVP):** Media blob sync via Supabase Storage (D18) — upload on push, lazy download on view. In-app notification center — persistent IDB-backed notifications for approvals, rejections, lock takeovers, assignments with bell icon + badge. 2FA/TOTP via Supabase MFA — enrollment QR, login challenge, enable/disable in settings. Historical job import for cold-start. Developer settings (admin-only).
 
----
-
-### STEP 5: MULTI-USER 🔲 NEXT
-**Goal:** Multiple people in same shop, no conflicts, no data leaks.
-
-**Tasks:** D6+D7, D13, D10, D16 (elevated)
-
-#### Sync Module Known Gaps — Fix During Step 5
-*These were documented in the Context Strategy's CLAUDE_SYNC cheat sheet. They are P0/P1 for multi-user:*
-- `_handleRemoteChange` has no handler for `materials` table events (P0)
-- Tech pull mutates `_cache.techs` directly without IDB write-through (P0)
-- Pull does `select('*')` on all tables — no incremental sync yet (P1 — fix before 500+ jobs)
-- Pull doesn't handle cloud-side deletions (P1 — need soft delete strategy)
-- `addrFromCloud()` doesn't preserve `createdAt` (moderate)
-- `savePricebook()` dual-writes to IDB and localStorage (cleanup)
-
-#### Locked Architecture Decisions — NON-NEGOTIABLE
-*These are locked. Not up for debate. Robert approved.*
+#### Architecture Decisions (locked, implemented)
 
 1. **Lock state = columns on jobs table** (`locked_by`, `locked_at`) — NOT a separate table.
 2. **Approval queue = filtered view on existing job list + nav badge** — NOT a new screen.
 3. **Address pull = unfiltered within account** — job pull enforces scope.
 4. **Force-unlock = supervisor nulls `locked_by` directly via RLS** — no separate policy.
-
-#### Role-Based Sync Filters
-Apply to all sync operations in `astra-sync.js` — push filters, pull filters, and realtime subscriptions:
-- **Tech:** `WHERE (assigned_to = user AND status = 'active') OR (created_by = user AND status = 'pending_approval')`
-- **Supervisor:** `WHERE account_id = current_account_id`
-- **Realtime:** Filtered by RLS automatically.
-
-#### Checkout Semantics
-- Lock on edit (`locked_by`, `locked_at`). Release on save or 30min timeout.
-- Supervisor force-unlock: nulls `locked_by` directly via RLS.
-- DB write protection: `WHERE locked_by = current_user_id`. Lock mismatch = write fails.
-- UI: your ticket = edit. Someone else's = read-only + "Locked by [Name]." Supervisor = read-only + "Take Over."
-
-#### Two Creation Paths
-- **Tech Discovery:** Tech finds work → creates ticket → status `pending_approval`.
-- **Supervisor Dispatch:** Supervisor creates and assigns → status `active`.
-
-#### Approval Pipeline
-- Approve → `active` / Request changes → stays `pending` / Reject → `archived`.
-- Three-second rule for supervisor actions. NON-NEGOTIABLE.
-
-#### Custom Modals (D16 — elevated to Step 5)
-Replace ALL `confirm()` dialogs with custom modals before supervisor approval UI goes in. Browser `confirm()` violates two non-negotiable constraints: it blocks the three-second rule AND its native buttons ignore the 48px tap target minimum. 48px buttons. This is a prerequisite, not a nice-to-have.
+5. **Media sync = Supabase Storage** — `job-media` private bucket, RLS by account_id path prefix. Upload during push, lazy download on view.
+6. **Notifications = IDB-persisted** — triggered from realtime events, capped at 100, bell icon in nav.
+7. **2FA = Supabase native MFA** — TOTP enrollment/challenge/verify, no custom secret storage.
 
 #### RBAC
 
@@ -287,27 +274,12 @@ Replace ALL `confirm()` dialogs with custom modals before supervisor approval UI
 | Supervisor | All account | `active` | Yes | No | No |
 | Admin | All account | `active` | Yes | Yes | Yes |
 
-#### Verify
-Three devices (Tech A, Tech B, Supervisor). Tech A creates → Tech B can't see. Supervisor approves → appears for assigned tech. Tech A edits → Supervisor sees locked. Force-unlock → Tech A gets read-only. Full approval flow < 3 seconds. No `confirm()` dialogs anywhere in the approval path.
-
 ---
 
-### STEP 6: COST INTELLIGENCE PROTECTION 🔲 FUTURE
-**Goal:** The data that makes ASTRA valuable is clean, accurate, and defended.
+### FUTURE — Beyond Roadmap
+Not part of any current step. Ideas for later.
 
-**Tasks:** D12
-
-- Fuzzy address dedup: geocode proximity + normalized string. Flag near-dupes for supervisor. Don't auto-merge.
-- Material dedup: detect overlapping materials on two tickets at same address/same day. Fuzzy match: code OR (category + type). Supervisor resolves: Remove / Combine / Keep separate. Materials feed cost intelligence only if `deduplicated = true`.
-
-**Verify:** Two tickets, same address, same day, overlapping materials. Dedup fires. Each resolution option produces correct counts. Cost intelligence reflects supervisor decision.
-
----
-
-### STEP 7: FUTURE — Beyond MVP
-Not part of current execution. Documented for awareness.
-
-Media blob sync (D18), admin dashboard, developer settings, notification system, 2FA, historical quote import for cold-start, anonymized market data as secondary revenue, sync rate limiting.
+Admin dashboard, anonymized market data as secondary revenue, sync rate limiting, push notifications (browser/OS-level).
 
 ---
 
@@ -379,4 +351,4 @@ More jobs = more data = better estimates
 
 ---
 
-*Steps 1–4 complete. Begin at Step 5. Report back when verification passes.*
+*All steps complete. Full roadmap shipped. ASTRA is a multi-user, cloud-synced, 2FA-secured cost intelligence engine.*

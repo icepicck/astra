@@ -20,6 +20,51 @@ function showToast(msg, type) {
   }, 3000);
 }
 
+// ── CUSTOM MODALS (D16) ──
+var _modalOnConfirm = null;
+
+function showConfirmModal(title, message, confirmText, onConfirm, opts) {
+  opts = opts || {};
+  _modalOnConfirm = onConfirm;
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-message').textContent = message;
+  var btnClass = opts.destructive ? 'modal-btn-destructive' : 'modal-btn-confirm';
+  document.getElementById('modal-actions').innerHTML =
+    '<button class="modal-btn ' + btnClass + '" onclick="_modalConfirm()">' + (confirmText || 'CONFIRM') + '</button>' +
+    '<button class="modal-btn modal-btn-cancel" onclick="_closeModal()">CANCEL</button>';
+  document.getElementById('modal-backdrop').classList.add('active');
+  document.getElementById('modal-sheet').classList.add('active');
+}
+
+function showInfoModal(title, message, dismissText) {
+  _modalOnConfirm = null;
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-message').textContent = message;
+  document.getElementById('modal-actions').innerHTML =
+    '<button class="modal-btn modal-btn-confirm" onclick="_closeModal()">' + (dismissText || 'OK') + '</button>';
+  document.getElementById('modal-backdrop').classList.add('active');
+  document.getElementById('modal-sheet').classList.add('active');
+}
+
+function _modalConfirm() {
+  var cb = _modalOnConfirm;
+  _closeModal();
+  if (cb) cb();
+}
+
+function _closeModal() {
+  _modalOnConfirm = null;
+  document.getElementById('modal-backdrop').classList.remove('active');
+  document.getElementById('modal-sheet').classList.remove('active');
+}
+
+// Escape key dismisses modal
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && document.getElementById('modal-backdrop').classList.contains('active')) {
+    _closeModal();
+  }
+});
+
 // ── GLOBAL ERROR HANDLING ──
 window.onerror = function(msg, src, line) {
   console.error('Global error:', msg, src, line);
@@ -38,6 +83,28 @@ const NAV_FREQ_KEY = 'astra_nav_frequency';
 const HOME_BASE_KEY = 'astra_home_base';
 const GMAPS_KEY_STORAGE = 'astra_gmaps_key';
 const STATUSES = ['Not Started','In Progress','Complete','Needs Callback','Waiting on Materials','pending_approval'];
+
+// D16/Step 5: State machine — role-based transitions
+const STATUS_TRANSITIONS = {
+  tech: {
+    'Not Started': ['In Progress', 'Waiting on Materials', 'Needs Callback'],
+    'In Progress': ['Complete', 'Waiting on Materials', 'Needs Callback'],
+    'Waiting on Materials': ['In Progress', 'Needs Callback'],
+    'Needs Callback': ['In Progress', 'Waiting on Materials'],
+    'Complete': [],
+    'pending_approval': []
+  }
+  // supervisor and admin: all transitions allowed (no entry = all)
+};
+
+function getAllowedTransitions(currentStatus, role) {
+  role = role || 'admin';
+  if (role === 'supervisor' || role === 'admin') {
+    return STATUSES.filter(function(s) { return s !== currentStatus; });
+  }
+  var map = STATUS_TRANSITIONS[role];
+  return map && map[currentStatus] ? map[currentStatus] : [];
+}
 const MAT_LIB_KEY = 'astra_material_library_rough';
 const MAT_LIB_TRIM_KEY = 'astra_material_library_trim';
 
@@ -68,6 +135,100 @@ function _idbConfigPut(key, value) {
     var tx = _astraDB.transaction('_config', 'readwrite');
     tx.objectStore('_config').put({ key: key, value: value });
   } catch (e) { /* non-critical */ }
+}
+
+// ── Step 7D: Notification Center — data layer ──
+var _notifCache = [];
+var MAX_NOTIFICATIONS = 100; // Cap to prevent unbounded growth
+
+function addNotification(notif) {
+  var entry = {
+    id: notif.id || crypto.randomUUID(),
+    type: notif.type || 'info',
+    title: notif.title || '',
+    message: notif.message || '',
+    jobId: notif.jobId || null,
+    read: false,
+    createdAt: new Date().toISOString()
+  };
+  _notifCache.unshift(entry);
+  // Cap at MAX_NOTIFICATIONS — trim oldest
+  if (_notifCache.length > MAX_NOTIFICATIONS) _notifCache = _notifCache.slice(0, MAX_NOTIFICATIONS);
+  // Persist to IDB
+  if (_astraDB) {
+    try {
+      var tx = _astraDB.transaction('notifications', 'readwrite');
+      tx.objectStore('notifications').put(entry);
+    } catch (e) { /* non-critical */ }
+  }
+  updateNotifBadge();
+  return entry;
+}
+
+function loadNotifications() { return _notifCache; }
+
+function markNotifRead(id) {
+  var n = _notifCache.find(function(x) { return x.id === id; });
+  if (!n || n.read) return;
+  n.read = true;
+  if (_astraDB) {
+    try {
+      var tx = _astraDB.transaction('notifications', 'readwrite');
+      tx.objectStore('notifications').put(n);
+    } catch (e) { /* non-critical */ }
+  }
+  updateNotifBadge();
+}
+
+function markAllNotifsRead() {
+  var dirty = false;
+  _notifCache.forEach(function(n) { if (!n.read) { n.read = true; dirty = true; } });
+  if (dirty && _astraDB) {
+    try {
+      var tx = _astraDB.transaction('notifications', 'readwrite');
+      var store = tx.objectStore('notifications');
+      _notifCache.forEach(function(n) { store.put(n); });
+    } catch (e) { /* non-critical */ }
+  }
+  updateNotifBadge();
+}
+
+function clearNotifications() {
+  _notifCache = [];
+  if (_astraDB) {
+    try {
+      var tx = _astraDB.transaction('notifications', 'readwrite');
+      tx.objectStore('notifications').clear();
+    } catch (e) { /* non-critical */ }
+  }
+  updateNotifBadge();
+}
+
+async function _initNotifications() {
+  if (!_astraDB) return;
+  return new Promise(function(resolve) {
+    try {
+      var tx = _astraDB.transaction('notifications', 'readonly');
+      var req = tx.objectStore('notifications').getAll();
+      req.onsuccess = function() {
+        _notifCache = (req.result || []).sort(function(a, b) {
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        }).slice(0, MAX_NOTIFICATIONS);
+        updateNotifBadge();
+        resolve();
+      };
+      req.onerror = function() { resolve(); };
+    } catch (e) { resolve(); }
+  });
+}
+
+function updateNotifBadge() {
+  var count = _notifCache.filter(function(n) { return !n.read; }).length;
+  var badge = document.getElementById('notif-badge');
+  if (badge) {
+    badge.textContent = count;
+    badge.style.display = count > 0 ? '' : 'none';
+  }
 }
 
 function loadMaterialLibrary() {
@@ -127,7 +288,7 @@ function _clearAllStores() {
 function _openAstraDB() {
   return new Promise((resolve, reject) => {
     if (_astraDB) { resolve(_astraDB); return; }
-    const req = indexedDB.open('astra_db', 4);
+    const req = indexedDB.open('astra_db', 5);
     req.onupgradeneeded = function(e) {
       const db = e.target.result;
       if (!db.objectStoreNames.contains('jobs')) db.createObjectStore('jobs', { keyPath: 'id' });
@@ -137,6 +298,8 @@ function _openAstraDB() {
       if (!db.objectStoreNames.contains('_syncMeta')) db.createObjectStore('_syncMeta', { keyPath: 'key' });
       // D15: Config store for material libraries + pricebook
       if (!db.objectStoreNames.contains('_config')) db.createObjectStore('_config', { keyPath: 'key' });
+      // Step 7D: Notification center — persistent in-app notifications
+      if (!db.objectStoreNames.contains('notifications')) db.createObjectStore('notifications', { keyPath: 'id' });
     };
     req.onsuccess = function(e) { _astraDB = e.target.result; resolve(_astraDB); };
     req.onerror = function() { reject(req.error); };
@@ -150,7 +313,9 @@ function _openAstraDB() {
 var _syncDirty = false;
 var _syncDebounceTimer = null;
 var _syncRetryTimer = null;
-var _syncRetryDelay = 5000; // 5s initial, doubles on each failure, caps at 60s
+var _syncRetryDelay = 5000; // 5s initial, doubles on each failure, caps at 5min
+var _syncRetryCount = 0;
+var _syncMaxRetries = 10;
 var _autoSyncEnabled = true; // can be disabled during bulk operations
 
 function _markDirty() {
@@ -176,7 +341,7 @@ function _clearDirty() {
 function _debouncedAutoSync() {
   if (!_autoSyncEnabled) return;
   if (_syncDebounceTimer) clearTimeout(_syncDebounceTimer);
-  _syncDebounceTimer = setTimeout(_runAutoSync, 3000); // 3s debounce
+  _syncDebounceTimer = setTimeout(_runAutoSync, 2000); // 2s debounce (Step 7G)
 }
 
 async function _runAutoSync() {
@@ -196,16 +361,27 @@ async function _runAutoSync() {
     await window.syncToCloud(function() {}); // silent — no status callback
     _clearDirty();
     _syncRetryDelay = 5000; // reset backoff on success
+    _syncRetryCount = 0;
     _updateSyncIndicator('synced');
     console.log('[ASTRA] Auto-sync complete');
   } catch (e) {
     // D9: Silent failure for background sync — console only, no toast
     console.warn('[ASTRA] Auto-sync failed:', e.message);
+    _syncRetryCount++;
+    if (_syncRetryCount >= _syncMaxRetries) {
+      // Step 7G: Give up after max retries — surface to user
+      _updateSyncIndicator('pending');
+      showToast('SYNC FAILED AFTER ' + _syncMaxRetries + ' ATTEMPTS — CHECK CONNECTION', 'error');
+      _syncRetryCount = 0;
+      _syncRetryDelay = 5000;
+      return;
+    }
     _updateSyncIndicator('pending');
-    // Exponential backoff retry
+    // Step 7G: Exponential backoff with jitter (prevents thundering herd)
+    var jitter = _syncRetryDelay * (0.5 + Math.random());
     if (_syncRetryTimer) clearTimeout(_syncRetryTimer);
-    _syncRetryTimer = setTimeout(_runAutoSync, _syncRetryDelay);
-    _syncRetryDelay = Math.min(_syncRetryDelay * 2, 60000); // cap at 60s
+    _syncRetryTimer = setTimeout(_runAutoSync, jitter);
+    _syncRetryDelay = Math.min(_syncRetryDelay * 2, 300000); // cap at 5min
   } finally {
     window._syncInProgress = false;
   }
@@ -366,9 +542,9 @@ function _idbReplaceAll(storeName, items) {
 function _cleanJobForStorage(j) {
   return {
     ...j,
-    photos: (j.photos || []).map(p => ({ id: p.id, name: p.name, type: p.type || 'image', addedAt: p.addedAt })),
-    drawings: (j.drawings || []).map(d => ({ id: d.id, name: d.name, type: d.type || 'image', addedAt: d.addedAt })),
-    videos: (j.videos || []).map(v => ({ id: v.id, name: v.name, type: 'video', mimeType: v.mimeType, addedAt: v.addedAt }))
+    photos: (j.photos || []).map(p => ({ id: p.id, name: p.name, type: p.type || 'image', addedAt: p.addedAt, synced: p.synced })),
+    drawings: (j.drawings || []).map(d => ({ id: d.id, name: d.name, type: d.type || 'image', addedAt: d.addedAt, synced: d.synced })),
+    videos: (j.videos || []).map(v => ({ id: v.id, name: v.name, type: 'video', mimeType: v.mimeType, addedAt: v.addedAt, synced: v.synced }))
   };
 }
 
@@ -681,6 +857,7 @@ initDataLayer()
           if (nav) nav.style.display = '';
           renderJobList();
           cleanOrphanedMedia();
+          _initNotifications(); // Step 7D: Load persisted notifications + badge
         }
         // If not authenticated, checkAuth() already showed login screen
       });
@@ -688,6 +865,7 @@ initDataLayer()
       // Auth module not loaded — proceed without auth (dev/testing)
       renderJobList();
       cleanOrphanedMedia();
+      _initNotifications(); // Step 7D
     }
   })
   .catch(e => console.error('Init failed:', e));
@@ -819,6 +997,7 @@ async function initScreen(screenId, jobId) {
   if (screenId === 'screen-materials' && window.renderMaterials) window.renderMaterials();
   if (screenId === 'screen-vector' && window.renderMap) window.renderMap();
   if (screenId === 'screen-settings') renderSettings();
+  if (screenId === 'screen-notifications') renderNotifications();
   if (screenId === 'screen-estimates' && window.renderEstimates) window.renderEstimates();
   if (screenId === 'screen-estimate-builder' && window.renderEstimateBuilder) window.renderEstimateBuilder(jobId);
   if (screenId === 'screen-pricebook' && window.renderPricebook) window.renderPricebook();
@@ -899,10 +1078,14 @@ function setHomeView(view) {
 }
 
 function renderJobList() {
+  updateApprovalBadge();
   // D11: Sort by date at render time — newest first, don't rely on array order
-  const allJobs = loadJobs().filter(j => !j.archived).sort(function(a, b) {
+  var allJobs = loadJobs().filter(j => !j.archived).sort(function(a, b) {
     return (b.date || '').localeCompare(a.date || '');
   });
+  if (_approvalFilter) {
+    allJobs = allJobs.filter(function(j) { return j.status === 'pending_approval'; });
+  }
   const el = document.getElementById('jobs-body');
   if (!el) return;
 
@@ -1220,7 +1403,7 @@ async function renderDetail(jobId) {
   if (!j.videos) j.videos = [];
 
   const currentUser = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
-  const isSupervisor = currentUser && currentUser.role === 'supervisor';
+  const isSupervisor = currentUser && (currentUser.role === 'supervisor' || currentUser.role === 'admin');
 
   // Phase C: Attempt lock acquisition
   var lockResult = { success: true };
@@ -1242,6 +1425,14 @@ async function renderDetail(jobId) {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const data = await getMediaBlob(item.id);
+      // Step 7A: Cloud placeholder — blob exists in cloud but not on this device
+      if (!data && item.synced === false) {
+        parts.push(`<div class="media-thumb" onclick="lazyDownloadMedia('${jobId}','${type}',${i})" style="display:flex;align-items:center;justify-content:center;background:#1a1a2e;cursor:pointer;">
+          <div style="text-align:center;"><div style="font-size:24px;color:#555;">&#9729;</div><div style="font-size:10px;color:#555;margin-top:4px;letter-spacing:1px;">TAP TO DOWNLOAD</div></div>
+          ${isLocked ? '' : `<button class="media-delete" onclick="event.stopPropagation();deleteMedia('${jobId}','${type}','${item.id}')">✕</button>`}
+        </div>`);
+        continue;
+      }
       const src = (data instanceof Blob) ? URL.createObjectURL(data) : (data || '');
       if (item.type === 'pdf') {
         parts.push(`<div class="media-thumb" onclick="openMedia('${jobId}','${type}',${i})" style="display:flex;align-items:center;justify-content:center;background:#2a2a2a;">
@@ -1282,8 +1473,20 @@ async function renderDetail(jobId) {
     </div>`;
   }
 
+  // Step 5D: Approval action bar
+  var approvalBar = '';
+  if (j.status === 'pending_approval' && isSupervisor && !isLocked) {
+    approvalBar = `<div class="approval-bar">
+      <div class="approval-bar-title">PENDING APPROVAL</div>
+      <button class="approval-btn approval-btn-approve" onclick="approveJob('${jobId}')">APPROVE</button>
+      <button class="approval-btn approval-btn-changes" onclick="requestChanges('${jobId}')">REQUEST CHANGES</button>
+      <button class="approval-btn approval-btn-reject" onclick="rejectJob('${jobId}')">REJECT</button>
+    </div>`;
+  }
+
   document.getElementById('detail-body').innerHTML = `
     ${lockBanner}
+    ${approvalBar}
     <div class="detail-header">
       <div class="detail-address">${esc(j.address)}</div>
       <div style="display:flex;gap:12px;margin-bottom:8px;">
@@ -1340,6 +1543,7 @@ async function renderDetail(jobId) {
     </div>
     ${isLocked ? '' : `<button class="upload-btn" onclick="openMatPicker('${jobId}')">ADD MATERIALS</button>`}
     <div id="mat-section-collapsible" style="display:none;">
+      <div id="dedup-banner-${jobId}">${isSupervisor && window.renderDedupBanner ? renderDedupBanner(jobId) : ''}</div>
       <div id="job-materials-list"></div>
     </div>
 
@@ -1558,16 +1762,64 @@ function findOrCreateAddress(addressText, components) {
   }
   ADDR_FIELDS.forEach(f => { if (!(f.key in newAddr)) newAddr[f.key] = ''; });
   addAddress(newAddr);
+
+  // Step 6A: Check for near-duplicate addresses (non-blocking)
+  if (window.findNearDupeAddresses) {
+    var dupes = findNearDupeAddresses(newAddr, addrs);
+    if (dupes.length > 0) {
+      var user = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+      var role = (user && user.role) || 'admin';
+      if (role === 'supervisor' || role === 'admin') {
+        // Show dedup resolution immediately
+        _showAddressDedupCard(newAddr, dupes[0].address, dupes[0].reason);
+      } else {
+        // Tech: flag for later supervisor review
+        updateAddress(newAddr.id, { needsDedup: true, potentialDupeOf: dupes[0].address.id });
+      }
+    }
+  }
+
   return newAddr.id;
+}
+
+function _showAddressDedupCard(newAddr, existingAddr, reason) {
+  var reasonText = reason === 'proximity' ? 'WITHIN 50 METERS' : 'SIMILAR ADDRESS TEXT';
+  showConfirmModal(
+    'POSSIBLE DUPLICATE',
+    'NEW: ' + newAddr.address + '\nEXISTING: ' + existingAddr.address + '\n(' + reasonText + ')',
+    'MERGE',
+    function() { _mergeAddresses(newAddr.id, existingAddr.id); },
+    { destructive: false }
+  );
+}
+
+function _mergeAddresses(dupeId, survivorId) {
+  // Update all jobs pointing to dupe to point to survivor
+  var jobs = loadJobs();
+  jobs.forEach(function(j) {
+    if (j.addressId === dupeId) {
+      var survivor = loadAddresses().find(function(a) { return a.id === survivorId; });
+      updateJob(j.id, { addressId: survivorId, address: survivor ? survivor.address : j.address });
+    }
+  });
+  // Soft-delete the duplicate
+  updateAddress(dupeId, { deletedAt: new Date().toISOString(), dupResolved: true });
+  showToast('ADDRESSES MERGED', 'success');
+}
+
+function keepAddressesSeparate(addrId) {
+  updateAddress(addrId, { dupResolved: true, needsDedup: false, potentialDupeOf: null });
+  showToast('KEPT SEPARATE');
 }
 
 // ═══════════════════════════════════════════
 // ARCHIVE / STATUS
 // ═══════════════════════════════════════════
 function archiveJob(id) {
-  if (!confirm('ARCHIVE THIS TICKET?')) return;
-  updateJob(id, { archived: true });
-  goTo('screen-jobs');
+  showConfirmModal('ARCHIVE TICKET', 'ARCHIVE THIS TICKET?', 'ARCHIVE', function() {
+    updateJob(id, { archived: true });
+    goTo('screen-jobs');
+  }, { destructive: true });
 }
 function unarchiveJob(id) {
   updateJob(id, { archived: false });
@@ -1575,6 +1827,23 @@ function unarchiveJob(id) {
 }
 
 function openStatusPicker() {
+  if (!currentJobId) return;
+  var job = getJob(currentJobId);
+  if (!job) return;
+  var user = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+  var role = (user && user.role) || 'admin';
+  var allowed = getAllowedTransitions(job.status, role);
+  if (!allowed.length) {
+    showInfoModal('STATUS LOCKED', role === 'tech' && job.status === 'pending_approval'
+      ? 'WAITING FOR SUPERVISOR APPROVAL.'
+      : 'NO STATUS CHANGES AVAILABLE.');
+    return;
+  }
+  var opts = document.getElementById('sp-options');
+  opts.innerHTML = allowed.map(function(s) {
+    var cls = 'badge-' + s.toLowerCase().replace(/\s+/g, '-');
+    return '<button class="status-option" onclick="pickStatus(\'' + s + '\')"><span class="badge ' + cls + '">' + s.toUpperCase() + '</span></button>';
+  }).join('');
   document.getElementById('sp-backdrop').classList.add('active');
   document.getElementById('sp-picker').classList.add('active');
 }
@@ -1583,11 +1852,115 @@ function closeStatusPicker() {
   document.getElementById('sp-picker').classList.remove('active');
 }
 function pickStatus(status) {
-  if (currentJobId) {
-    updateJob(currentJobId, { status });
-    renderDetail(currentJobId);
+  if (!currentJobId) { closeStatusPicker(); return; }
+  var job = getJob(currentJobId);
+  var user = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+  var role = (user && user.role) || 'admin';
+  var allowed = getAllowedTransitions(job ? job.status : '', role);
+  if (allowed.indexOf(status) === -1) {
+    showInfoModal('NOT ALLOWED', 'THIS STATUS CHANGE IS NOT PERMITTED.');
+    closeStatusPicker();
+    return;
   }
+  updateJob(currentJobId, { status });
+  renderDetail(currentJobId);
   closeStatusPicker();
+}
+
+// ═══════════════════════════════════════════
+// APPROVAL PIPELINE (Step 5D)
+// ═══════════════════════════════════════════
+var _approvalFilter = false;
+
+function updateApprovalBadge() {
+  var user = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+  var role = (user && user.role) || 'admin';
+  var isSuperOrAdmin = role === 'supervisor' || role === 'admin';
+  var count = isSuperOrAdmin
+    ? loadJobs().filter(function(j) { return j.status === 'pending_approval' && !j.archived; }).length
+    : 0;
+  var badge = document.getElementById('sidebar-approval-badge');
+  if (badge) {
+    badge.textContent = count;
+    badge.style.display = count > 0 ? '' : 'none';
+  }
+  // Show/hide the filter toggle on job list
+  var filterEl = document.getElementById('approval-filter');
+  if (filterEl) {
+    if (isSuperOrAdmin && count > 0) {
+      filterEl.style.display = '';
+      filterEl.innerHTML = '<div class="date-toggle" style="margin-bottom:8px;">' +
+        '<button class="date-toggle-btn' + (!_approvalFilter ? ' active' : '') + '" onclick="setApprovalFilter(false)">ALL TICKETS</button>' +
+        '<button class="date-toggle-btn' + (_approvalFilter ? ' active' : '') + '" onclick="setApprovalFilter(true)">PENDING (' + count + ')</button>' +
+        '</div>';
+    } else {
+      filterEl.style.display = 'none';
+      _approvalFilter = false;
+    }
+  }
+}
+
+function setApprovalFilter(on) {
+  _approvalFilter = on;
+  renderJobList();
+}
+
+function approveJob(jobId) {
+  updateJob(jobId, { status: 'Not Started' });
+  showToast('APPROVED', 'success');
+  renderDetail(jobId);
+  updateApprovalBadge();
+}
+
+function requestChanges(jobId) {
+  showToast('CHANGES REQUESTED');
+}
+
+function rejectJob(jobId) {
+  showConfirmModal('REJECT TICKET', 'REJECT AND ARCHIVE THIS TICKET?', 'REJECT', function() {
+    updateJob(jobId, { status: 'Not Started', archived: true });
+    showToast('REJECTED');
+    goTo('screen-jobs');
+    updateApprovalBadge();
+  }, { destructive: true });
+}
+
+// ═══════════════════════════════════════════
+// NOTIFICATIONS (Step 7D)
+// ═══════════════════════════════════════════
+function renderNotifications() {
+  var notifs = loadNotifications();
+  var el = document.getElementById('notif-list');
+  if (!el) return;
+  if (!notifs.length) {
+    el.innerHTML = '<div class="notif-empty">NO NOTIFICATIONS</div>';
+    return;
+  }
+  el.innerHTML = notifs.map(function(n) {
+    var readClass = n.read ? '' : ' unread';
+    var typeClass = ' type-' + (n.type || 'info');
+    var ago = _timeAgo(n.createdAt);
+    var onclick = n.jobId
+      ? 'markNotifRead(\'' + n.id + '\');goTo(\'screen-detail\',\'' + n.jobId + '\')'
+      : 'markNotifRead(\'' + n.id + '\');renderNotifications()';
+    return '<div class="notif-card' + readClass + typeClass + '" onclick="' + onclick + '">'
+      + '<div class="notif-card-title">' + esc(n.title) + '</div>'
+      + '<div class="notif-card-msg">' + esc(n.message) + '</div>'
+      + '<div class="notif-card-time">' + ago + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function _timeAgo(iso) {
+  var diff = Date.now() - new Date(iso).getTime();
+  var mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'JUST NOW';
+  if (mins < 60) return mins + 'M AGO';
+  var hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'H AGO';
+  var days = Math.floor(hrs / 24);
+  if (days < 7) return days + 'D AGO';
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase();
 }
 
 // ═══════════════════════════════════════════
@@ -1629,6 +2002,14 @@ function renderDashboard() {
   const createdThisWeek = allJobs.filter(j => new Date(j.createdAt) >= weekAgo).length;
   const updatedThisWeek = allJobs.filter(j => new Date(j.updatedAt) >= weekAgo).length;
 
+  // Step 7B: Admin dashboard additions
+  var dashUser = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+  var dashRole = (dashUser && dashUser.role) || 'admin';
+  var isAdminOrSuper = dashRole === 'admin' || dashRole === 'supervisor';
+  var pendingApproval = allJobs.filter(j => j.status === 'pending_approval' && !j.archived).length;
+  var techCount = loadTechs().length;
+  var needsDedup = loadAddresses().filter(a => a.needsDedup).length;
+
   document.getElementById('dashboard-body').innerHTML = `
     <div class="dash-grid">
       <div class="dash-stat"><div class="dash-stat-num stat-active">${active.length}</div><div class="dash-stat-label">ACTIVE</div></div>
@@ -1636,6 +2017,13 @@ function renderDashboard() {
       <div class="dash-stat"><div class="dash-stat-num stat-completion">${completionPct}%</div><div class="dash-stat-label">COMPLETION</div></div>
       <div class="dash-stat"><div class="dash-stat-num">${totalPhotos + totalDrawings + totalVideos}</div><div class="dash-stat-label">FILES</div></div>
     </div>
+    ${isAdminOrSuper ? `<div class="dash-card" style="margin-top:10px;border:1px solid #6a4c93;">
+      <div class="dash-card-title" style="color:#6a4c93;">SUPERVISOR</div>
+      <div class="dash-row"><div class="dash-row-label">PENDING APPROVAL</div><div class="dash-row-value" style="color:${pendingApproval > 0 ? '#FF6B00' : '#555'};">${pendingApproval}</div></div>
+      <div class="dash-row"><div class="dash-row-label">TECHS</div><div class="dash-row-value">${techCount}</div></div>
+      <div class="dash-row"><div class="dash-row-label">ADDRESS DUPES</div><div class="dash-row-value" style="color:${needsDedup > 0 ? '#c0392b' : '#555'};">${needsDedup}</div></div>
+      ${pendingApproval > 0 ? '<button class="btn btn-secondary" style="margin-top:8px;border-color:#6a4c93;color:#6a4c93;" onclick="setApprovalFilter(true);goTo(\'screen-jobs\')">VIEW PENDING</button>' : ''}
+    </div>` : ''}
     <div class="dash-card" style="margin-top:10px;">
       <div class="dash-card-title">STATUS BREAKDOWN</div>
       ${STATUSES.map(s => {
@@ -1743,7 +2131,7 @@ document.getElementById('photo-input').addEventListener('change', async function
     const id = crypto.randomUUID();
     const data = await compressImage(f, 1200, 0.7);
     await saveMediaBlob(id, data);
-    photos.push({ id, name: f.name, type: 'image', addedAt: new Date().toISOString() });
+    photos.push({ id, name: f.name, type: 'image', addedAt: new Date().toISOString(), synced: false });
   }
   updateJob(currentJobId, { photos });
   renderDetail(currentJobId);
@@ -1760,11 +2148,11 @@ document.getElementById('drawing-input').addEventListener('change', async functi
     const isPDF = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
     if (isPDF) {
       await saveMediaBlob(id, f.slice(0, f.size, f.type));
-      drawings.push({ id, name: f.name, type: 'pdf', mimeType: f.type, addedAt: new Date().toISOString() });
+      drawings.push({ id, name: f.name, type: 'pdf', mimeType: f.type, addedAt: new Date().toISOString(), synced: false });
     } else {
       const data = await compressImage(f, 1600, 0.8);
       await saveMediaBlob(id, data);
-      drawings.push({ id, name: f.name, type: 'image', addedAt: new Date().toISOString() });
+      drawings.push({ id, name: f.name, type: 'image', addedAt: new Date().toISOString(), synced: false });
     }
   }
   updateJob(currentJobId, { drawings });
@@ -1781,13 +2169,13 @@ document.getElementById('video-input').addEventListener('change', async function
   const videos = [...(j.videos || [])];
   for (const f of this.files) {
     if (f.size > VIDEO_MAX_BYTES) {
-      alert('VIDEO TOO LARGE: ' + f.name + ' (' + (f.size / (1024*1024)).toFixed(0) + ' MB). MAX 50 MB.');
+      showInfoModal('FILE TOO LARGE', f.name + ' (' + (f.size / (1024*1024)).toFixed(0) + ' MB). MAX 50 MB.');
       continue;
     }
     const id = crypto.randomUUID();
     const blob = f.slice(0, f.size, f.type);
     await saveMediaBlob(id, blob);
-    videos.push({ id, name: f.name, type: 'video', mimeType: f.type, addedAt: new Date().toISOString() });
+    videos.push({ id, name: f.name, type: 'video', mimeType: f.type, addedAt: new Date().toISOString(), synced: false });
   }
   updateJob(currentJobId, { videos });
   renderDetail(currentJobId);
@@ -1795,15 +2183,49 @@ document.getElementById('video-input').addEventListener('change', async function
 });
 
 async function deleteMedia(jobId, type, mediaId) {
-  if (!confirm('DELETE THIS FILE?')) return;
+  showConfirmModal('DELETE FILE', 'DELETE THIS FILE?', 'DELETE', async function() {
+    const j = getJob(jobId);
+    if (!j) return;
+    const item = (j[type] || []).find(m => m.id === mediaId);
+    if (item) {
+      await deleteMediaBlob(item.id);
+      // Step 7A: Queue cloud deletion for next push sync
+      var acct = (window.Astra.getAccountId && window.Astra.getAccountId()) || null;
+      if (acct) {
+        var pending = JSON.parse(localStorage.getItem('astra_pending_media_deletes') || '[]');
+        pending.push({ mediaId: item.id, accountId: acct });
+        localStorage.setItem('astra_pending_media_deletes', JSON.stringify(pending));
+      }
+    }
+    const updated = (j[type] || []).filter(m => m.id !== mediaId);
+    updateJob(jobId, { [type]: updated });
+    renderDetail(jobId);
+  }, { destructive: true });
+}
+
+// Step 7A: Lazy download from Supabase Storage — user tapped cloud placeholder
+async function lazyDownloadMedia(jobId, type, idx) {
   const j = getJob(jobId);
   if (!j) return;
-  const item = (j[type] || []).find(m => m.id === mediaId);
-  if (item) await deleteMediaBlob(item.id);
-  const updated = (j[type] || []).filter(m => m.id !== mediaId);
-  updateJob(jobId, { [type]: updated });
-  renderDetail(jobId);
+  const item = (j[type] || [])[idx];
+  if (!item) return;
+  var acctId = (window.Astra.getAccountId && window.Astra.getAccountId()) || null;
+  if (!acctId || !window.Astra.downloadMediaBlob) {
+    showToast('SYNC NOT CONFIGURED', 'error');
+    return;
+  }
+  showToast('DOWNLOADING...', 'info');
+  var blob = await window.Astra.downloadMediaBlob(acctId, item.id);
+  if (blob) {
+    await saveMediaBlob(item.id, blob);
+    item.synced = true;
+    updateJob(jobId, { [type]: j[type] });
+    renderDetail(jobId);
+  } else {
+    showToast('DOWNLOAD FAILED — TRY AGAIN', 'error');
+  }
 }
+window.lazyDownloadMedia = lazyDownloadMedia;
 
 // ═══════════════════════════════════════════
 // FULLSCREEN MEDIA VIEWER + PINCH-TO-ZOOM
@@ -1821,7 +2243,23 @@ async function openMedia(jobId, type, idx) {
   zoomScale = 1; zoomX = 0; zoomY = 0;
   document.getElementById('overlay-title').textContent = item.name.toUpperCase();
   const body = document.getElementById('overlay-body');
-  const data = await getMediaBlob(item.id);
+  var data = await getMediaBlob(item.id);
+  // Step 7A: Fallback — attempt lazy download if blob missing but exists in cloud
+  if (!data && item.synced === false) {
+    var acctId = (window.Astra.getAccountId && window.Astra.getAccountId()) || null;
+    if (acctId && window.Astra.downloadMediaBlob) {
+      data = await window.Astra.downloadMediaBlob(acctId, item.id);
+      if (data) {
+        await saveMediaBlob(item.id, data);
+        item.synced = true;
+        updateJob(jobId, { [type]: j[type] });
+      }
+    }
+    if (!data) {
+      showInfoModal('MEDIA NOT AVAILABLE', 'THIS FILE HAS NOT BEEN DOWNLOADED TO THIS DEVICE. CHECK YOUR CONNECTION AND TRY AGAIN.');
+      return;
+    }
+  }
   const mediaUrl = (data instanceof Blob) ? URL.createObjectURL(data) : (data || '');
   if (item.type === 'pdf') {
     window.open(mediaUrl, '_blank');
@@ -1924,6 +2362,9 @@ async function renderSettings() {
     }
   }
 
+  // Step 7E: Update 2FA status in security section
+  if (window.Astra.updateMfaStatus) window.Astra.updateMfaStatus();
+
   const jobs = loadJobs();
   const active = jobs.filter(j => !j.archived).length;
   const archived = jobs.filter(j => j.archived).length;
@@ -1962,6 +2403,23 @@ async function renderSettings() {
   var warningHtml = '';
   if (parseFloat(usedMB) > 50) {
     warningHtml = '<div class="dash-row" style="margin-top:8px;"><div class="dash-row-label" style="color:#c0392b;">⚠ STORAGE HIGH</div><div class="dash-row-value" style="color:#c0392b;">ARCHIVE OLD MEDIA</div></div>';
+  }
+
+  // Step 7C: Show dev settings for admin only
+  var devEl = document.getElementById('dev-settings');
+  if (devEl) {
+    var devUser = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+    var isAdmin = devUser && devUser.role === 'admin';
+    devEl.style.display = isAdmin ? '' : 'none';
+    if (isAdmin) {
+      var lastSync = localStorage.getItem('astra_last_sync') || 'NEVER';
+      var debugOn = localStorage.getItem('astra_debug') === 'true';
+      document.getElementById('dev-sync-info').innerHTML =
+        '<div class="dash-row"><div class="dash-row-label">LAST SYNC</div><div class="dash-row-value" style="font-size:11px;">' + esc(lastSync) + '</div></div>' +
+        '<div class="dash-row"><div class="dash-row-label">SYNC STATE</div><div class="dash-row-value">' + (window._syncInProgress ? 'IN PROGRESS' : 'IDLE') + '</div></div>' +
+        '<div class="dash-row"><div class="dash-row-label">RETRY COUNT</div><div class="dash-row-value">' + _syncRetryCount + '/' + _syncMaxRetries + '</div></div>' +
+        '<div class="dash-row"><div class="dash-row-label">DEBUG LOGS</div><div class="dash-row-value" style="color:' + (debugOn ? '#2d8a4e' : '#555') + ';">' + (debugOn ? 'ON' : 'OFF') + '</div></div>';
+    }
   }
 
   document.getElementById('storage-info').innerHTML = `
@@ -2010,6 +2468,39 @@ async function hardReload() {
   location.reload(true);
 }
 
+// Step 7C: Developer settings actions
+function devClearCache() {
+  showConfirmModal('CLEAR CACHE', 'CLEAR ALL CACHED DATA? APP WILL RELOAD.', 'CLEAR', async function() {
+    if (window.Astra._clearCache) window.Astra._clearCache();
+    await hardReload();
+  }, { destructive: true });
+}
+
+async function devForceSync() {
+  if (window._syncInProgress) { showToast('SYNC ALREADY IN PROGRESS', 'error'); return; }
+  _syncRetryCount = 0;
+  _syncRetryDelay = 5000;
+  _syncDirty = true;
+  _runAutoSync();
+  showToast('FORCE SYNC TRIGGERED');
+}
+
+function devToggleDebug() {
+  var current = localStorage.getItem('astra_debug') === 'true';
+  localStorage.setItem('astra_debug', current ? 'false' : 'true');
+  showToast('DEBUG LOGS ' + (current ? 'OFF' : 'ON'));
+  renderSettings();
+}
+
+function devClearAllData() {
+  showConfirmModal('WIPE ALL DATA', 'DELETE ALL LOCAL JOBS, ADDRESSES, AND MEDIA? THIS CANNOT BE UNDONE.', 'WIPE', async function() {
+    if (window.Astra._clearAllStores) await window.Astra._clearAllStores();
+    await clearAllMediaBlobs();
+    showToast('ALL DATA WIPED');
+    await hardReload();
+  }, { destructive: true });
+}
+
 async function exportData() {
   const mediaBlobs = await getAllMediaBlobs();
   const data = {
@@ -2033,47 +2524,143 @@ async function exportData() {
   URL.revokeObjectURL(url);
 }
 
+// ═══════════════════════════════════════════
+// Step 7F: Historical job import
+// Transforms seed data JSON into ASTRA jobs (archived/Complete)
+// to feed the prediction engine with real cost history.
+// ═══════════════════════════════════════════
+function _parseVariantFromName(name) {
+  // "SP AFCI Breaker 20A — SQD QO" → { cleanName: "SP AFCI Breaker 20A", variant: "SQD QO" }
+  // "DP Breaker 50A Standard (SQD QO)" → { cleanName: "DP Breaker 50A Standard", variant: "SQD QO" }
+  if (!name) return { cleanName: name, variant: null };
+  var dashMatch = name.match(/^(.+?)\s*[—–-]\s*(.+)$/);
+  if (dashMatch) return { cleanName: dashMatch[1].trim(), variant: dashMatch[2].trim() };
+  var parenMatch = name.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+  if (parenMatch) return { cleanName: parenMatch[1].trim(), variant: parenMatch[2].trim() };
+  return { cleanName: name, variant: null };
+}
+
+function _transformSeedJob(seedJob) {
+  var parsed = (seedJob.materials_used || []).map(function(m) {
+    var v = _parseVariantFromName(m.name);
+    return {
+      materialId: crypto.randomUUID(),
+      itemId: m.item_id || '',
+      name: v.cleanName,
+      qty: m.qty || 1,
+      unit: m.unit || 'EA',
+      variant: v.variant || undefined,
+      unitPrice: m.unit_price || undefined,
+      lineTotal: m.line_total || undefined
+    };
+  });
+
+  return {
+    id: crypto.randomUUID(),
+    syncId: crypto.randomUUID(),
+    address: seedJob.address || '',
+    types: [seedJob.job_type_label || seedJob.job_type || 'GENERAL'],
+    status: 'Complete',
+    date: seedJob.date_completed || todayStr(),
+    notes: (seedJob.notes || '') +
+      (seedJob.customer ? '\nCUSTOMER: ' + seedJob.customer : '') +
+      (seedJob.labor_hours ? '\nLABOR: ' + seedJob.labor_hours + 'HRS @ $' + (seedJob.labor_rate || 95) + '/HR' : '') +
+      (seedJob.job_total ? '\nTOTAL: $' + seedJob.job_total.toFixed(2) : ''),
+    techNotes: '',
+    techName: seedJob.tech || '',
+    materials: parsed,
+    photos: [], drawings: [], videos: [],
+    archived: true,
+    seedImport: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function importHistoricalJobs(input) {
+  if (!input.files.length) return;
+  var reader = new FileReader();
+  reader.onload = function() {
+    try {
+      var data = JSON.parse(reader.result);
+      var jobs = data.jobs;
+      if (!jobs || !Array.isArray(jobs) || !jobs.length) {
+        showInfoModal('INVALID FILE', 'NO JOBS ARRAY FOUND IN FILE.');
+        return;
+      }
+
+      // Show preview
+      var types = {};
+      jobs.forEach(function(j) { types[j.job_type_label || j.job_type] = (types[j.job_type_label || j.job_type] || 0) + 1; });
+      var typeList = Object.entries(types).map(function(e) { return e[0] + ': ' + e[1]; }).join(', ');
+
+      showConfirmModal(
+        'IMPORT ' + jobs.length + ' JOBS',
+        jobs.length + ' HISTORICAL JOBS\n' + typeList + '\n\nIMPORTED AS ARCHIVED/COMPLETE TO FEED THE PREDICTION ENGINE.',
+        'IMPORT',
+        function() {
+          var imported = 0;
+          for (var i = 0; i < jobs.length; i++) {
+            var astraJob = _transformSeedJob(jobs[i]);
+            // Create address record
+            if (astraJob.address) {
+              astraJob.addressId = findOrCreateAddress(astraJob.address);
+            }
+            addJob(astraJob);
+            imported++;
+          }
+          showInfoModal('IMPORT COMPLETE', imported + ' JOBS IMPORTED AS ARCHIVED HISTORY.');
+          renderSettings();
+        }
+      );
+    } catch (e) {
+      showInfoModal('IMPORT FAILED', e.message);
+    }
+    input.value = '';
+  };
+  reader.readAsText(input.files[0]);
+}
+
 async function importData(input) {
   if (!input.files.length) return;
   const reader = new FileReader();
   reader.onload = async function() {
     try {
       const data = JSON.parse(reader.result);
-      if (!data.jobs || !Array.isArray(data.jobs)) { alert('INVALID BACKUP: NO JOBS ARRAY.'); return; }
-      // Validate each job has minimum required fields
+      if (!data.jobs || !Array.isArray(data.jobs)) { showInfoModal('INVALID BACKUP', 'NO JOBS ARRAY.'); return; }
       const invalid = data.jobs.filter(j => !j.id || !j.address);
-      if (invalid.length > 0) { alert('INVALID BACKUP: ' + invalid.length + ' JOBS MISSING ID OR ADDRESS.'); return; }
-      if (data.techs && !Array.isArray(data.techs)) { alert('INVALID BACKUP: TECHS NOT AN ARRAY.'); return; }
-      if (data.addresses && !Array.isArray(data.addresses)) { alert('INVALID BACKUP: ADDRESSES NOT AN ARRAY.'); return; }
-      if (!confirm('REPLACE ALL DATA WITH BACKUP? (' + data.jobs.length + ' TICKETS)')) return;
-      // Ensure all jobs have required fields with defaults
-      data.jobs.forEach(j => {
-        if (!j.photos) j.photos = [];
-        if (!j.drawings) j.drawings = [];
-        if (!j.videos) j.videos = [];
-        if (!j.status) j.status = 'Not Started';
-        if (!j.types) j.types = ['GENERAL'];
-        if (!j.date) j.date = j.createdAt ? j.createdAt.split('T')[0] : todayStr();
-        if (j.techNotes === undefined) j.techNotes = '';
-        if (j.manually_added_to_vector === undefined) j.manually_added_to_vector = false;
-      });
-      replaceAllJobs(data.jobs);
-      if (data.techs) replaceAllTechs(data.techs);
-      if (data.addresses) replaceAllAddresses(data.addresses);
-      if (data.materialLibrary) localStorage.setItem(MAT_LIB_KEY, JSON.stringify(data.materialLibrary));
-      if (data.materialLibraryTrim) localStorage.setItem(MAT_LIB_TRIM_KEY, JSON.stringify(data.materialLibraryTrim));
-      if (data.navFrequency) localStorage.setItem(NAV_FREQ_KEY, JSON.stringify(data.navFrequency));
-      if (data.homeBase) saveHomeBase(data.homeBase);
-      if (data.gmapsKey) saveGmapsKey(data.gmapsKey);
-      if (data.media && Array.isArray(data.media)) {
-        await clearAllMediaBlobs();
-        for (const blob of data.media) {
-          if (blob && blob.id && blob.data) await saveMediaBlob(blob.id, blob.data);
+      if (invalid.length > 0) { showInfoModal('INVALID BACKUP', invalid.length + ' JOBS MISSING ID OR ADDRESS.'); return; }
+      if (data.techs && !Array.isArray(data.techs)) { showInfoModal('INVALID BACKUP', 'TECHS NOT AN ARRAY.'); return; }
+      if (data.addresses && !Array.isArray(data.addresses)) { showInfoModal('INVALID BACKUP', 'ADDRESSES NOT AN ARRAY.'); return; }
+      showConfirmModal('RESTORE BACKUP', 'REPLACE ALL DATA WITH BACKUP? (' + data.jobs.length + ' TICKETS)', 'REPLACE', async function() {
+        data.jobs.forEach(j => {
+          if (!j.photos) j.photos = [];
+          if (!j.drawings) j.drawings = [];
+          if (!j.videos) j.videos = [];
+          if (!j.status) j.status = 'Not Started';
+          if (!j.types) j.types = ['GENERAL'];
+          if (!j.date) j.date = j.createdAt ? j.createdAt.split('T')[0] : todayStr();
+          if (j.techNotes === undefined) j.techNotes = '';
+          if (j.manually_added_to_vector === undefined) j.manually_added_to_vector = false;
+        });
+        replaceAllJobs(data.jobs);
+        if (data.techs) replaceAllTechs(data.techs);
+        if (data.addresses) replaceAllAddresses(data.addresses);
+        if (data.materialLibrary) localStorage.setItem(MAT_LIB_KEY, JSON.stringify(data.materialLibrary));
+        if (data.materialLibraryTrim) localStorage.setItem(MAT_LIB_TRIM_KEY, JSON.stringify(data.materialLibraryTrim));
+        if (data.navFrequency) localStorage.setItem(NAV_FREQ_KEY, JSON.stringify(data.navFrequency));
+        if (data.homeBase) saveHomeBase(data.homeBase);
+        if (data.gmapsKey) saveGmapsKey(data.gmapsKey);
+        if (data.media && Array.isArray(data.media)) {
+          await clearAllMediaBlobs();
+          for (const blob of data.media) {
+            if (blob && blob.id && blob.data) await saveMediaBlob(blob.id, blob.data);
+          }
         }
-      }
-      renderSettings();
-      alert(data.jobs.length + ' TICKETS RESTORED.');
-    } catch (e) { alert('IMPORT FAILED: ' + e.message); }
+        renderSettings();
+        showInfoModal('BACKUP RESTORED', data.jobs.length + ' TICKETS RESTORED.');
+      }, { destructive: true });
+    } catch (e) { showInfoModal('IMPORT FAILED', e.message); }
     input.value = '';
   };
   reader.readAsText(input.files[0]);
@@ -2130,15 +2717,15 @@ async function runSyncPull() {
     showToast('ADD SUPABASE URL AND KEY IN SETTINGS', 'error'); return;
   }
   if (window._syncInProgress) { showToast('SYNC ALREADY IN PROGRESS — WAIT', 'error'); return; }
-  if (!confirm('PULL DATA FROM CLOUD? THIS WILL UPDATE LOCAL TICKETS WITH CLOUD CHANGES.')) return;
-  window._syncInProgress = true;
-  _autoSyncEnabled = false;
-  const btn = document.getElementById('sync-pull-btn');
-  const pushBtn = document.getElementById('sync-push-btn');
-  btn.disabled = true; btn.textContent = 'PULLING...';
-  if (pushBtn) pushBtn.disabled = true;
-  _syncStatus('STARTING...');
-  _updateSyncIndicator('syncing');
+  showConfirmModal('CLOUD PULL', 'PULL DATA FROM CLOUD? THIS WILL UPDATE LOCAL TICKETS WITH CLOUD CHANGES.', 'PULL', async function() {
+    window._syncInProgress = true;
+    _autoSyncEnabled = false;
+    const btn = document.getElementById('sync-pull-btn');
+    const pushBtn = document.getElementById('sync-push-btn');
+    btn.disabled = true; btn.textContent = 'PULLING...';
+    if (pushBtn) pushBtn.disabled = true;
+    _syncStatus('STARTING...');
+    _updateSyncIndicator('syncing');
   try {
     const result = await window.syncFromCloud((step, total, msg) => _syncStatus(msg));
     _syncStatus(null);
@@ -2163,6 +2750,7 @@ async function runSyncPull() {
     _autoSyncEnabled = true;
     if (pushBtn) pushBtn.disabled = false;
   }
+  });
 }
 
 // ═══════════════════════════════════════════
@@ -2306,6 +2894,8 @@ Object.assign(window.Astra, {
   _idbConfigGet, _idbConfigPut, _clearCache, _clearAllStores, initDataLayer,
   // Step 5: Soft delete removal
   removeLocalJob, removeLocalAddress, removeLocalEstimate,
+  // Step 7D: Notification center
+  addNotification, loadNotifications, markNotifRead, markAllNotifsRead, updateNotifBadge,
 });
 
 // ── Public API — expose only what HTML handlers need ──
@@ -2333,6 +2923,19 @@ Object.assign(window, {
   completeOnboarding,
   // Settings
   saveGmapsKey, saveHomeBase, hardReload, _applyUpdate,
+  // D16: Custom modals + state machine + approval
+  showConfirmModal, showInfoModal, _closeModal, _modalConfirm,
+  getAllowedTransitions, setApprovalFilter,
+  approveJob, requestChanges, rejectJob, updateApprovalBadge,
+  // Step 6A: Address dedup
+  keepAddressesSeparate,
+  // Step 7C: Dev settings
+  devClearCache, devForceSync, devToggleDebug, devClearAllData,
+  // Step 7F: Historical import
+  importHistoricalJobs,
+  // Step 7D: Notification center
+  renderNotifications, markNotifRead, markAllNotifsRead, clearNotifications, updateNotifBadge,
+  lazyDownloadMedia,
 });
 
 // ── Test API (diagnostics.html only) ──

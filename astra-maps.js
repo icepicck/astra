@@ -305,6 +305,65 @@ renderMap = async function() {
 };
 
 // ── Public API ──
-Object.assign(window, { loadGmaps, renderMap, optimizeRoute, reroute, clearRoute });
+// ═══════════════════════════════════════════
+// Step 6A: Address dedup utilities
+// ═══════════════════════════════════════════
+function haversineDistance(lat1, lng1, lat2, lng2) {
+  var R = 6371000; // Earth radius in meters
+  var dLat = (lat2 - lat1) * Math.PI / 180;
+  var dLng = (lng2 - lng1) * Math.PI / 180;
+  var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+var STREET_SUFFIXES = {
+  'st': 'street', 'str': 'street', 'ave': 'avenue', 'av': 'avenue',
+  'dr': 'drive', 'blvd': 'boulevard', 'ln': 'lane', 'ct': 'court',
+  'rd': 'road', 'pl': 'place', 'cir': 'circle', 'pkwy': 'parkway',
+  'hwy': 'highway', 'trl': 'trail', 'way': 'way'
+};
+var DIRECTIONALS = {
+  'n': 'north', 's': 'south', 'e': 'east', 'w': 'west',
+  'ne': 'northeast', 'nw': 'northwest', 'se': 'southeast', 'sw': 'southwest'
+};
+
+function normalizeAddress(str) {
+  if (!str) return '';
+  var s = str.toLowerCase().replace(/[.,#]/g, '').replace(/\s+/g, ' ').trim();
+  var words = s.split(' ');
+  words = words.map(function(w) {
+    if (STREET_SUFFIXES[w]) return STREET_SUFFIXES[w];
+    if (DIRECTIONALS[w]) return DIRECTIONALS[w];
+    return w;
+  });
+  return words.join(' ');
+}
+
+function findNearDupeAddresses(newAddr, allAddresses, thresholdMeters) {
+  thresholdMeters = thresholdMeters || 50;
+  var dupes = [];
+  var normNew = normalizeAddress(newAddr.address);
+  for (var i = 0; i < allAddresses.length; i++) {
+    var existing = allAddresses[i];
+    if (existing.id === newAddr.id) continue;
+    if (existing.dupResolved) continue;
+    // Check geocode proximity
+    if (newAddr.lat && newAddr.lng && existing.lat && existing.lng) {
+      var dist = haversineDistance(newAddr.lat, newAddr.lng, existing.lat, existing.lng);
+      if (dist < thresholdMeters) { dupes.push({ address: existing, reason: 'proximity', distance: Math.round(dist) }); continue; }
+    }
+    // Check normalized string similarity
+    var normExisting = normalizeAddress(existing.address);
+    if (normNew === normExisting && normNew.length > 0) {
+      dupes.push({ address: existing, reason: 'normalized_match' });
+    }
+  }
+  return dupes;
+}
+
+Object.assign(window, { loadGmaps, renderMap, optimizeRoute, reroute, clearRoute,
+  haversineDistance, normalizeAddress, findNearDupeAddresses });
 
 })();

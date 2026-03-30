@@ -43,8 +43,8 @@
       "materials": [
         { "itemId": "ROMEX-12-2", "name": "12/2 Romex NM-B", "avgQty": 35, "unit": "FT" },
         { "itemId": "BOX-1G-NW", "name": "1-Gang New Work Box", "avgQty": 1, "unit": "EA" },
-        { "itemId": "REC-TR-20A", "name": "20A TR Receptacle", "avgQty": 1, "unit": "EA" },
-        { "itemId": "PLT-1G", "name": "1-Gang Wall Plate", "avgQty": 1, "unit": "EA" },
+        { "itemId": "REC-TR-20A", "name": "20A TR Receptacle", "avgQty": 1, "unit": "EA", "variant": "Decora" },
+        { "itemId": "PLT-1G", "name": "1-Gang Wall Plate", "avgQty": 1, "unit": "EA", "variant": "Decora" },
         { "itemId": "CONN-3/8-NM", "name": "3/8\" NM Connector", "avgQty": 1, "unit": "EA" },
         { "itemId": "STAPLE-12", "name": "Romex Staple", "avgQty": 6, "unit": "EA" },
         { "itemId": "BRK-20A-1P", "name": "20A Single Pole Breaker", "avgQty": 1, "unit": "EA" }
@@ -57,8 +57,8 @@
         { "itemId": "ROMEX-14-2", "name": "14/2 Romex NM-B", "avgQty": 30, "unit": "FT" },
         { "itemId": "ROMEX-14-3", "name": "14/3 Romex NM-B", "avgQty": 15, "unit": "FT" },
         { "itemId": "BOX-1G-NW", "name": "1-Gang New Work Box", "avgQty": 1, "unit": "EA" },
-        { "itemId": "SW-SP-15A", "name": "15A Single Pole Switch", "avgQty": 1, "unit": "EA" },
-        { "itemId": "PLT-1G", "name": "1-Gang Wall Plate", "avgQty": 1, "unit": "EA" },
+        { "itemId": "SW-SP-15A", "name": "15A Single Pole Switch", "avgQty": 1, "unit": "EA", "variant": "Decora" },
+        { "itemId": "PLT-1G", "name": "1-Gang Wall Plate", "avgQty": 1, "unit": "EA", "variant": "Decora" },
         { "itemId": "CONN-3/8-NM", "name": "3/8\" NM Connector", "avgQty": 1, "unit": "EA" },
         { "itemId": "STAPLE-14", "name": "Romex Staple", "avgQty": 5, "unit": "EA" }
       ]
@@ -69,8 +69,8 @@
       "materials": [
         { "itemId": "ROMEX-14-3", "name": "14/3 Romex NM-B", "avgQty": 25, "unit": "FT" },
         { "itemId": "BOX-FAN", "name": "Fan-Rated Ceiling Box", "avgQty": 1, "unit": "EA" },
-        { "itemId": "SW-FAN", "name": "Fan/Light Switch Combo", "avgQty": 1, "unit": "EA" },
-        { "itemId": "PLT-1G", "name": "1-Gang Wall Plate", "avgQty": 1, "unit": "EA" },
+        { "itemId": "SW-FAN", "name": "Fan/Light Switch Combo", "avgQty": 1, "unit": "EA", "variant": "Decora" },
+        { "itemId": "PLT-1G", "name": "1-Gang Wall Plate", "avgQty": 1, "unit": "EA", "variant": "Decora" },
         { "itemId": "CONN-3/8-NM", "name": "3/8\" NM Connector", "avgQty": 2, "unit": "EA" },
         { "itemId": "STAPLE-14", "name": "Romex Staple", "avgQty": 4, "unit": "EA" }
       ]
@@ -81,8 +81,8 @@
       "materials": [
         { "itemId": "ROMEX-12-2", "name": "12/2 Romex NM-B", "avgQty": 25, "unit": "FT" },
         { "itemId": "BOX-1G-NW", "name": "1-Gang New Work Box", "avgQty": 1, "unit": "EA" },
-        { "itemId": "GFCI-20A", "name": "20A GFCI Receptacle", "avgQty": 1, "unit": "EA" },
-        { "itemId": "PLT-1G-GFCI", "name": "GFCI Wall Plate", "avgQty": 1, "unit": "EA" },
+        { "itemId": "GFCI-20A", "name": "20A GFCI Receptacle", "avgQty": 1, "unit": "EA", "variant": "Decora" },
+        { "itemId": "PLT-1G-GFCI", "name": "GFCI Wall Plate", "avgQty": 1, "unit": "EA", "variant": "Decora" },
         { "itemId": "CONN-3/8-NM", "name": "3/8\" NM Connector", "avgQty": 1, "unit": "EA" },
         { "itemId": "BRK-20A-1P", "name": "20A Single Pole Breaker", "avgQty": 1, "unit": "EA" }
       ]
@@ -93,8 +93,8 @@
       "materials": [
         { "itemId": "ROMEX-10-2", "name": "10/2 Romex NM-B", "avgQty": 45, "unit": "FT" },
         { "itemId": "BOX-1G-NW", "name": "1-Gang New Work Box", "avgQty": 1, "unit": "EA" },
-        { "itemId": "REC-30A", "name": "30A Dryer/Range Receptacle", "avgQty": 1, "unit": "EA" },
-        { "itemId": "PLT-1G-30A", "name": "30A Receptacle Plate", "avgQty": 1, "unit": "EA" },
+        { "itemId": "REC-30A", "name": "30A Dryer/Range Receptacle", "avgQty": 1, "unit": "EA", "variant": "Flush" },
+        { "itemId": "PLT-1G-30A", "name": "30A Receptacle Plate", "avgQty": 1, "unit": "EA", "variant": "Flush" },
         { "itemId": "BRK-30A-2P", "name": "30A Double Pole Breaker", "avgQty": 1, "unit": "EA" },
         { "itemId": "CONN-3/8-NM", "name": "3/8\" NM Connector", "avgQty": 2, "unit": "EA" },
         { "itemId": "STAPLE-10", "name": "Romex Staple", "avgQty": 8, "unit": "EA" }
