@@ -138,63 +138,61 @@ async function renderMap() {
   document.getElementById('map-reroute-btn').style.display = 'none';
 }
 
+// ── Shared route engine — used by optimizeRoute and reroute ──
+async function _runRoute(origin, destination) {
+  const btn = document.getElementById('map-optimize-btn');
+  const waypoints = gMapJobs.map(d => ({ location: d.coords, stopover: true }));
+
+  const result = await new Promise((resolve, reject) => {
+    new google.maps.DirectionsService().route({
+      origin, destination, waypoints, optimizeWaypoints: true,
+      travelMode: google.maps.TravelMode.DRIVING
+    }, (r, s) => s === 'OK' ? resolve(r) : reject('ROUTE FAILED: ' + s));
+  });
+
+  if (gDirectionsRenderer) gDirectionsRenderer.setMap(null);
+  gDirectionsRenderer = new google.maps.DirectionsRenderer({
+    map: gMap, directions: result, suppressMarkers: true,
+    polylineOptions: { strokeColor: '#FF6B00', strokeWeight: 4, strokeOpacity: 0.8 }
+  });
+
+  const order = result.routes[0].waypoint_order;
+  gMarkers.forEach(m => m.setMap(null));
+  order.forEach((jobIdx, routePos) => {
+    const d = gMapJobs[jobIdx];
+    gMarkers[jobIdx] = new google.maps.Marker({
+      position: d.coords, map: gMap,
+      label: { text: String(routePos + 1), color: '#fff', fontWeight: '800', fontSize: '13px' },
+      icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: '#FF6B00', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 16 }
+    });
+  });
+
+  let totalDist = 0, totalTime = 0;
+  result.routes[0].legs.forEach(leg => { totalDist += leg.distance.value; totalTime += leg.duration.value; });
+  btn.textContent = Math.round(totalTime / 60) + ' MIN · ' + (totalDist / 1609.34).toFixed(1) + ' MI';
+  btn.disabled = false;
+  document.getElementById('map-clear-btn').style.display = '';
+  document.getElementById('map-reroute-btn').style.display = '';
+}
+
+async function _getHomeOrFallbackEndpoints() {
+  const homeBase = A.getHomeBase();
+  if (homeBase) {
+    try {
+      const homeCoords = await gmapGeocode(homeBase);
+      return { origin: homeCoords, destination: homeCoords };
+    } catch (e) { /* fall through */ }
+  }
+  return { origin: gMapJobs[0].coords, destination: gMapJobs[gMapJobs.length - 1].coords };
+}
+
 async function optimizeRoute() {
   if (gMapJobs.length < 2) return;
   const btn = document.getElementById('map-optimize-btn');
   btn.textContent = 'OPTIMIZING...'; btn.disabled = true;
-
   try {
-    const homeBase = A.getHomeBase();
-    let origin, destination;
-
-    if (homeBase) {
-      try {
-        const homeCoords = await gmapGeocode(homeBase);
-        origin = homeCoords;
-        destination = homeCoords; // round trip
-      } catch (e) {
-        origin = gMapJobs[0].coords;
-        destination = gMapJobs[gMapJobs.length - 1].coords;
-      }
-    } else {
-      origin = gMapJobs[0].coords;
-      destination = gMapJobs[gMapJobs.length - 1].coords;
-    }
-
-    const waypoints = gMapJobs.map(d => ({ location: d.coords, stopover: true }));
-
-    const result = await new Promise((resolve, reject) => {
-      new google.maps.DirectionsService().route({
-        origin, destination, waypoints, optimizeWaypoints: true,
-        travelMode: google.maps.TravelMode.DRIVING
-      }, (r, s) => s === 'OK' ? resolve(r) : reject('ROUTE FAILED: ' + s));
-    });
-
-    if (gDirectionsRenderer) gDirectionsRenderer.setMap(null);
-    gDirectionsRenderer = new google.maps.DirectionsRenderer({
-      map: gMap, directions: result, suppressMarkers: true,
-      polylineOptions: { strokeColor: '#FF6B00', strokeWeight: 4, strokeOpacity: 0.8 }
-    });
-
-    const order = result.routes[0].waypoint_order;
-    gMarkers.forEach(m => m.setMap(null));
-    order.forEach((jobIdx, routePos) => {
-      const d = gMapJobs[jobIdx];
-      const marker = new google.maps.Marker({
-        position: d.coords, map: gMap,
-        label: { text: String(routePos + 1), color: '#fff', fontWeight: '800', fontSize: '13px' },
-        icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: '#FF6B00', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 16 }
-      });
-      gMarkers[jobIdx] = marker;
-    });
-
-    let totalDist = 0, totalTime = 0;
-    result.routes[0].legs.forEach(leg => { totalDist += leg.distance.value; totalTime += leg.duration.value; });
-    btn.textContent = Math.round(totalTime / 60) + ' MIN · ' + (totalDist / 1609.34).toFixed(1) + ' MI';
-    btn.disabled = false;
-    document.getElementById('map-clear-btn').style.display = '';
-    document.getElementById('map-reroute-btn').style.display = '';
-
+    const ep = await _getHomeOrFallbackEndpoints();
+    await _runRoute(ep.origin, ep.destination);
   } catch (e) {
     console.error('Route failed:', e);
     btn.textContent = 'FAILED — RETRY'; btn.disabled = false;
@@ -206,47 +204,17 @@ function reroute() {
   setMapStatus('GETTING GPS...');
   navigator.geolocation.getCurrentPosition(async pos => {
     const origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-    // Re-optimize from current location, route back to shop
     if (gMapJobs.length < 1) return;
     const btn = document.getElementById('map-optimize-btn');
     btn.textContent = 'REROUTING...'; btn.disabled = true;
-
     try {
+      let destination = origin;
       const homeBase = A.getHomeBase();
-      let destination = origin; // fallback if no shop set
       if (homeBase) {
         try { destination = await gmapGeocode(homeBase); }
         catch (e) { console.warn('Home base geocode failed, using current location:', e); }
       }
-      const waypoints = gMapJobs.map(d => ({ location: d.coords, stopover: true }));
-      const result = await new Promise((resolve, reject) => {
-        new google.maps.DirectionsService().route({
-          origin, destination, waypoints, optimizeWaypoints: true,
-          travelMode: google.maps.TravelMode.DRIVING
-        }, (r, s) => s === 'OK' ? resolve(r) : reject('REROUTE FAILED: ' + s));
-      });
-
-      if (gDirectionsRenderer) gDirectionsRenderer.setMap(null);
-      gDirectionsRenderer = new google.maps.DirectionsRenderer({
-        map: gMap, directions: result, suppressMarkers: true,
-        polylineOptions: { strokeColor: '#FF6B00', strokeWeight: 4, strokeOpacity: 0.8 }
-      });
-
-      const order = result.routes[0].waypoint_order;
-      gMarkers.forEach(m => m.setMap(null));
-      order.forEach((jobIdx, routePos) => {
-        const d = gMapJobs[jobIdx];
-        gMarkers[jobIdx] = new google.maps.Marker({
-          position: d.coords, map: gMap,
-          label: { text: String(routePos + 1), color: '#fff', fontWeight: '800', fontSize: '13px' },
-          icon: { path: google.maps.SymbolPath.CIRCLE, fillColor: '#FF6B00', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2, scale: 16 }
-        });
-      });
-
-      let totalDist = 0, totalTime = 0;
-      result.routes[0].legs.forEach(leg => { totalDist += leg.distance.value; totalTime += leg.duration.value; });
-      btn.textContent = Math.round(totalTime / 60) + ' MIN · ' + (totalDist / 1609.34).toFixed(1) + ' MI';
-      btn.disabled = false;
+      await _runRoute(origin, destination);
       setMapStatus(null);
     } catch (e) {
       btn.textContent = 'FAILED'; btn.disabled = false;

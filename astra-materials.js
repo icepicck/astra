@@ -25,8 +25,8 @@ function importMaterialLibrary(input) {
         return;
       }
       const phase = (data.phase || 'ROUGH').toUpperCase();
-      const key = phase === 'TRIM' ? A.MAT_LIB_TRIM_KEY : A.MAT_LIB_KEY;
-      localStorage.setItem(key, JSON.stringify(data));
+      if (phase === 'TRIM') A.saveTrimLibrary(data);
+      else A.saveRoughLibrary(data);
       const count = data.categories.reduce((s,c) => s + c.items.length, 0);
       showInfoModal('IMPORT COMPLETE', phase + ': ' + data.categories.length + ' CATEGORIES, ' + count + ' ITEMS');
       renderMaterials();

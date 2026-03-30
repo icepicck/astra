@@ -5,7 +5,6 @@
 'use strict';
 
 const A = window.Astra;
-const PRICEBOOK_KEY = 'astra_pricebook';
 const _state = { currentEstimate: null };
 
 // D28: Intelligence aggregation cache — avoids recomputing on every render
@@ -1103,8 +1102,8 @@ function _generateEstimateHTML(est) {
       var markup = cost * (parseFloat(m.markup) || 0) / 100;
       html += '<tr><td>' + _h(m.name || 'Unnamed') + (m.unit && m.unit !== 'EA' ? ' <span style="color:#999;font-size:11px;">(' + _h(m.unit) + ')</span>' : '') + '</td>';
       html += '<td class="num">' + (m.qty || 0) + '</td>';
-      html += '<td class="num">' + _fmtClean(parseFloat(m.unitCost) || 0) + '</td>';
-      html += '<td class="num">' + _fmtClean(cost + markup) + '</td></tr>';
+      html += '<td class="num">' + _fmt(parseFloat(m.unitCost) || 0) + '</td>';
+      html += '<td class="num">' + _fmt(cost + markup) + '</td></tr>';
     });
     html += '</tbody></table>';
   }
@@ -1113,19 +1112,19 @@ function _generateEstimateHTML(est) {
   if (est.laborTotal > 0) {
     html += '<div class="section-title">LABOR</div>';
     html += '<table><thead><tr><th>DESCRIPTION</th><th class="num">HOURS</th><th class="num">RATE</th><th class="num">TOTAL</th></tr></thead><tbody>';
-    html += '<tr><td>' + _h(est.jobType || 'Labor') + '</td><td class="num">' + (est.laborHours || 0) + '</td><td class="num">' + _fmtClean(est.laborRate) + '</td><td class="num">' + _fmtClean(est.laborTotal) + '</td></tr>';
+    html += '<tr><td>' + _h(est.jobType || 'Labor') + '</td><td class="num">' + (est.laborHours || 0) + '</td><td class="num">' + _fmt(est.laborRate) + '</td><td class="num">' + _fmt(est.laborTotal) + '</td></tr>';
     html += '</tbody></table>';
   }
 
   // Summary
   html += '<div class="summary">';
-  html += '<div class="sum-row"><span>Materials</span><span>' + _fmtClean(est.materialSubtotal + est.materialMarkupTotal) + '</span></div>';
-  if (est.laborTotal) html += '<div class="sum-row"><span>Labor</span><span>' + _fmtClean(est.laborTotal) + '</span></div>';
-  if (est.overheadAmount) html += '<div class="sum-row"><span>Overhead</span><span>' + _fmtClean(est.overheadAmount) + '</span></div>';
-  if (est.profitAmount) html += '<div class="sum-row"><span>Profit</span><span>' + _fmtClean(est.profitAmount) + '</span></div>';
-  if (est.permitFee) html += '<div class="sum-row"><span>Permit Fee</span><span>' + _fmtClean(est.permitFee) + '</span></div>';
-  if (est.taxAmount) html += '<div class="sum-row"><span>Tax</span><span>' + _fmtClean(est.taxAmount) + '</span></div>';
-  html += '<div class="sum-row total"><span>TOTAL</span><span class="amt">' + _fmtClean(est.grandTotal) + '</span></div>';
+  html += '<div class="sum-row"><span>Materials</span><span>' + _fmt(est.materialSubtotal + est.materialMarkupTotal) + '</span></div>';
+  if (est.laborTotal) html += '<div class="sum-row"><span>Labor</span><span>' + _fmt(est.laborTotal) + '</span></div>';
+  if (est.overheadAmount) html += '<div class="sum-row"><span>Overhead</span><span>' + _fmt(est.overheadAmount) + '</span></div>';
+  if (est.profitAmount) html += '<div class="sum-row"><span>Profit</span><span>' + _fmt(est.profitAmount) + '</span></div>';
+  if (est.permitFee) html += '<div class="sum-row"><span>Permit Fee</span><span>' + _fmt(est.permitFee) + '</span></div>';
+  if (est.taxAmount) html += '<div class="sum-row"><span>Tax</span><span>' + _fmt(est.taxAmount) + '</span></div>';
+  html += '<div class="sum-row total"><span>TOTAL</span><span class="amt">' + _fmt(est.grandTotal) + '</span></div>';
   html += '</div>';
 
   // Valid until
@@ -1148,8 +1147,6 @@ function _generateEstimateHTML(est) {
 // HTML-safe escape for output doc
 function _h(s) { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
-// Clean dollar format (no $ prefix in table cells looks cleaner)
-function _fmtClean(n) { return '$' + (n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 
 // ── Preview: open in new tab ──
 function _estPreview() {
@@ -1186,17 +1183,17 @@ function _estShare() {
     est.materials.forEach(function(m) {
       var cost = (parseFloat(m.unitCost) || 0) * (parseFloat(m.qty) || 0);
       var markup = cost * (parseFloat(m.markup) || 0) / 100;
-      lines.push('  ' + m.name + ' — Qty: ' + (m.qty || 0) + ' — ' + _fmtClean(cost + markup));
+      lines.push('  ' + m.name + ' — Qty: ' + (m.qty || 0) + ' — ' + _fmt(cost + markup));
     });
     lines.push('');
   }
 
   if (est.laborTotal > 0) {
-    lines.push('LABOR: ' + (est.laborHours || 0) + ' hrs @ ' + _fmtClean(est.laborRate) + '/hr = ' + _fmtClean(est.laborTotal));
+    lines.push('LABOR: ' + (est.laborHours || 0) + ' hrs @ ' + _fmt(est.laborRate) + '/hr = ' + _fmt(est.laborTotal));
     lines.push('');
   }
 
-  lines.push('TOTAL: ' + _fmtClean(est.grandTotal));
+  lines.push('TOTAL: ' + _fmt(est.grandTotal));
 
   if (est.validUntil) {
     var vd = new Date(est.validUntil + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });

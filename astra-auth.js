@@ -725,6 +725,9 @@
     inviteTech: inviteTech,
     _idbConfigGet: A._idbConfigGet,
     _idbConfigPut: A._idbConfigPut,
+    // Supabase defaults — single source of truth (sync module reads these)
+    _DEFAULT_SUPA_URL: DEFAULT_SUPA_URL,
+    _DEFAULT_SUPA_KEY: DEFAULT_SUPA_KEY,
     // Step 7E: MFA
     isMfaEnabled: isMfaEnabled,
     updateMfaStatus: updateMfaStatus

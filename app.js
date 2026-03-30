@@ -1077,60 +1077,16 @@ function setHomeView(view) {
   renderJobList();
 }
 
-function renderJobList() {
-  updateApprovalBadge();
-  // D11: Sort by date at render time — newest first, don't rely on array order
-  var allJobs = loadJobs().filter(j => !j.archived).sort(function(a, b) {
-    return (b.date || '').localeCompare(a.date || '');
-  });
-  if (_approvalFilter) {
-    allJobs = allJobs.filter(function(j) { return j.status === 'pending_approval'; });
-  }
-  const el = document.getElementById('jobs-body');
-  if (!el) return;
-
-  if (allJobs.length === 0) {
-    el.innerHTML = '<div class="empty-state"><div>⚡</div><div>NO TICKETS</div></div>';
-    return;
-  }
-
-  if (homeView === 'daily') {
-    const today = todayStr();
-    const jobs = allJobs.filter(j => j.date === today);
-    if (jobs.length === 0) {
-      el.innerHTML = '<div class="empty-state"><div>—</div><div>NO TICKETS DUE TODAY</div></div>';
-      return;
-    }
-    el.innerHTML = jobs.map(j => jobCard(j)).join('');
-  } else {
-    // Weekly view — group by ISO week
-    const grouped = {};
-    allJobs.forEach(j => {
-      const d = new Date(j.date + 'T00:00:00');
-      const week = getISOWeek(d);
-      const year = getISOWeekYear(d);
-      const key = year + '-' + String(week).padStart(2, '0');
-      if (!grouped[key]) grouped[key] = { week, year, jobs: [] };
-      grouped[key].jobs.push(j);
-    });
-    const sortedKeys = Object.keys(grouped).sort();
-    if (sortedKeys.length === 0) {
-      el.innerHTML = '<div class="empty-state"><div>—</div><div>NO TICKETS</div></div>';
-      return;
-    }
-    const nowWeek = getISOWeek(new Date());
-    const nowYear = getISOWeekYear(new Date());
-    const currentKey = nowYear + '-' + String(nowWeek).padStart(2, '0');
-    let html = '';
-    sortedKeys.forEach(key => {
-      const g = grouped[key];
-      const range = getWeekRange(g.year, g.week);
-      const isCurrent = key === currentKey;
-      html += `<div class="week-header${isCurrent ? '' : ' collapsed'}" onclick="toggleWeek(this)"><span>WEEK ${g.week} — ${range}</span><span class="wh-arrow">▼</span></div>`;
-      html += `<div class="week-group${isCurrent ? '' : ' collapsed'}">${g.jobs.map(j => jobCard(j)).join('')}</div>`;
-    });
-    el.innerHTML = html;
-  }
+function jobCard(j) {
+  const dateStr = j.date ? new Date(j.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+  return `<div class="card" onclick="goTo('screen-detail','${j.id}')">
+    <div class="card-address">${esc(j.address)}</div>
+    <div class="card-meta">
+      ${j.types.map(t => `<span class="badge badge-type">${esc(t).toUpperCase()}</span>`).join('')}
+      <span class="badge ${statusClass(j.status)}">${esc(j.status).toUpperCase()}</span>
+      ${dateStr ? `<span class="card-due">${dateStr}</span>` : ''}
+    </div>
+  </div>`;
 }
 
 function toggleWeek(el) {
@@ -1144,16 +1100,66 @@ function autoExpand(el) {
   el.style.height = el.scrollHeight + 'px';
 }
 
-function jobCard(j) {
-  const dateStr = j.date ? new Date(j.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-  return `<div class="card" onclick="goTo('screen-detail','${j.id}')">
-    <div class="card-address">${esc(j.address)}</div>
-    <div class="card-meta">
-      ${j.types.map(t => `<span class="badge badge-type">${esc(t).toUpperCase()}</span>`).join('')}
-      <span class="badge ${statusClass(j.status)}">${esc(j.status).toUpperCase()}</span>
-      ${dateStr ? `<span class="card-due">${dateStr}</span>` : ''}
-    </div>
-  </div>`;
+// ── Shared weekly-grouped job list renderer ──
+// opts: { reverse, emptyIcon, emptyText, dailyEmptyText }
+function _renderGroupedList(allJobs, el, view, opts) {
+  opts = opts || {};
+  if (allJobs.length === 0) {
+    var icon = opts.emptyIcon || '⚡';
+    el.innerHTML = '<div class="empty-state"><div>' + icon + '</div><div>' + (opts.emptyText || 'NO TICKETS') + '</div></div>';
+    return;
+  }
+  if (view === 'daily') {
+    const today = todayStr();
+    const jobs = allJobs.filter(j => j.date === today);
+    if (jobs.length === 0) {
+      el.innerHTML = '<div class="empty-state"><div>—</div><div>' + (opts.dailyEmptyText || 'NO TICKETS DUE TODAY') + '</div></div>';
+      return;
+    }
+    el.innerHTML = jobs.map(j => jobCard(j)).join('');
+  } else {
+    const grouped = {};
+    allJobs.forEach(j => {
+      const d = new Date(j.date + 'T00:00:00');
+      const week = getISOWeek(d);
+      const year = getISOWeekYear(d);
+      const key = year + '-' + String(week).padStart(2, '0');
+      if (!grouped[key]) grouped[key] = { week, year, jobs: [] };
+      grouped[key].jobs.push(j);
+    });
+    const sortedKeys = Object.keys(grouped).sort();
+    if (opts.reverse) sortedKeys.reverse();
+    if (sortedKeys.length === 0) {
+      el.innerHTML = '<div class="empty-state"><div>—</div><div>' + (opts.emptyText || 'NO TICKETS') + '</div></div>';
+      return;
+    }
+    const nowWeek = getISOWeek(new Date());
+    const nowYear = getISOWeekYear(new Date());
+    const currentKey = nowYear + '-' + String(nowWeek).padStart(2, '0');
+    const expandKey = opts.reverse ? sortedKeys[0] : currentKey;
+    let html = '';
+    sortedKeys.forEach(key => {
+      const g = grouped[key];
+      const range = getWeekRange(g.year, g.week);
+      const isOpen = key === expandKey;
+      html += `<div class="week-header${isOpen ? '' : ' collapsed'}" onclick="toggleWeek(this)"><span>WEEK ${g.week} — ${range}</span><span class="wh-arrow">▼</span></div>`;
+      html += `<div class="week-group${isOpen ? '' : ' collapsed'}">${g.jobs.map(j => jobCard(j)).join('')}</div>`;
+    });
+    el.innerHTML = html;
+  }
+}
+
+function renderJobList() {
+  updateApprovalBadge();
+  var allJobs = loadJobs().filter(j => !j.archived).sort(function(a, b) {
+    return (b.date || '').localeCompare(a.date || '');
+  });
+  if (_approvalFilter) {
+    allJobs = allJobs.filter(function(j) { return j.status === 'pending_approval'; });
+  }
+  const el = document.getElementById('jobs-body');
+  if (!el) return;
+  _renderGroupedList(allJobs, el, homeView, { emptyText: 'NO TICKETS', dailyEmptyText: 'NO TICKETS DUE TODAY' });
 }
 
 // ═══════════════════════════════════════════
@@ -1168,48 +1174,17 @@ function setArchiveView(view) {
 }
 
 function renderArchiveList() {
-  // D11: Sort by date at render time
   const allJobs = loadJobs().filter(j => j.archived).sort(function(a, b) {
     return (b.date || '').localeCompare(a.date || '');
   });
   const el = document.getElementById('archive-body');
   if (!el) return;
-
-  if (allJobs.length === 0) {
-    el.innerHTML = '<div class="empty-state"><div><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 002 2h12a2 2 0 002-2V8"/><path d="M10 12h4"/></svg></div><div>NO ARCHIVED TICKETS</div></div>';
-    return;
-  }
-
-  if (archiveView === 'daily') {
-    const today = todayStr();
-    const jobs = allJobs.filter(j => j.date === today);
-    if (jobs.length === 0) {
-      el.innerHTML = '<div class="empty-state"><div>—</div><div>NO ARCHIVED TICKETS FOR TODAY</div></div>';
-      return;
-    }
-    el.innerHTML = jobs.map(j => jobCard(j)).join('');
-  } else {
-    const grouped = {};
-    allJobs.forEach(j => {
-      const d = new Date(j.date + 'T00:00:00');
-      const week = getISOWeek(d);
-      const year = getISOWeekYear(d);
-      const key = year + '-' + String(week).padStart(2, '0');
-      if (!grouped[key]) grouped[key] = { week, year, jobs: [] };
-      grouped[key].jobs.push(j);
-    });
-    const sortedKeys = Object.keys(grouped).sort().reverse(); // newest first for archive
-    let html = '';
-    const first = sortedKeys[0]; // most recent week expanded
-    sortedKeys.forEach(key => {
-      const g = grouped[key];
-      const range = getWeekRange(g.year, g.week);
-      const isFirst = key === first;
-      html += `<div class="week-header${isFirst ? '' : ' collapsed'}" onclick="toggleWeek(this)"><span>WEEK ${g.week} — ${range}</span><span class="wh-arrow">▼</span></div>`;
-      html += `<div class="week-group${isFirst ? '' : ' collapsed'}">${g.jobs.map(j => jobCard(j)).join('')}</div>`;
-    });
-    el.innerHTML = html;
-  }
+  _renderGroupedList(allJobs, el, archiveView, {
+    reverse: true,
+    emptyIcon: '<svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 002 2h12a2 2 0 002-2V8"/><path d="M10 12h4"/></svg>',
+    emptyText: 'NO ARCHIVED TICKETS',
+    dailyEmptyText: 'NO ARCHIVED TICKETS FOR TODAY'
+  });
 }
 
 // ═══════════════════════════════════════════
@@ -1742,15 +1717,11 @@ function renderAddrDetail(addrId) {
   document.querySelectorAll('#addr-detail-body .auto-expand').forEach(el => autoExpand(el));
 }
 
-function _normalizeStreet(str) {
-  // Extract street portion (before first comma), lowercase, collapse whitespace
-  return (str || '').split(',')[0].trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
 function findOrCreateAddress(addressText, components) {
   const addrs = loadAddresses();
-  const needle = _normalizeStreet(addressText);
-  const existing = addrs.find(a => _normalizeStreet(a.address) === needle);
+  var _norm = window.normalizeAddress || function(s) { return (s || '').split(',')[0].trim().toLowerCase().replace(/\s+/g, ' '); };
+  const needle = _norm(addressText);
+  const existing = addrs.find(a => _norm(a.address) === needle);
   if (existing) return existing.id;
   const newAddr = { id: crypto.randomUUID(), address: addressText };
   if (components) {
@@ -2064,7 +2035,7 @@ function renderDashboard() {
     ${recent.length ? `<div class="dash-card">
       <div class="dash-card-title">RECENT ACTIVITY</div>
       ${recent.map(j => {
-        const ago = timeAgo(j.updatedAt);
+        const ago = _timeAgo(j.updatedAt);
         return `<div class="dash-activity" onclick="goTo('screen-detail','${j.id}')" style="cursor:pointer;">
           <div class="dash-activity-dot" style="background:${statusColors[j.status] || '#444'};"></div>
           <div style="flex:1;overflow:hidden;">
@@ -2079,17 +2050,6 @@ function renderDashboard() {
   `;
 }
 
-function timeAgo(isoStr) {
-  const diff = Date.now() - new Date(isoStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'NOW';
-  if (mins < 60) return mins + 'M';
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return hrs + 'H';
-  const days = Math.floor(hrs / 24);
-  if (days < 7) return days + 'D';
-  return Math.floor(days / 7) + 'W';
-}
 
 // ═══════════════════════════════════════════
 // FILE UPLOADS → INDEXEDDB
@@ -2337,9 +2297,7 @@ function navigateTo(address) {
 
 function esc(s) {
   if (!s) return '';
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function toggleChip(el) { el.classList.toggle('selected'); }

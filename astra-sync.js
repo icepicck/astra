@@ -16,10 +16,9 @@ var SUPA_URL_KEY = 'astra_supabase_url';
 var SUPA_KEY_KEY = 'astra_supabase_key';
 var LAST_SYNC_KEY = 'astra_last_sync';
 
-// ── Hardcoded defaults — survives cache clear ──
-// Anon key is public by design. RLS is the real security.
-var DEFAULT_SUPA_URL = 'https://uyjpvjdpdyckkkxrfpsl.supabase.co'; // ← PASTE YOUR SUPABASE PROJECT URL HERE (e.g. https://xxxxx.supabase.co)
-var DEFAULT_SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV5anB2amRwZHlja2treHJmcHNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0ODIwNzQsImV4cCI6MjA5MDA1ODA3NH0.xFSPy7Qdmg4TQVuj-loMFjv5jQ2JSdxufbfGJHeSvZY'; // ← PASTE YOUR SUPABASE ANON KEY HERE
+// ── Defaults from auth module (single source of truth) ──
+var DEFAULT_SUPA_URL = A._DEFAULT_SUPA_URL || '';
+var DEFAULT_SUPA_KEY = A._DEFAULT_SUPA_KEY || '';
 
 function getSupabaseUrl() { return localStorage.getItem(SUPA_URL_KEY) || DEFAULT_SUPA_URL; }
 function saveSupabaseUrl(val) { localStorage.setItem(SUPA_URL_KEY, val.trim()); _client = null; }
