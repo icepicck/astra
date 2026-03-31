@@ -334,7 +334,8 @@ function findNearDupeAddresses(newAddr, allAddresses, thresholdMeters) {
     if (existing.id === newAddr.id) continue;
     if (existing.dupResolved) continue;
     // Check geocode proximity
-    if (newAddr.lat && newAddr.lng && existing.lat && existing.lng) {
+    // BUG-043: Use !== null/undefined instead of truthiness (0 is a valid coordinate)
+    if (newAddr.lat != null && newAddr.lng != null && existing.lat != null && existing.lng != null) {
       var dist = haversineDistance(newAddr.lat, newAddr.lng, existing.lat, existing.lng);
       if (dist < thresholdMeters) { dupes.push({ address: existing, reason: 'proximity', distance: Math.round(dist) }); continue; }
     }

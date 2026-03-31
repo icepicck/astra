@@ -234,6 +234,7 @@ function openMatPicker(jobId) {
 }
 
 function closeMatPicker() {
+  _matLongStop(); // BUG-041: Clear long-press timer on overlay destroy
   const overlay = document.getElementById('mat-picker-overlay');
   if (overlay) overlay.remove();
 }

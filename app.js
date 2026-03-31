@@ -8,6 +8,8 @@ window.Astra = window.Astra || {};
 // ── TOAST NOTIFICATIONS ──
 function showToast(msg, type) {
   type = type || 'info';
+  // X7: Haptic feedback on toasts (success/error only)
+  if (navigator.vibrate && (type === 'success' || type === 'error')) navigator.vibrate(50);
   const container = document.getElementById('toast-container');
   if (!container) return;
   const el = document.createElement('div');
@@ -109,9 +111,11 @@ const MAT_LIB_KEY = 'astra_material_library_rough';
 const MAT_LIB_TRIM_KEY = 'astra_material_library_trim';
 
 function getGmapsKey() { return localStorage.getItem(GMAPS_KEY_STORAGE) || ''; }
-function saveGmapsKey(key) { localStorage.setItem(GMAPS_KEY_STORAGE, key.trim()); }
+// BUG-051: try/catch on localStorage writes (Safari private browsing throws)
+function _safeLSSet(k, v) { try { localStorage.setItem(k, v); } catch(e) { console.warn('localStorage write failed:', k, e); } }
+function saveGmapsKey(key) { _safeLSSet(GMAPS_KEY_STORAGE, key.trim()); }
 function getHomeBase() { return localStorage.getItem(HOME_BASE_KEY) || ''; }
-function saveHomeBase(val) { localStorage.setItem(HOME_BASE_KEY, val.trim()); }
+function saveHomeBase(val) { _safeLSSet(HOME_BASE_KEY, val.trim()); }
 
 // D15: Material libraries + pricebook cached in memory, persisted to IDB
 // Falls back to localStorage on first run, then migrates
@@ -191,6 +195,16 @@ function markAllNotifsRead() {
     } catch (e) { /* non-critical */ }
   }
   updateNotifBadge();
+}
+
+// N1: Delete individual notification
+function deleteNotification(id) {
+  _notifCache = _notifCache.filter(function(n) { return n.id !== id; });
+  if (_astraDB) {
+    try { var tx = _astraDB.transaction('notifications', 'readwrite'); tx.objectStore('notifications').delete(id); } catch(e) {}
+  }
+  updateNotifBadge();
+  renderNotifications();
 }
 
 function clearNotifications() {
@@ -697,6 +711,7 @@ function updateJob(id, updates) {
   // D28: Invalidate intelligence cache when job data changes
   if (window.Astra.invalidateIntelCache) window.Astra.invalidateIntelCache();
 }
+// BUG-005: unshift means _cache.jobs order ≠ IDB order. This is fine — all renders sort by date.
 function addJob(job) {
   _cache.jobs.unshift(job);
   _idbPut('jobs', _cleanJobForStorage(job));
@@ -938,7 +953,7 @@ const DEFAULT_SHORTCUTS = ['screen-search', 'screen-addresses', 'screen-vector']
 function loadNavFreq() {
   try { return JSON.parse(localStorage.getItem(NAV_FREQ_KEY)) || {}; } catch { return {}; }
 }
-function saveNavFreq(freq) { localStorage.setItem(NAV_FREQ_KEY, JSON.stringify(freq)); }
+function saveNavFreq(freq) { _safeLSSet(NAV_FREQ_KEY, JSON.stringify(freq)); }
 
 function trackNavigation(screenId) {
   if (screenId === 'screen-jobs' || screenId === 'screen-detail' ||
@@ -1056,6 +1071,8 @@ async function goTo(screenId, jobId) {
   updateSidebarActive();
 }
 
+// FAT-020: initScreen knows about all module screens. Future: modules self-register via Astra.registerScreen().
+// FAT-022: astra-auth.js calls showConfirmModal from app.js — implicit dependency, documented here.
 async function initScreen(screenId, jobId) {
   if (screenId === 'screen-jobs') renderJobList();
   if (screenId === 'screen-archive') renderArchiveList();
@@ -1182,7 +1199,12 @@ function _renderGroupedList(allJobs, el, view, opts) {
     const today = todayStr();
     const jobs = allJobs.filter(j => j.date === today);
     if (jobs.length === 0) {
-      el.innerHTML = '<div class="empty-state"><div>—</div><div>' + (opts.dailyEmptyText || 'NO TICKETS DUE TODAY') + '</div></div>';
+      // H5: Add CTAs to empty daily view
+      el.innerHTML = '<div class="empty-state"><div>—</div><div>' + (opts.dailyEmptyText || 'NO TICKETS DUE TODAY') + '</div>'
+        + '<div style="margin-top:16px;display:flex;gap:8px;justify-content:center;">'
+        + '<button class="chip" onclick="setHomeView(\'threeday\')" style="min-height:36px;padding:6px 14px;">VIEW 3-DAY</button>'
+        + '<button class="chip" onclick="goTo(\'screen-create\')" style="min-height:36px;padding:6px 14px;">CREATE TICKET</button>'
+        + '</div></div>';
       return;
     }
     el.innerHTML = jobs.map(j => jobCard(j)).join('');
@@ -1659,10 +1681,9 @@ async function renderDetail(jobId) {
   // Phase C: Lock banner
   var lockBanner = '';
   if (isLocked) {
-    lockBanner = `<div style="background:#cc3300;color:#fff;padding:14px 16px;border-radius:8px;margin-bottom:16px;font-weight:700;font-size:14px;text-align:center;letter-spacing:0.5px;">
-      LOCKED BY ${esc(lockedByName).toUpperCase()}
-      ${isSupervisor ? `<button onclick="window._forceUnlockJob('${jobId}')" style="display:block;margin:10px auto 0;background:#fff;color:#cc3300;border:none;border-radius:6px;padding:12px 24px;font-weight:700;font-size:13px;min-height:48px;min-width:160px;cursor:pointer;">TAKE OVER</button>` : ''}
-    </div>`;
+    // D9: Separate info banner from action button
+    lockBanner = '<div style="background:#cc3300;color:#fff;padding:14px 16px;border-radius:8px;margin-bottom:8px;font-weight:700;font-size:14px;text-align:center;letter-spacing:0.5px;">LOCKED BY ' + esc(lockedByName).toUpperCase() + '</div>'
+      + (isSupervisor ? '<button onclick="window._forceUnlockJob(\'' + jobId + '\')" class="btn btn-secondary" style="margin-bottom:16px;width:100%;">TAKE OVER LOCK</button>' : '');
   }
 
   // Step 5D: Approval action bar
@@ -1828,7 +1849,9 @@ function runSearch(query) {
 
   const jobs = loadJobs();
   const matches = jobs.filter(j => {
-    const hay = [j.address, j.techName, j.notes, j.techNotes, j.status, ...j.types].join(' ').toLowerCase();
+    // SR2: Include material names in search haystack
+    var matNames = (j.materials || []).map(function(m) { return m.name || ''; }).join(' ');
+    const hay = [j.address, j.techName, j.notes, j.techNotes, j.status, ...j.types, matNames].join(' ').toLowerCase();
     return q.split(/\s+/).every(w => hay.includes(w));
   });
 
@@ -1882,7 +1905,10 @@ function renderAddressList(query) {
     const jobs = allJobs.filter(j => j.addressId === a.id);
     const subtitle = [a.builder, a.subdivision].filter(Boolean).join(' · ');
     const panelChip = [a.ampRating, a.breakerType, a.panelType].filter(Boolean).join(' · ');
-    const lastJob = jobs.filter(j => j.date).sort((x, y) => y.date.localeCompare(x.date))[0];
+    const datedJobs = jobs.filter(j => j.date).sort((x, y) => x.date.localeCompare(y.date));
+    const firstJob = datedJobs[0];
+    const lastJob = datedJobs[datedJobs.length - 1];
+    const firstDate = firstJob ? new Date(firstJob.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase() : '';
     const lastDate = lastJob ? new Date(lastJob.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase() : '';
     return `<div class="card" onclick="goTo('screen-addr-detail','${a.id}')">
       <div class="card-address">${esc(a.address)}</div>
@@ -1890,6 +1916,7 @@ function renderAddressList(query) {
       <div class="card-meta">
         ${panelChip ? '<span class="card-panel-chip">' + esc(panelChip).toUpperCase() + '</span>' : ''}
         <span class="badge badge-type">${jobs.length} TICKET${jobs.length !== 1 ? 'S' : ''}</span>
+        ${firstDate ? '<span class="card-last-visit">FIRST: ' + firstDate + '</span>' : ''}
         ${lastDate ? '<span class="card-last-visit">LAST: ' + lastDate + '</span>' : ''}
       </div>
     </div>`;
@@ -1910,6 +1937,17 @@ function _saveAddressText(addrId, newAddress) {
   if (!newAddress.trim()) return;
   updateAddress(addrId, { address: newAddress.trim(), street: newAddress.trim() });
   renderAddrDetail(addrId);
+}
+
+// A1: Create standalone address without a ticket
+function createNewAddress() {
+  var addr = prompt('ENTER ADDRESS:');
+  if (!addr || !addr.trim()) return;
+  var addrId = findOrCreateAddress(addr.trim());
+  if (addrId) {
+    showToast('ADDRESS CREATED');
+    goTo('screen-addr-detail', addrId);
+  }
 }
 
 function renderAddrDetail(addrId) {
@@ -2215,7 +2253,9 @@ function renderNotifications() {
     var onclick = n.jobId
       ? 'markNotifRead(\'' + n.id + '\');goTo(\'screen-detail\',\'' + n.jobId + '\')'
       : 'markNotifRead(\'' + n.id + '\');renderNotifications()';
-    return '<div class="notif-card' + readClass + typeClass + '" onclick="' + onclick + '">'
+    // N1: Delete button per notification
+    return '<div class="notif-card' + readClass + typeClass + '" style="position:relative;" onclick="' + onclick + '">'
+      + '<button onclick="event.stopPropagation();deleteNotification(\'' + n.id + '\')" style="position:absolute;top:8px;right:8px;background:none;border:none;color:#444;font-size:14px;cursor:pointer;padding:4px;">✕</button>'
       + '<div class="notif-card-title">' + esc(n.title) + '</div>'
       + '<div class="notif-card-msg">' + esc(n.message) + '</div>'
       + '<div class="notif-card-time">' + ago + '</div>'
@@ -3211,7 +3251,7 @@ Object.assign(window, {
   saveNewTicket, saveAndNew, duplicateTicket, updateJob, archiveJob, unarchiveJob,
   toggleVector, openStatusPicker, closeStatusPicker, pickStatus,
   // Address
-  updateAddress, addrAutocomplete, pickAddr, navigateTo, renderAddressList, autoExpand, _editAddressText, _saveAddressText,
+  updateAddress, addrAutocomplete, pickAddr, navigateTo, renderAddressList, autoExpand, _editAddressText, _saveAddressText, createNewAddress,
   // Search
   debouncedSearch,
   // Materials (core-side)
@@ -3239,7 +3279,7 @@ Object.assign(window, {
   // Step 7F: Historical import
   importHistoricalJobs,
   // Step 7D: Notification center
-  renderNotifications, markNotifRead, markAllNotifsRead, clearNotifications, updateNotifBadge,
+  renderNotifications, markNotifRead, markAllNotifsRead, clearNotifications, deleteNotification, updateNotifBadge,
   lazyDownloadMedia,
 });
 

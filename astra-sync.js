@@ -37,7 +37,7 @@ function saveSupabaseUrl(val) { localStorage.setItem(SUPA_URL_KEY, val.trim()); 
 function getSupabaseKey() { return localStorage.getItem(SUPA_KEY_KEY) || DEFAULT_SUPA_KEY; }
 function saveSupabaseKey(val) { localStorage.setItem(SUPA_KEY_KEY, val.trim()); _client = null; }
 function getLastSync() { return localStorage.getItem(LAST_SYNC_KEY) || ''; }
-function setLastSync() { localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString()); }
+function setLastSync() { try { localStorage.setItem(LAST_SYNC_KEY, new Date().toISOString()); } catch(e) { /* BUG-051: Safari private */ } }
 function isConfigured() { return !!(getSupabaseUrl() && getSupabaseKey()); }
 
 // ── Supabase Client (lazy singleton, shared with auth module) ──
