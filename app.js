@@ -3241,6 +3241,8 @@ Object.assign(window.Astra, {
   removeLocalJob, removeLocalAddress, removeLocalEstimate,
   // Step 7D: Notification center
   addNotification, loadNotifications, markNotifRead, markAllNotifsRead, updateNotifBadge,
+  // Media blob API — used by sync module, NOT test-only
+  saveMediaBlob, getMediaBlob, deleteMediaBlob, getAllMediaBlobs, clearAllMediaBlobs, getMediaDBSize,
 });
 
 // ── Public API — expose only what HTML handlers need ──
@@ -3288,7 +3290,7 @@ if (localStorage.getItem('astra_debug') === 'true') {
   Object.assign(window.Astra, {
     _test: {
       runSearch, esc, todayStr, getISOWeek,
-      saveMediaBlob, getMediaBlob, deleteMediaBlob, getAllMediaBlobs, clearAllMediaBlobs, getMediaDBSize,
+      // Media blob functions now on main Astra export — kept here for diagnostics.html backward compat
     }
   });
 }
