@@ -607,6 +607,8 @@ function renderAddrMaterialRollup(addrId) {
 // Step 6B: Material dedup — detect overlapping materials
 // on sibling jobs (same address + same day)
 // ═══════════════════════════════════════════
+// BUG-040: Currently same-day overlap only. Could expand to same-week window
+// in future, but same-day covers the primary use case (duplicate deliveries).
 function detectMaterialOverlap(jobId) {
   var job = A.getJob(jobId);
   if (!job || !job.materials || !job.materials.length || !job.addressId) return [];

@@ -619,6 +619,15 @@
     var sb = _getClient();
     if (!sb) { A.showToast('NOT CONNECTED', 'error'); return; }
     try {
+      // BUG-032: Clean up any unverified factors from previous failed enrollments
+      var existing = await sb.auth.mfa.listFactors();
+      if (existing.data && existing.data.totp) {
+        for (var fi = 0; fi < existing.data.totp.length; fi++) {
+          if (existing.data.totp[fi].status !== 'verified') {
+            await sb.auth.mfa.unenroll({ factorId: existing.data.totp[fi].id });
+          }
+        }
+      }
       var result = await sb.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'ASTRA' });
       if (result.error) { A.showToast('ENROLLMENT FAILED: ' + result.error.message, 'error'); return; }
       var factor = result.data;
@@ -757,12 +766,31 @@
     if (screen) screen.classList.add('active');
     // Focus code input
     setTimeout(function() { if (codeInput) codeInput.focus(); }, 300);
+    // SEC-010: Auto-dismiss after 2 minutes
+    if (_mfaChallengeTimer) clearTimeout(_mfaChallengeTimer);
+    _mfaChallengeTimer = setTimeout(function() {
+      _mfaPending = null;
+      _showLogin();
+      if (A.showToast) A.showToast('MFA CHALLENGE TIMED OUT', 'error');
+    }, 120000);
   }
+
+  // SEC-010: MFA challenge attempt tracking
+  var _mfaVerifyAttempts = 0;
+  var _mfaVerifyCooldownUntil = 0;
+  var _mfaChallengeTimer = null;
 
   // Verify MFA code during login challenge
   async function doMfaVerify() {
     var sb = _getClient();
     if (!sb || !_mfaPending) return;
+    // SEC-010: Lockout after 3 failed attempts
+    if (Date.now() < _mfaVerifyCooldownUntil) {
+      var secsLeft = Math.ceil((_mfaVerifyCooldownUntil - Date.now()) / 1000);
+      var errorEl = document.getElementById('mfa-challenge-error');
+      if (errorEl) errorEl.textContent = 'LOCKED OUT. WAIT ' + secsLeft + ' SECONDS.';
+      return;
+    }
     var codeInput = document.getElementById('mfa-challenge-code');
     var code = codeInput ? codeInput.value.trim() : '';
     var errorEl = document.getElementById('mfa-challenge-error');
@@ -779,11 +807,19 @@
         code: code
       });
       if (result.error) {
-        if (errorEl) errorEl.textContent = 'INVALID CODE — TRY AGAIN';
+        _mfaVerifyAttempts++;
+        if (_mfaVerifyAttempts >= 3) {
+          _mfaVerifyCooldownUntil = Date.now() + 300000; // 5 min lockout
+          _mfaVerifyAttempts = 0;
+          if (errorEl) errorEl.textContent = 'TOO MANY ATTEMPTS — LOCKED FOR 5 MINUTES';
+        } else {
+          if (errorEl) errorEl.textContent = 'INVALID CODE — ' + (3 - _mfaVerifyAttempts) + ' ATTEMPTS LEFT';
+        }
         if (codeInput) codeInput.value = '';
         if (btn) { btn.disabled = false; btn.textContent = 'VERIFY'; }
         return;
       }
+      _mfaVerifyAttempts = 0; // Reset on success
       // MFA verified — proceed with app entry
       var onSuccess = _mfaPending.onSuccess;
       _mfaPending = null;
@@ -846,7 +882,18 @@
     doMfaEnrollVerify: doMfaEnrollVerify,
     toggleMfa: toggleMfa,
     // T2-B3: Password verify modal for onclick handlers
-    _verifyPasswordConfirm: _verifyPasswordConfirm
+    _verifyPasswordConfirm: _verifyPasswordConfirm,
+    // L3: Forgot password
+    forgotPassword: function() {
+      var email = (document.getElementById('login-email') || {}).value || '';
+      if (!email.trim()) { _showLoginError('ENTER YOUR EMAIL FIRST'); return; }
+      var sb = _getClient();
+      if (!sb) { _showLoginError('NOT CONNECTED'); return; }
+      sb.auth.resetPasswordForEmail(email.trim()).then(function(result) {
+        if (result.error) { _showLoginError(result.error.message); return; }
+        if (A.showToast) A.showToast('PASSWORD RESET EMAIL SENT — CHECK YOUR INBOX');
+      });
+    }
   });
 
 })();

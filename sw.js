@@ -25,24 +25,28 @@ self.addEventListener('activate', e => {
   );
 });
 
+// BUG-044: Use AbortController to properly cancel zombie fetch connections
 function timeoutFetch(request, ms) {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('timeout')), ms);
-    fetch(request).then(response => {
-      clearTimeout(timer);
-      resolve(response);
-    }).catch(err => {
-      clearTimeout(timer);
-      reject(err);
-    });
+  var ctrl = new AbortController();
+  var timer = setTimeout(function() { ctrl.abort(); }, ms);
+  return fetch(request, { signal: ctrl.signal }).then(function(response) {
+    clearTimeout(timer);
+    return response;
+  }).catch(function(err) {
+    clearTimeout(timer);
+    throw err;
   });
 }
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // App shell (same-origin assets) — cache-first
-  if (url.origin === self.location.origin) {
+  // SEC-020: Whitelist cacheable paths — don't cache dynamic data or API responses
+  var CACHEABLE = /\/(index\.html|diagnostics\.html|app\.js|astra-[a-z]+\.js|sw\.js|manifest\.json|supabase\.min\.js|[a-z_]+\.json)$/;
+  var isCacheable = url.origin === self.location.origin && CACHEABLE.test(url.pathname);
+
+  // App shell (same-origin CACHEABLE assets) — cache-first
+  if (url.origin === self.location.origin && isCacheable) {
     e.respondWith(
       caches.match(e.request).then(cached => {
         if (cached) return cached;
@@ -53,6 +57,12 @@ self.addEventListener('fetch', e => {
         });
       }).catch(() => caches.match(e.request))
     );
+    return;
+  }
+
+  // Same-origin but NOT cacheable (dynamic data, blob URLs) — network only
+  if (url.origin === self.location.origin) {
+    e.respondWith(fetch(e.request));
     return;
   }
 

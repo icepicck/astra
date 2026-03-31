@@ -807,7 +807,8 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
 }
 
 /* ── Toast notifications ── */
-#toast-container { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); z-index: 10000; display: flex; flex-direction: column; gap: 8px; pointer-events: none; width: 90%; max-width: 400px; }
+/* X6: Toast at bottom of screen instead of top */
+#toast-container { position: fixed; top: auto; bottom: 80px; left: 50%; transform: translateX(-50%); z-index: 10000; display: flex; flex-direction: column-reverse; gap: 8px; pointer-events: none; width: 90%; max-width: 400px; }
 .toast { background: #222; color: #e0e0e0; padding: 12px 18px; border-radius: 10px; font-size: 13px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; border-left: 4px solid #FF6B00; box-shadow: 0 4px 20px rgba(0,0,0,0.5); opacity: 0; transform: translateY(-10px); animation: toast-in 0.3s forwards; pointer-events: auto; }
 .toast.toast-error { border-left-color: #EF4444; }
 .toast.toast-success { border-left-color: #2d8a4e; }
@@ -1038,6 +1039,10 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
   <button class="sidebar-item" data-screen="screen-archive" onclick="goTo('screen-archive');closeSidebar()">
     <span class="sidebar-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 002 2h12a2 2 0 002-2V8"/><path d="M10 12h4"/></svg></span> ARCHIVE
   </button>
+  <!-- S2: Notifications in sidebar -->
+  <button class="sidebar-item" data-screen="screen-notifications" onclick="goTo('screen-notifications');closeSidebar()">
+    <span class="sidebar-icon"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/></svg></span> NOTIFICATIONS
+  </button>
   <button class="sidebar-item" data-screen="screen-dashboard" onclick="goTo('screen-dashboard');closeSidebar()">
     <span class="sidebar-icon"><svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg></span> DASHBOARD
   </button>
@@ -1065,6 +1070,10 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
         <button class="btn btn-primary" id="login-btn" style="width:100%;background:#FF6B00;color:#fff;padding:14px;border:none;border-radius:10px;font-size:14px;font-weight:800;letter-spacing:2px;cursor:pointer;min-height:48px;" onclick="doLogin()">SIGN IN</button>
         <div style="text-align:center;margin-top:20px;">
           <span onclick="showSignupForm()" style="color:#FF6B00;cursor:pointer;font-size:12px;font-weight:700;letter-spacing:1px;">FIRST TIME? SET UP ACCOUNT</span>
+        </div>
+        <!-- L3: Forgot password -->
+        <div style="text-align:center;margin-top:12px;">
+          <span onclick="forgotPassword()" style="color:#555;cursor:pointer;font-size:11px;font-weight:700;letter-spacing:1px;">FORGOT PASSWORD?</span>
         </div>
       </div>
       <div id="signup-form" style="display:none;">

@@ -353,10 +353,16 @@ function _captureFormState() {
 
 let _estFilter = 'all';
 
+// E2: Estimate search state
+var _estSearchQuery = '';
+
 function renderEstimatesList() {
   const body = document.getElementById('estimates-body');
   if (!body) return;
   const estimates = A.loadEstimates();
+
+  // E2: Search input
+  var searchHtml = '<div class="field" style="margin-bottom:10px;"><input type="text" id="est-search" placeholder="SEARCH ESTIMATES..." style="font-size:13px;" value="' + A.esc(_estSearchQuery) + '" oninput="window._estSearch(this.value)"></div>';
 
   const filters = ['all', 'draft', 'sent', 'accepted', 'declined'];
   let filterHtml = '<div class="est-filter-bar">';
@@ -365,11 +371,21 @@ function renderEstimatesList() {
   });
   filterHtml += '</div>';
 
-  const filtered = _estFilter === 'all' ? estimates : estimates.filter(function(e) {
+  var filtered = _estFilter === 'all' ? estimates : estimates.filter(function(e) {
     return e.status.toLowerCase() === _estFilter;
   });
+  // E2: Apply text search
+  if (_estSearchQuery) {
+    var q = _estSearchQuery.toLowerCase();
+    filtered = filtered.filter(function(e) {
+      return (e.address && e.address.toLowerCase().indexOf(q) !== -1)
+        || (e.customerName && e.customerName.toLowerCase().indexOf(q) !== -1)
+        || (e.notes && e.notes.toLowerCase().indexOf(q) !== -1)
+        || (e.description && e.description.toLowerCase().indexOf(q) !== -1);
+    });
+  }
 
-  let html = filterHtml;
+  let html = searchHtml + filterHtml;
 
   if (filtered.length === 0) {
     html += '<div class="est-empty">' + (_estFilter === 'all' ? 'NO ESTIMATES YET<br>TAP + TO CREATE ONE' : 'NO ' + _estFilter.toUpperCase() + ' ESTIMATES') + '</div>';
@@ -400,6 +416,15 @@ function renderEstimatesList() {
 function _setEstFilter(f) {
   _estFilter = f;
   renderEstimatesList();
+}
+// E2: Debounced estimate search
+var _estSearchTimer = null;
+function _estSearch(q) {
+  clearTimeout(_estSearchTimer);
+  _estSearchTimer = setTimeout(function() {
+    _estSearchQuery = q;
+    renderEstimatesList();
+  }, 200);
 }
 
 // ═══════════════════════════════════════════
@@ -456,8 +481,15 @@ function renderEstimateBuilder(estId) {
 
   html += '<div class="field"><label>DESCRIPTION</label><textarea id="est-desc" rows="2" placeholder="SCOPE OF WORK..." autocomplete="nope">' + A.esc(est.description) + '</textarea></div>';
 
-  // ── Intelligence Section (Phase B) ──
-  html += _renderIntelSection(est);
+  // EB2: Intelligence section — collapsible, default collapsed after first view
+  var intelContent = _renderIntelSection(est);
+  var intelSeen = localStorage.getItem('astra_intel_seen') === 'true';
+  if (window._collapsible && intelContent) {
+    html += window._collapsible('INTELLIGENCE', 'est-intel', intelContent, !intelSeen);
+    if (!intelSeen) localStorage.setItem('astra_intel_seen', 'true');
+  } else {
+    html += intelContent;
+  }
 
   // ── Materials ──
   html += '<div class="est-section-title">MATERIALS</div>';
@@ -488,22 +520,24 @@ function renderEstimateBuilder(estId) {
 
   html += '<button class="btn btn-secondary" style="width:100%;margin-top:8px;" onclick="window._estAddMat()">+ ADD MATERIAL</button>';
 
-  // ── Labor ──
-  html += '<div class="est-section-title">LABOR</div>';
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
-  html += '<div class="field"><label>HOURS</label><input type="number" inputmode="decimal" min="0" id="est-labor-hrs" autocomplete="nope" value="' + (est.laborHours || '') + '"></div>';
-  html += '<div class="field"><label>$/HR</label><input type="number" inputmode="decimal" min="0" id="est-labor-rate" autocomplete="nope" value="' + (est.laborRate || '') + '"></div>';
-  html += '<div class="field"><label>TOTAL</label><input type="text" id="est-labor-total" autocomplete="nope" value="' + _fmt(est.laborTotal) + '" readonly style="color:#FF6B00;font-weight:700;"></div>';
-  html += '</div>';
+  // EB1: Collapsible Labor section
+  var laborHtml = '';
+  laborHtml += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
+  laborHtml += '<div class="field"><label>HOURS</label><input type="number" inputmode="decimal" min="0" id="est-labor-hrs" autocomplete="nope" value="' + (est.laborHours || '') + '"></div>';
+  laborHtml += '<div class="field"><label>$/HR</label><input type="number" inputmode="decimal" min="0" id="est-labor-rate" autocomplete="nope" value="' + (est.laborRate || '') + '"></div>';
+  laborHtml += '<div class="field"><label>TOTAL</label><input type="text" id="est-labor-total" autocomplete="nope" value="' + _fmt(est.laborTotal) + '" readonly style="color:#FF6B00;font-weight:700;"></div>';
+  laborHtml += '</div>';
+  html += window._collapsible ? window._collapsible('LABOR', 'est-labor', laborHtml, false) : '<div class="est-section-title">LABOR</div>' + laborHtml;
 
-  // ── Adjustments ──
-  html += '<div class="est-section-title">ADJUSTMENTS</div>';
-  html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
-  html += '<div class="field"><label>OVERHEAD %</label><input type="number" inputmode="decimal" min="0" id="est-overhead" autocomplete="nope" value="' + (est.overheadPercent || '') + '"></div>';
-  html += '<div class="field"><label>PROFIT %</label><input type="number" inputmode="decimal" min="0" id="est-profit" autocomplete="nope" value="' + (est.profitPercent || '') + '"></div>';
-  html += '<div class="field"><label>TAX %</label><input type="number" inputmode="decimal" min="0" id="est-tax" autocomplete="nope" value="' + (est.taxRate || '') + '"></div>';
-  html += '</div>';
-  html += '<div class="field"><label>PERMIT FEE</label><input type="number" inputmode="decimal" min="0" step="0.01" id="est-permit" autocomplete="nope" value="' + (est.permitFee || '') + '"></div>';
+  // EB1: Collapsible Adjustments section
+  var adjHtml = '';
+  adjHtml += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">';
+  adjHtml += '<div class="field"><label>OVERHEAD %</label><input type="number" inputmode="decimal" min="0" id="est-overhead" autocomplete="nope" value="' + (est.overheadPercent || '') + '"></div>';
+  adjHtml += '<div class="field"><label>PROFIT %</label><input type="number" inputmode="decimal" min="0" id="est-profit" autocomplete="nope" value="' + (est.profitPercent || '') + '"></div>';
+  adjHtml += '<div class="field"><label>TAX %</label><input type="number" inputmode="decimal" min="0" id="est-tax" autocomplete="nope" value="' + (est.taxRate || '') + '"></div>';
+  adjHtml += '</div>';
+  adjHtml += '<div class="field"><label>PERMIT FEE</label><input type="number" inputmode="decimal" min="0" step="0.01" id="est-permit" autocomplete="nope" value="' + (est.permitFee || '') + '"></div>';
+  html += window._collapsible ? window._collapsible('ADJUSTMENTS', 'est-adj', adjHtml, false) : '<div class="est-section-title">ADJUSTMENTS</div>' + adjHtml;
 
   // ── Summary ──
   html += _renderSummary(est);
@@ -1466,6 +1500,7 @@ Object.assign(window, {
   renderPricebook: renderPricebook,
   deleteCurrentEstimate: deleteCurrentEstimate,
   _setEstFilter: _setEstFilter,
+  _estSearch: _estSearch,
   _estSetJobType: _estSetJobType,
   _estSetStatus: _estSetStatus,
   _estAddMat: _estAddMat,

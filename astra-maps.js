@@ -48,8 +48,24 @@ function setMapStatus(msg) {
 async function renderMap() {
   const key = A.getGmapsKey();
   if (!key) {
-    document.getElementById('map-container').innerHTML =
-      '<div style="display:flex;align-items:center;justify-content:center;height:100%;padding:40px;text-align:center;color:#444;font-size:14px;line-height:1.6;text-transform:uppercase;letter-spacing:1px;font-weight:700;">ADD GOOGLE MAPS API KEY IN SETTINGS</div>';
+    // V1: Fallback — show ordered address list with navigate links
+    var todayFallback = A.todayStr();
+    var vectorJobs = A.loadJobs().filter(function(j) { return !j.archived && (j.date === todayFallback || j.manually_added_to_vector); });
+    var fallbackHtml = '<div style="padding:16px;">';
+    fallbackHtml += '<div style="font-size:12px;color:#555;font-weight:700;letter-spacing:1.5px;margin-bottom:12px;text-transform:uppercase;">NO API KEY — SHOWING JOB LIST</div>';
+    if (vectorJobs.length === 0) {
+      fallbackHtml += '<div style="color:#333;font-size:14px;padding:20px 0;text-align:center;">NO VECTOR JOBS TODAY</div>';
+    } else {
+      vectorJobs.forEach(function(j, idx) {
+        var mapsUrl = 'https://maps.google.com/?q=' + encodeURIComponent(j.address);
+        fallbackHtml += '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #2a2a2a;">'
+          + '<div><span style="color:#FF6B00;font-weight:700;margin-right:8px;">' + (idx + 1) + '.</span><span style="color:#e0e0e0;font-size:14px;">' + A.esc(j.address) + '</span></div>'
+          + '<a href="' + mapsUrl + '" target="_blank" style="color:#FF6B00;font-weight:700;font-size:12px;text-decoration:none;letter-spacing:0.5px;min-width:80px;text-align:right;">NAVIGATE</a>'
+          + '</div>';
+      });
+    }
+    fallbackHtml += '<div style="color:#333;font-size:11px;margin-top:16px;text-align:center;">ADD GOOGLE MAPS API KEY IN SETTINGS FOR MAP VIEW</div></div>';
+    document.getElementById('map-container').innerHTML = fallbackHtml;
     document.getElementById('map-controls').style.display = 'none';
     return;
   }

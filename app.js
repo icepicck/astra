@@ -460,7 +460,7 @@ window.addEventListener('online', function() {
   console.log('[ASTRA] Back online');
   if (_syncDirty) {
     _updateSyncIndicator('pending');
-    setTimeout(_runAutoSync, 2000); // brief delay to let connection stabilize
+    setTimeout(_runAutoSync, 2000 + Math.random() * 2000); // BUG-008: jitter to prevent thundering herd
   }
 });
 window.addEventListener('offline', function() {
@@ -674,7 +674,8 @@ function addTech(tech) { _cache.techs.push(tech); _idbPut('techs', tech); }
 function replaceAllTechs(techs) { _cache.techs = techs; _idbReplaceAll('techs', techs); }
 function loadAddresses() { return _cache.addresses; }
 function replaceAllAddresses(addrs) { _cache.addresses = addrs; _idbReplaceAll('addresses', addrs); }
-function getAddress(id) { return _cache.addresses.find(a => a.id === id); }
+// FAT-023: Return shallow copy to prevent direct cache mutation
+function getAddress(id) { var a = _cache.addresses.find(a => a.id === id); return a ? Object.assign({}, a) : undefined; }
 function updateAddress(id, updates) {
   const idx = _cache.addresses.findIndex(a => a.id === id);
   if (idx === -1) return;
@@ -686,7 +687,8 @@ function addAddress(addr) {
   _idbPut('addresses', addr);
 }
 function statusClass(s) { return 'badge-' + s.toLowerCase().replace(/\s+/g, '-'); }
-function getJob(id) { return _cache.jobs.find(j => j.id === id); }
+// FAT-023: Return shallow copy to prevent direct cache mutation
+function getJob(id) { var j = _cache.jobs.find(j => j.id === id); return j ? Object.assign({}, j) : undefined; }
 function updateJob(id, updates) {
   const idx = _cache.jobs.findIndex(j => j.id === id);
   if (idx === -1) return;
@@ -878,6 +880,14 @@ initDataLayer()
   .then(() => openMediaDB())
   .then(() => migrateLegacyMedia())
   .then(() => {
+    // FAT-029: Boot validation — verify critical modules loaded
+    var missing = [];
+    if (!window.Astra.addJob) missing.push('DATA');
+    if (!window.doLogin) missing.push('AUTH');
+    if (missing.length) {
+      document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#111;color:#c0392b;font-size:16px;font-weight:700;text-align:center;padding:20px;letter-spacing:1px;">MODULE LOAD FAILED: ' + missing.join(', ') + '<br><br><button onclick="location.reload()" style="background:#FF6B00;color:#fff;border:none;padding:14px 28px;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer;">RELOAD APP</button></div>';
+      return;
+    }
     // Step 4: Auth gate — check for session before showing app
     if (window.Astra.checkAuth) {
       return window.Astra.checkAuth().then(function(authenticated) {
@@ -958,9 +968,21 @@ function renderShortcuts() {
 }
 
 function updateSidebarActive() {
+  var user = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+  var role = user ? user.role : 'admin';
   document.querySelectorAll('.sidebar-item').forEach(item => {
     item.classList.toggle('sb-active', item.dataset.screen === currentScreen);
+    // S3: Role-aware sidebar — tech: hide dashboard
+    if (item.dataset.screen === 'screen-dashboard') {
+      item.style.display = (role === 'tech') ? 'none' : '';
+    }
   });
+  // S3: Rename HOME to MY JOBS for techs
+  var homeItem = document.querySelector('.sidebar-item[data-screen="screen-jobs"]');
+  if (homeItem) {
+    var label = homeItem.childNodes[homeItem.childNodes.length - 1];
+    if (label && label.nodeType === 3) label.textContent = (role === 'tech') ? ' MY JOBS' : ' HOME';
+  }
 }
 
 function toggleSidebar() {
@@ -1222,6 +1244,9 @@ function _renderGroupedList(allJobs, el, view, opts) {
   }
 }
 
+// H3: "My Jobs" filter for tech role
+var _myJobsFilter = false;
+
 function renderJobList() {
   updateApprovalBadge();
   var allJobs = loadJobs().filter(j => !j.archived).sort(function(a, b) {
@@ -1230,9 +1255,30 @@ function renderJobList() {
   if (_approvalFilter) {
     allJobs = allJobs.filter(function(j) { return j.status === 'pending_approval'; });
   }
+  // H3: Filter to current user's jobs if toggle is on
+  if (_myJobsFilter) {
+    var me = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+    if (me) allJobs = allJobs.filter(function(j) { return j.techId === me.id || j.assignedTo === me.id || j.createdBy === me.id; });
+  }
   const el = document.getElementById('jobs-body');
   if (!el) return;
+  // H3: Show My Jobs toggle for tech role
+  var myJobsUser = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+  if (myJobsUser && myJobsUser.role === 'tech') {
+    var filterEl = document.getElementById('approval-filter');
+    if (filterEl) {
+      filterEl.style.display = '';
+      filterEl.innerHTML = '<div class="date-toggle" style="margin-bottom:10px;">'
+        + '<button class="date-toggle-btn' + (!_myJobsFilter ? ' active' : '') + '" onclick="toggleMyJobs(false)">ALL JOBS</button>'
+        + '<button class="date-toggle-btn' + (_myJobsFilter ? ' active' : '') + '" onclick="toggleMyJobs(true)">MY JOBS</button>'
+        + '</div>';
+    }
+  }
   _renderGroupedList(allJobs, el, homeView, { emptyText: 'NO TICKETS', dailyEmptyText: 'NO TICKETS DUE TODAY' });
+}
+function toggleMyJobs(on) {
+  _myJobsFilter = on;
+  renderJobList();
 }
 
 // ═══════════════════════════════════════════
@@ -1283,7 +1329,16 @@ function resetCreateForm() {
   document.getElementById('c-state').value = 'TX';
   document.getElementById('c-zip').value = '';
   document.querySelectorAll('#c-types .chip').forEach(c => c.classList.remove('selected'));
-  document.getElementById('c-status').value = 'Not Started';
+  // C1: Role-filtered status options
+  var statusSel = document.getElementById('c-status');
+  var crUser = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+  var crRole = crUser ? crUser.role : 'admin';
+  if (crRole === 'tech') {
+    statusSel.innerHTML = '<option>Not Started</option><option>Pending Approval</option>';
+  } else {
+    statusSel.innerHTML = '<option>Not Started</option><option>In Progress</option><option>Complete</option><option>Needs Callback</option><option>Waiting on Materials</option>';
+  }
+  statusSel.value = 'Not Started';
   document.getElementById('c-date').value = todayStr();
   document.getElementById('c-notes').value = '';
   if (window.Astra && window.Astra.clearCreateTicketMaterials) window.Astra.clearCreateTicketMaterials();
@@ -1669,6 +1724,7 @@ async function renderDetail(jobId) {
     if (j.estimateId) {
       actionsContent += '<button class="btn btn-secondary" style="margin-top:8px;" onclick="goTo(\'screen-estimate-builder\',\'' + j.estimateId + '\')">VIEW LINKED ESTIMATE</button>';
     }
+    actionsContent += '<button class="btn btn-secondary" style="margin-top:8px;" onclick="duplicateTicket(\'' + jobId + '\')">DUPLICATE TICKET</button>';
     actionsContent += j.archived
       ? '<button class="btn btn-restore" onclick="unarchiveJob(\'' + jobId + '\')">RESTORE</button>'
       : '<button class="btn btn-danger" onclick="archiveJob(\'' + jobId + '\')">ARCHIVE</button>';
@@ -1728,11 +1784,11 @@ function toggleMatSection() {
   }
 }
 
-function toggleVector(jobId) {
+async function toggleVector(jobId) {
   const j = getJob(jobId);
   if (!j) return;
   updateJob(jobId, { manually_added_to_vector: !j.manually_added_to_vector });
-  renderDetail(jobId);
+  await renderDetail(jobId); // BUG-013: await to prevent stale UI
 }
 
 // Phase C: Force unlock — supervisor takes over a locked job
@@ -1742,7 +1798,7 @@ window._forceUnlockJob = async function(jobId) {
   if (result.success) {
     _lockedJobId = jobId;
     showToast('LOCK TAKEN OVER', 'success');
-    renderDetail(jobId);
+    await renderDetail(jobId); // BUG-013
   } else {
     showToast('TAKEOVER FAILED', 'error');
   }
@@ -1841,6 +1897,21 @@ function renderAddressList(query) {
 }
 
 let currentAddrId = null;
+// AD2: Edit address text inline
+function _editAddressText(addrId) {
+  var el = document.getElementById('addr-display-text');
+  var a = getAddress(addrId);
+  if (!el || !a) return;
+  el.outerHTML = '<input id="addr-edit-input" class="detail-address" style="background:#1a1a1a;border:1px solid #FF6B00;border-radius:8px;padding:12px;color:#e0e0e0;font-size:18px;font-weight:800;width:100%;box-sizing:border-box;" value="' + esc(a.address) + '" onblur="_saveAddressText(\'' + addrId + '\',this.value)">';
+  var input = document.getElementById('addr-edit-input');
+  if (input) input.focus();
+}
+function _saveAddressText(addrId, newAddress) {
+  if (!newAddress.trim()) return;
+  updateAddress(addrId, { address: newAddress.trim(), street: newAddress.trim() });
+  renderAddrDetail(addrId);
+}
+
 function renderAddrDetail(addrId) {
   const a = getAddress(addrId);
   if (!a) return;
@@ -1888,8 +1959,11 @@ function renderAddrDetail(addrId) {
 
   document.getElementById('addr-detail-body').innerHTML = `
     <div class="detail-header">
-      <div class="detail-address">${esc(a.address)}</div>
-      <button class="btn-navigate" onclick="navigateTo('${esc(a.address).replace(/'/g, "\\'")}')">NAVIGATE</button>
+      <div class="detail-address" id="addr-display-text">${esc(a.address)}</div>
+      <div style="display:flex;gap:8px;margin-bottom:4px;">
+        <button class="btn-navigate" onclick="navigateTo('${esc(a.address).replace(/'/g, "\\'")}')">NAVIGATE</button>
+        <button class="btn-navigate" onclick="_editAddressText('${addrId}')">EDIT ADDRESS</button>
+      </div>
     </div>
     <div class="section-title">PROPERTY INFO</div>
     <div class="dash-card" style="padding:8px 14px;">${fields}</div>
@@ -1970,12 +2044,55 @@ function keepAddressesSeparate(addrId) {
 // ═══════════════════════════════════════════
 // ARCHIVE / STATUS
 // ═══════════════════════════════════════════
+// X3: Undo-able archive — 5s delay with undo toast
+var _archiveTimer = null;
 function archiveJob(id) {
   showConfirmModal('ARCHIVE TICKET', 'ARCHIVE THIS TICKET?', 'ARCHIVE', function() {
-    updateJob(id, { archived: true });
     goTo('screen-jobs');
+    // Show undo toast with clickable undo
+    var toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.innerHTML = 'ARCHIVED <button onclick="window._undoArchive()" style="background:#FF6B00;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;margin-left:12px;">UNDO</button>';
+    var container = document.getElementById('toast-container');
+    if (container) container.appendChild(toast);
+    window._pendingArchiveId = id;
+    _archiveTimer = setTimeout(function() {
+      updateJob(id, { archived: true });
+      window._pendingArchiveId = null;
+      toast.remove();
+    }, 5000);
   }, { destructive: true });
 }
+window._undoArchive = function() {
+  if (_archiveTimer) { clearTimeout(_archiveTimer); _archiveTimer = null; }
+  window._pendingArchiveId = null;
+  showToast('ARCHIVE CANCELLED');
+  // Remove undo toast
+  var toasts = document.querySelectorAll('.toast');
+  toasts.forEach(function(t) { if (t.textContent.indexOf('ARCHIVED') !== -1) t.remove(); });
+};
+// X4: Duplicate ticket — pre-fill Create screen from existing job
+function duplicateTicket(jobId) {
+  var j = getJob(jobId);
+  if (!j) return;
+  goTo('screen-create');
+  // Pre-fill after screen renders
+  setTimeout(function() {
+    var street = document.getElementById('c-street');
+    if (street) street.value = j.address || '';
+    // Pre-select job types
+    document.querySelectorAll('#c-types .chip').forEach(function(c) {
+      if (j.types && j.types.indexOf(c.textContent) !== -1) c.classList.add('selected');
+    });
+    // Pre-select tech
+    var techSel = document.getElementById('c-tech');
+    if (techSel && j.techId) techSel.value = j.techId;
+    // Set today's date
+    var dateInput = document.getElementById('c-date');
+    if (dateInput) dateInput.value = todayStr();
+  }, 100);
+}
+
 function unarchiveJob(id) {
   updateJob(id, { archived: false });
   goTo('screen-jobs');
@@ -2006,7 +2123,7 @@ function closeStatusPicker() {
   document.getElementById('sp-backdrop').classList.remove('active');
   document.getElementById('sp-picker').classList.remove('active');
 }
-function pickStatus(status) {
+async function pickStatus(status) { // BUG-013: async for await renderDetail
   if (!currentJobId) { closeStatusPicker(); return; }
   var job = getJob(currentJobId);
   var user = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
@@ -2018,7 +2135,7 @@ function pickStatus(status) {
     return;
   }
   updateJob(currentJobId, { status });
-  renderDetail(currentJobId);
+  await renderDetail(currentJobId); // BUG-013
   closeStatusPicker();
 }
 
@@ -2060,10 +2177,10 @@ function setApprovalFilter(on) {
   renderJobList();
 }
 
-function approveJob(jobId) {
+async function approveJob(jobId) { // BUG-013: async for await
   updateJob(jobId, { status: 'Not Started' });
   showToast('APPROVED', 'success');
-  renderDetail(jobId);
+  await renderDetail(jobId);
   updateApprovalBadge();
 }
 
@@ -2165,73 +2282,48 @@ function renderDashboard() {
   var techCount = loadTechs().length;
   var needsDedup = loadAddresses().filter(a => a.needsDedup).length;
 
-  document.getElementById('dashboard-body').innerHTML = `
-    <div class="dash-grid">
-      <div class="dash-stat"><div class="dash-stat-num stat-active">${active.length}</div><div class="dash-stat-label">ACTIVE</div></div>
-      <div class="dash-stat"><div class="dash-stat-num stat-archived">${archived.length}</div><div class="dash-stat-label">ARCHIVED</div></div>
-      <div class="dash-stat"><div class="dash-stat-num stat-completion">${completionPct}%</div><div class="dash-stat-label">COMPLETION</div></div>
-      <div class="dash-stat"><div class="dash-stat-num">${totalPhotos + totalDrawings + totalVideos}</div><div class="dash-stat-label">FILES</div></div>
-    </div>
-    ${isAdminOrSuper ? `<div class="dash-card" style="margin-top:10px;border:1px solid #6a4c93;">
-      <div class="dash-card-title" style="color:#6a4c93;">SUPERVISOR</div>
-      <div class="dash-row"><div class="dash-row-label">PENDING APPROVAL</div><div class="dash-row-value" style="color:${pendingApproval > 0 ? '#FF6B00' : '#555'};">${pendingApproval}</div></div>
-      <div class="dash-row"><div class="dash-row-label">TECHS</div><div class="dash-row-value">${techCount}</div></div>
-      <div class="dash-row"><div class="dash-row-label">ADDRESS DUPES</div><div class="dash-row-value" style="color:${needsDedup > 0 ? '#c0392b' : '#555'};">${needsDedup}</div></div>
-      ${pendingApproval > 0 ? '<button class="btn btn-secondary" style="margin-top:8px;border-color:#6a4c93;color:#6a4c93;" onclick="setApprovalFilter(true);goTo(\'screen-jobs\')">VIEW PENDING</button>' : ''}
-    </div>` : ''}
-    <div class="dash-card" style="margin-top:10px;">
-      <div class="dash-card-title">STATUS BREAKDOWN</div>
-      ${STATUSES.map(s => {
-        const count = statusCounts[s];
-        const pct = active.length ? Math.round((count / active.length) * 100) : 0;
-        return `<div class="dash-row">
-          <div class="dash-row-label"><span class="badge ${statusClass(s)}" style="font-size:10px;">${s.toUpperCase()}</span></div>
-          <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%;background:${statusColors[s]};"></div></div>
-          <div class="dash-row-value">${count}</div>
-        </div>`;
-      }).join('')}
-    </div>
-    ${typesSorted.length ? `<div class="dash-card">
-      <div class="dash-card-title">JOB TYPES</div>
-      ${typesSorted.map(([type, count]) => {
-        const pct = Math.round((count / maxTypeCount) * 100);
-        return `<div class="dash-row">
-          <div class="dash-row-label" style="min-width:100px;">${esc(type).toUpperCase()}</div>
-          <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%;background:#FF6B00;"></div></div>
-          <div class="dash-row-value">${count}</div>
-        </div>`;
-      }).join('')}
-    </div>` : ''}
-    ${techSorted.length ? `<div class="dash-card">
-      <div class="dash-card-title">TECH WORKLOAD</div>
-      ${techSorted.map(([name, count]) => `<div class="dash-row">
-        <div class="dash-row-label">${esc(name).toUpperCase()}</div>
-        <div class="dash-row-value">${count}</div>
-      </div>`).join('')}
-    </div>` : ''}
-    <div class="dash-card">
-      <div class="dash-card-title">THIS WEEK</div>
-      <div class="dash-row"><div class="dash-row-label">CREATED</div><div class="dash-row-value" style="color:#FF6B00;">${createdThisWeek}</div></div>
-      <div class="dash-row"><div class="dash-row-label">UPDATED</div><div class="dash-row-value">${updatedThisWeek}</div></div>
-      <div class="dash-row"><div class="dash-row-label">PHOTOS</div><div class="dash-row-value">${totalPhotos}</div></div>
-      <div class="dash-row"><div class="dash-row-label">VIDEOS</div><div class="dash-row-value">${totalVideos}</div></div>
-    </div>
-    ${recent.length ? `<div class="dash-card">
-      <div class="dash-card-title">RECENT ACTIVITY</div>
-      ${recent.map(j => {
-        const ago = _timeAgo(j.updatedAt);
-        return `<div class="dash-activity" onclick="goTo('screen-detail','${j.id}')" style="cursor:pointer;">
-          <div class="dash-activity-dot" style="background:${statusColors[j.status] || '#444'};"></div>
-          <div style="flex:1;overflow:hidden;">
-            <div class="activity-addr">${esc(j.address)}</div>
-            <div class="activity-meta">${esc(j.status).toUpperCase()}${j.archived ? ' · ARCHIVED' : ''}</div>
-          </div>
-          <div class="activity-meta">${ago}</div>
-        </div>`;
-      }).join('')}
-    </div>` : ''}
-    <div class="spacer"></div>
-  `;
+  // DA1: Dashboard hierarchy — actionable first, historical collapsed
+  var supervisorCard = isAdminOrSuper ? '<div class="dash-card" style="border:1px solid #6a4c93;">'
+    + '<div class="dash-card-title" style="color:#6a4c93;">ACTIONABLE</div>'
+    + '<div class="dash-row"><div class="dash-row-label">PENDING APPROVAL</div><div class="dash-row-value" style="color:' + (pendingApproval > 0 ? '#FF6B00' : '#555') + ';">' + pendingApproval + '</div></div>'
+    + '<div class="dash-row"><div class="dash-row-label">TECHS</div><div class="dash-row-value">' + techCount + '</div></div>'
+    + '<div class="dash-row"><div class="dash-row-label">ADDRESS DUPES</div><div class="dash-row-value" style="color:' + (needsDedup > 0 ? '#c0392b' : '#555') + ';">' + needsDedup + '</div></div>'
+    + (pendingApproval > 0 ? '<button class="btn btn-secondary" style="margin-top:8px;border-color:#6a4c93;color:#6a4c93;" onclick="setApprovalFilter(true);goTo(\'screen-jobs\')">VIEW PENDING</button>' : '')
+    + '</div>' : '';
+
+  var thisWeekCard = '<div class="dash-card" style="margin-top:10px;">'
+    + '<div class="dash-card-title">THIS WEEK</div>'
+    + '<div class="dash-row"><div class="dash-row-label">CREATED</div><div class="dash-row-value" style="color:#FF6B00;">' + createdThisWeek + '</div></div>'
+    + '<div class="dash-row"><div class="dash-row-label">UPDATED</div><div class="dash-row-value">' + updatedThisWeek + '</div></div>'
+    + '<div class="dash-row"><div class="dash-row-label">PHOTOS</div><div class="dash-row-value">' + totalPhotos + '</div></div>'
+    + '<div class="dash-row"><div class="dash-row-label">VIDEOS</div><div class="dash-row-value">' + totalVideos + '</div></div>'
+    + '</div>';
+
+  var statsGrid = '<div class="dash-grid">'
+    + '<div class="dash-stat"><div class="dash-stat-num stat-active">' + active.length + '</div><div class="dash-stat-label">ACTIVE</div></div>'
+    + '<div class="dash-stat"><div class="dash-stat-num stat-archived">' + archived.length + '</div><div class="dash-stat-label">ARCHIVED</div></div>'
+    + '<div class="dash-stat"><div class="dash-stat-num stat-completion">' + completionPct + '%</div><div class="dash-stat-label">COMPLETION</div></div>'
+    + '<div class="dash-stat"><div class="dash-stat-num">' + (totalPhotos + totalDrawings + totalVideos) + '</div><div class="dash-stat-label">FILES</div></div>'
+    + '</div>';
+
+  var historicalContent = '<div class="dash-card" style="margin-top:10px;">'
+    + '<div class="dash-card-title">STATUS BREAKDOWN</div>'
+    + STATUSES.map(function(s) {
+        var count = statusCounts[s];
+        var pct = active.length ? Math.round((count / active.length) * 100) : 0;
+        return '<div class="dash-row"><div class="dash-row-label"><span class="badge ' + statusClass(s) + '" style="font-size:10px;">' + s.toUpperCase() + '</span></div><div class="dash-bar-track"><div class="dash-bar-fill" style="width:' + pct + '%;background:' + statusColors[s] + ';"></div></div><div class="dash-row-value">' + count + '</div></div>';
+      }).join('')
+    + '</div>'
+    + (typesSorted.length ? '<div class="dash-card"><div class="dash-card-title">JOB TYPES</div>' + typesSorted.map(function(e) { var pct = Math.round((e[1] / maxTypeCount) * 100); return '<div class="dash-row"><div class="dash-row-label" style="min-width:100px;">' + esc(e[0]).toUpperCase() + '</div><div class="dash-bar-track"><div class="dash-bar-fill" style="width:' + pct + '%;background:#FF6B00;"></div></div><div class="dash-row-value">' + e[1] + '</div></div>'; }).join('') + '</div>' : '')
+    + (techSorted.length ? '<div class="dash-card"><div class="dash-card-title">TECH WORKLOAD</div>' + techSorted.map(function(e) { return '<div class="dash-row"><div class="dash-row-label">' + esc(e[0]).toUpperCase() + '</div><div class="dash-row-value">' + e[1] + '</div></div>'; }).join('') + '</div>' : '')
+    + (recent.length ? '<div class="dash-card"><div class="dash-card-title">RECENT ACTIVITY</div>' + recent.map(function(j) { var ago = _timeAgo(j.updatedAt); return '<div class="dash-activity" onclick="goTo(\'screen-detail\',\'' + j.id + '\')" style="cursor:pointer;"><div class="dash-activity-dot" style="background:' + (statusColors[j.status] || '#444') + ';"></div><div style="flex:1;overflow:hidden;"><div class="activity-addr">' + esc(j.address) + '</div><div class="activity-meta">' + esc(j.status).toUpperCase() + (j.archived ? ' · ARCHIVED' : '') + '</div></div><div class="activity-meta">' + ago + '</div></div>'; }).join('') + '</div>' : '');
+
+  document.getElementById('dashboard-body').innerHTML =
+    supervisorCard
+    + thisWeekCard
+    + statsGrid
+    + _collapsible('HISTORICAL DATA', 'dash-history', historicalContent, false)
+    + '<div class="spacer"></div>';
 }
 
 
@@ -2278,7 +2370,7 @@ document.getElementById('photo-input').addEventListener('change', async function
     photos.push({ id, name: f.name, type: 'image', addedAt: new Date().toISOString(), synced: false });
   }
   updateJob(currentJobId, { photos });
-  renderDetail(currentJobId);
+  await renderDetail(currentJobId); // BUG-013
   this.value = '';
 });
 
@@ -2300,7 +2392,7 @@ document.getElementById('drawing-input').addEventListener('change', async functi
     }
   }
   updateJob(currentJobId, { drawings });
-  renderDetail(currentJobId);
+  await renderDetail(currentJobId); // BUG-013
   this.value = '';
 });
 
@@ -2322,7 +2414,7 @@ document.getElementById('video-input').addEventListener('change', async function
     videos.push({ id, name: f.name, type: 'video', mimeType: f.type, addedAt: new Date().toISOString(), synced: false });
   }
   updateJob(currentJobId, { videos });
-  renderDetail(currentJobId);
+  await renderDetail(currentJobId); // BUG-013
   this.value = '';
 });
 
@@ -2343,7 +2435,7 @@ async function deleteMedia(jobId, type, mediaId) {
     }
     const updated = (j[type] || []).filter(m => m.id !== mediaId);
     updateJob(jobId, { [type]: updated });
-    renderDetail(jobId);
+    await renderDetail(jobId); // BUG-013
   }, { destructive: true });
 }
 
@@ -2364,7 +2456,7 @@ async function lazyDownloadMedia(jobId, type, idx) {
     await saveMediaBlob(item.id, blob);
     item.synced = true;
     updateJob(jobId, { [type]: j[type] });
-    renderDetail(jobId);
+    await renderDetail(jobId); // BUG-013
   } else {
     showToast('DOWNLOAD FAILED — TRY AGAIN', 'error');
   }
@@ -2661,6 +2753,16 @@ function devClearAllData() {
 }
 
 async function exportData() {
+  // SEC-027: Warn that export contains sensitive data
+  return new Promise(function(resolve) {
+    showConfirmModal('EXPORT DATA', 'EXPORT CONTAINS ALL TICKETS, NOTES, AND MEDIA. THIS FILE IS UNENCRYPTED.', 'EXPORT', async function() {
+      await _doExport();
+      resolve();
+    });
+  });
+}
+// TODO: SEC-027 future — add optional encryption via Web Crypto API
+async function _doExport() {
   const mediaBlobs = await getAllMediaBlobs();
   const data = {
     version: '0.7', // D37: matches manifest.json
@@ -2745,6 +2847,19 @@ function importHistoricalJobs(input) {
       var jobs = data.jobs;
       if (!jobs || !Array.isArray(jobs) || !jobs.length) {
         showInfoModal('INVALID FILE', 'NO JOBS ARRAY FOUND IN FILE.');
+        return;
+      }
+      // SEC-028: Validate field sizes and types
+      if (jobs.length > 1000) {
+        showInfoModal('IMPORT FAILED', 'TOO MANY JOBS (' + jobs.length + '). MAX 1000 PER IMPORT.');
+        return;
+      }
+      var oversized = jobs.filter(function(j) {
+        return (j.notes && j.notes.length > 10240) || (j.address && j.address.length > 500)
+          || (j.materials_used && j.materials_used.length > 200);
+      });
+      if (oversized.length) {
+        showInfoModal('IMPORT FAILED', oversized.length + ' JOBS EXCEED SIZE LIMITS (NOTES < 10KB, ADDRESS < 500 CHARS, MATERIALS < 200).');
         return;
       }
 
@@ -3093,10 +3208,10 @@ Object.assign(window, {
   // Navigation
   goTo, toggleSidebar, closeSidebar, setHomeView, setArchiveView,
   // Ticket CRUD
-  saveNewTicket, saveAndNew, updateJob, archiveJob, unarchiveJob,
+  saveNewTicket, saveAndNew, duplicateTicket, updateJob, archiveJob, unarchiveJob,
   toggleVector, openStatusPicker, closeStatusPicker, pickStatus,
   // Address
-  updateAddress, addrAutocomplete, pickAddr, navigateTo, renderAddressList, autoExpand,
+  updateAddress, addrAutocomplete, pickAddr, navigateTo, renderAddressList, autoExpand, _editAddressText, _saveAddressText,
   // Search
   debouncedSearch,
   // Materials (core-side)
@@ -3115,7 +3230,7 @@ Object.assign(window, {
   saveGmapsKey, saveHomeBase, hardReload, _applyUpdate,
   // D16: Custom modals + state machine + approval
   showConfirmModal, showInfoModal, _closeModal, _modalConfirm,
-  getAllowedTransitions, setApprovalFilter,
+  getAllowedTransitions, setApprovalFilter, toggleMyJobs,
   approveJob, requestChanges, rejectJob, updateApprovalBadge,
   // Step 6A: Address dedup
   keepAddressesSeparate,

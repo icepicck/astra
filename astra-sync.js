@@ -12,6 +12,18 @@
 'use strict';
 
 var A = window.Astra;
+
+// FAT-016+: Field mapping tables — documents cloud↔local field names
+// Jobs: id, sync_id→syncId, address, address_id→addressId, types, status, date,
+//   tech_id→techId, tech_name→techName, notes, tech_notes→techNotes, materials,
+//   photos, drawings, videos, manually_added_to_vector, estimate_id→estimateId,
+//   created_by→createdBy, assigned_to→assignedTo, locked_by→lockedBy, locked_at→lockedAt,
+//   deleted_at→deletedAt, created_at→createdAt, updated_at→updatedAt
+// Addresses: id, address, street, suite, city, state, zip, + dynamic ADDR_FIELDS
+// Techs: id, name, email, phone, role, account_id→accountId
+// Estimates: id, address, customer_name→customerName, job_type→jobType, status,
+//   materials, labor_hours→laborHours, labor_rate→laborRate, grand_total→grandTotal
+
 var SUPA_URL_KEY = 'astra_supabase_url';
 var SUPA_KEY_KEY = 'astra_supabase_key';
 var LAST_SYNC_KEY = 'astra_last_sync';
@@ -550,6 +562,12 @@ async function syncToCloud(statusCallback) {
     setLastSync();
     window._syncInProgress = false;
     // Suppress realtime toasts briefly — push triggers cloud events back to us
+    // BUG-021: Per-record cooldown — stamp pushed IDs instead of global cooldown
+    var now = Date.now();
+    filteredJobs.forEach(function(j) { _recentlyPushedIds[j.id] = now; });
+    filteredAddrs.forEach(function(a) { _recentlyPushedIds[a.id] = now; });
+    techs.forEach(function(t) { _recentlyPushedIds[t.id] = now; });
+    filteredEsts.forEach(function(e) { _recentlyPushedIds[e.id] = now; });
     window._syncCooldown = true;
     setTimeout(function() { window._syncCooldown = false; }, 3000);
     return {
@@ -583,7 +601,8 @@ async function syncFromCloud(statusCallback) {
     var newAddresses = 0, newJobs = 0, updatedJobs = 0, skippedJobs = 0;
     var newEstimates = 0, updatedEstimates = 0, skippedEstimates = 0;
     // D27: Incremental sync — only fetch records changed since last sync
-    var lastSync = getLastSync();
+    // BUG-020: If last pull was incomplete, fetch ALL to avoid stale overwrites
+    var lastSync = _lastPullComplete === false ? null : getLastSync();
 
     // 1. Pull addresses (unfiltered within account — architecture decision #3)
     status('PULLING ADDRESSES...');
@@ -769,6 +788,7 @@ async function syncFromCloud(statusCallback) {
       }
     }
 
+    _lastPullComplete = true; // BUG-020: Mark pull as complete
     setLastSync();
     window._syncInProgress = false;
     // Suppress realtime toasts briefly — bulk sync triggers cloud events for every record written
@@ -788,6 +808,7 @@ async function syncFromCloud(statusCallback) {
       skippedEstimates: skippedEstimates
     };
   } catch (e) {
+    _lastPullComplete = false; // BUG-020: Mark pull as incomplete for recovery
     window._syncInProgress = false;
     throw e;
   }
@@ -797,6 +818,12 @@ async function syncFromCloud(statusCallback) {
 // REALTIME — Live sync across devices
 // Now includes estimates table
 // ═══════════════════════════════════════════
+// BUG-020: Track pull completeness for recovery on next push
+var _lastPullComplete = true;
+
+// BUG-021: Per-record sync cooldown — tracks recently pushed record IDs
+var _recentlyPushedIds = {};
+
 var _channel = null;
 
 function startRealtime() {
@@ -844,6 +871,12 @@ function _handleRemoteChange(table, payload) {
   if (!newRec && !oldRec) return;
   if (window._syncInProgress) return;
   if (window._syncCooldown) return;
+  // BUG-021: Per-record cooldown — skip events for recently pushed records
+  var recordId = (newRec && newRec.id) || (oldRec && oldRec.id);
+  if (recordId && _recentlyPushedIds[recordId]) {
+    if (Date.now() - _recentlyPushedIds[recordId] < 10000) return; // 10s window
+    delete _recentlyPushedIds[recordId]; // Expired — clean up
+  }
 
   // D26: If record was soft-deleted, remove local copy
   if (newRec && newRec.deleted_at) {
