@@ -388,7 +388,17 @@ function renderEstimatesList() {
   let html = searchHtml + filterHtml;
 
   if (filtered.length === 0) {
-    html += '<div class="est-empty">' + (_estFilter === 'all' ? 'NO ESTIMATES YET<br>TAP + TO CREATE ONE' : 'NO ' + _estFilter.toUpperCase() + ' ESTIMATES') + '</div>';
+    if (_estFilter === 'all') {
+      html += '<div class="est-empty" style="text-align:center;padding:48px 24px;">' +
+        '<svg viewBox="0 0 24 24" style="width:48px;height:48px;stroke:#555;fill:none;stroke-width:1.5;margin-bottom:16px;"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>' +
+        '<div style="font-size:14px;font-weight:800;color:#888;letter-spacing:1.5px;margin-bottom:12px;">NO ESTIMATES YET</div>' +
+        '<div style="font-size:12px;color:#555;margin-bottom:24px;line-height:1.6;">COMPLETE YOUR FIRST JOB<br>AND ASTRA STARTS LEARNING<br>WHAT THINGS ACTUALLY COST.</div>' +
+        '<button class="btn btn-primary" style="margin-bottom:12px;background:#FF6B00;min-height:48px;width:100%;max-width:260px;" onclick="goTo(\'screen-estimate-builder\')">CREATE ESTIMATE</button>' +
+        '<button class="btn btn-secondary" style="min-height:48px;width:100%;max-width:260px;border:2px solid #FF6B00;color:#FF6B00;" onclick="goTo(\'screen-pricebook\')">SET UP PRICE BOOK</button>' +
+        '</div>';
+    } else {
+      html += '<div class="est-empty">NO ' + _estFilter.toUpperCase() + ' ESTIMATES</div>';
+    }
   } else {
     filtered.forEach(function(est) {
       const statusCls = 'badge badge-' + est.status.toLowerCase();

@@ -1026,6 +1026,9 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
     <span class="sidebar-icon"><svg viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1m-2 0h2"/></svg></span> HOME
     <span class="approval-badge" id="sidebar-approval-badge" style="display:none;"></span>
   </button>
+  <button class="sidebar-item" data-screen="screen-estimates" onclick="goTo('screen-estimates');closeSidebar()">
+    <span class="sidebar-icon"><svg viewBox="0 0 24 24"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></span> ESTIMATES
+  </button>
   <button class="sidebar-item" data-screen="screen-search" onclick="goTo('screen-search');closeSidebar()">
     <span class="sidebar-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span> SEARCH
   </button>
@@ -1356,125 +1359,17 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
 
 <!-- ══════════════ SCREEN: SETTINGS ══════════════ -->
 <div id="screen-settings" class="screen">
-  <div class="screen-body" id="settings-body">
-    <div class="section-title">DATA</div>
-    <div id="settings-stats" class="dash-card" style="margin-bottom:16px;"></div>
-
-    <!-- T2-D2: Role-gated settings sections -->
-    <div id="settings-tools" style="display:none;">
-    <div class="section-title">HOME BASE</div>
-    <div class="dash-card" style="margin-bottom:16px;padding:14px;">
-      <div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">ORIGIN FOR VECTOR ROUTE OPTIMIZATION</div>
-      <div class="field" style="margin-bottom:0;">
-        <input type="text" id="home-base-input" name="astra-xhomebase" autocomplete="nope" placeholder="1234 MAIN ST, HOUSTON, TX 77001" style="font-size:14px;"
-          value="" onblur="saveHomeBase(this.value)">
-      </div>
-    </div>
-
-    <div class="section-title">BACKUP</div>
-    <button class="btn btn-primary" style="margin-bottom:10px;" onclick="exportData()">EXPORT</button>
-    <button class="btn btn-secondary" style="margin-bottom:16px;" onclick="document.getElementById('import-input').click()">IMPORT</button>
-    <input type="file" class="hidden-input" id="import-input" accept=".json" onchange="importData(this)">
-
-    <!-- T2-B6: Cloud sync section — Supabase config hidden for non-admin, sync buttons visible to all -->
-    <div class="section-title">CLOUD SYNC</div>
-    <div class="dash-card" style="margin-bottom:16px;padding:14px;">
-      <div id="supabase-config-admin" style="display:none;">
-        <div style="font-size:12px;color:#FF6B00;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">SUPABASE — ONE DB, EVERY DEVICE</div>
-        <div class="field" style="margin-bottom:10px;">
-          <label>PROJECT URL</label>
-          <input type="text" id="supabase-url" name="astra-xsurl" autocomplete="nope" placeholder="https://xyz.supabase.co" style="font-size:13px;"
-            value="" onblur="Astra.saveSupabaseUrl(this.value)">
-        </div>
-        <div class="field" style="margin-bottom:12px;">
-          <label>ANON KEY</label>
-          <input type="text" id="supabase-key" name="astra-xskey" autocomplete="nope" placeholder="eyJhbGciOi..." style="font-size:13px;"
-            value="" onblur="Astra.saveSupabaseKey(this.value)">
-        </div>
-      </div>
-      <div id="sync-status" style="font-size:12px;color:#555;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;display:none;"></div>
-      <button class="btn btn-primary" style="margin-bottom:10px;background:#FF6B00;" id="sync-push-btn" onclick="runSyncPush()">PUSH TO CLOUD</button>
-      <button class="btn btn-secondary" style="margin-bottom:0;" id="sync-pull-btn" onclick="runSyncPull()">PULL FROM CLOUD</button>
-    </div>
-
-    <div class="section-title">GOOGLE MAPS API</div>
-    <div class="dash-card" style="margin-bottom:16px;padding:14px;">
-      <div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">GEOCODING AND ROUTE MAP</div>
-      <div class="field" style="margin-bottom:0;">
-        <input type="text" id="gmaps-key" name="astra-xapikey" autocomplete="nope" placeholder="API KEY" style="font-size:14px;"
-          value="" onblur="saveGmapsKey(this.value)">
-      </div>
-    </div>
-
-    <div class="section-title">MATERIAL LIBRARY</div>
-    <div class="dash-card" style="margin-bottom:16px;padding:14px;">
-      <div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">IMPORT JSON FILES FOR ROUGH AND TRIM</div>
-      <!-- M3: Increased contrast for import button -->
-      <button class="btn btn-secondary" style="margin-bottom:0;border:2px solid #FF6B00;color:#FF6B00;" onclick="document.getElementById('material-import-input').click()">IMPORT MATERIAL LIBRARY</button>
-      <input type="file" class="hidden-input" id="material-import-input" accept=".json" onchange="importMaterialLibrary(this)">
-    </div>
-
-    <div class="section-title">HISTORICAL DATA</div>
-    <div class="dash-card" style="margin-bottom:16px;padding:14px;">
-      <div style="font-size:12px;color:#444;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">IMPORT JOB HISTORY (JSON)</div>
-      <div style="font-size:11px;color:#333;margin-bottom:10px;">IMPORTS AS COMPLETED JOBS TO FEED THE PREDICTION ENGINE.</div>
-      <div id="import-preview" style="display:none;margin-bottom:10px;"></div>
-      <button class="btn btn-secondary" style="margin-bottom:0;" onclick="document.getElementById('history-import-input').click()">IMPORT JOB HISTORY</button>
-      <input type="file" class="hidden-input" id="history-import-input" accept=".json" onchange="importHistoricalJobs(this)">
-    </div>
-
-    <div class="section-title">MODULES</div>
-    <button class="est-settings-btn" onclick="goTo('screen-estimates')">
-      <svg viewBox="0 0 24 24"><path d="M9 7h6m0 10v-3m-3 3h.01M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>
-      ESTIMATES
-    </button>
-
-    </div><!-- /settings-tools -->
-
-    <div class="section-title">STORAGE</div>
-    <div id="storage-info" class="dash-card" style="margin-bottom:16px;"></div>
-
-    <div class="section-title">ACCOUNT</div>
-    <div id="settings-user-info" class="dash-card" style="margin-bottom:12px;"></div>
-    <button class="btn btn-secondary" style="margin-bottom:16px;border-color:#c0392b;color:#c0392b;" onclick="doLogout()">SIGN OUT</button>
-
-    <div class="section-title">SECURITY</div>
-    <div class="dash-card" style="margin-bottom:16px;">
-      <div class="security-row" id="mfa-status-row">
-        <span class="security-status disabled" id="mfa-status-label">2FA: DISABLED</span>
-        <button class="security-btn security-btn-enable" id="mfa-toggle-btn" onclick="toggleMfa()">ENABLE 2FA</button>
-      </div>
-    </div>
-
-    <div class="section-title">APP</div>
-    <button class="btn btn-secondary" style="margin-bottom:16px;" onclick="hardReload()">RELOAD APP</button>
-
-    <!-- Step 7C: Developer settings (admin-only) -->
-    <div id="dev-settings" style="display:none;">
-      <div class="section-title" style="color:#FF6B00;">DEVELOPER</div>
-      <div class="dash-card" style="margin-bottom:12px;">
-        <div id="dev-sync-info"></div>
-      </div>
-      <button class="btn btn-secondary" style="margin-bottom:8px;" onclick="devClearCache()">CLEAR CACHE</button>
-      <button class="btn btn-secondary" style="margin-bottom:8px;" onclick="devForceSync()">FORCE SYNC</button>
-      <button class="btn btn-secondary" style="margin-bottom:8px;" onclick="devToggleDebug()">TOGGLE DEBUG LOGS</button>
-      <!-- SET4: Visual separation between safe and destructive actions -->
-      <div style="border-top:1px solid #333;margin:16px 0;"></div>
-      <div style="font-size:10px;color:#c0392b;font-weight:700;letter-spacing:1px;margin-bottom:8px;text-align:center;">DANGER ZONE</div>
-      <button class="btn btn-secondary" style="margin-bottom:16px;border-color:#c0392b;color:#c0392b;" onclick="devClearAllData()">WIPE LOCAL DATA</button>
-    </div>
-
-    <div style="color:#333;font-size:12px;text-align:center;margin-top:24px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">
-      ASTRA v0.7
-    </div>
-    <div style="height:24px;"></div>
-  </div>
+  <div class="screen-body" id="settings-body"></div>
+  <!-- Hidden file inputs (must persist outside dynamic render) -->
+  <input type="file" class="hidden-input" id="import-input" accept=".json" onchange="importData(this)">
+  <input type="file" class="hidden-input" id="material-import-input" accept=".json" onchange="importMaterialLibrary(this)">
+  <input type="file" class="hidden-input" id="history-import-input" accept=".json" onchange="importHistoricalJobs(this)">
 </div>
 
 <!-- ══════════════ SCREEN: ESTIMATES LIST ══════════════ -->
 <div id="screen-estimates" class="screen">
   <div class="est-topbar">
-    <button class="est-topbar-btn" onclick="goTo('screen-settings')">←</button>
+    <button class="est-topbar-btn" onclick="goTo('screen-jobs')">←</button>
     <div class="est-topbar-title">ESTIMATES</div>
     <button class="est-topbar-btn" onclick="goTo('screen-pricebook')">
       <svg viewBox="0 0 24 24" style="width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>

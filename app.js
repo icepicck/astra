@@ -935,6 +935,7 @@ let archiveView = 'daily';
 
 const SVG_ATTR = ' viewBox="0 0 24 24" style="width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"';
 const SCREEN_ICONS = {
+  'screen-estimates': '<svg' + SVG_ATTR + '><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>',
   'screen-search': '<svg' + SVG_ATTR + '><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>',
   'screen-addresses': '<svg' + SVG_ATTR + '><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>',
   'screen-vector': '<svg' + SVG_ATTR + '><polygon points="5 3 19 12 5 21 5 3"/></svg>',
@@ -944,7 +945,7 @@ const SCREEN_ICONS = {
   'screen-settings': '<svg' + SVG_ATTR + '><path d="M12.22 2h-.44a2 2 0 00-2 2v.18a2 2 0 01-1 1.73l-.43.25a2 2 0 01-2 0l-.15-.08a2 2 0 00-2.73.73l-.22.38a2 2 0 00.73 2.73l.15.1a2 2 0 011 1.72v.51a2 2 0 01-1 1.74l-.15.09a2 2 0 00-.73 2.73l.22.38a2 2 0 002.73.73l.15-.08a2 2 0 012 0l.43.25a2 2 0 011 1.73V20a2 2 0 002 2h.44a2 2 0 002-2v-.18a2 2 0 011-1.73l.43-.25a2 2 0 012 0l.15.08a2 2 0 002.73-.73l.22-.39a2 2 0 00-.73-2.73l-.15-.08a2 2 0 01-1-1.74v-.5a2 2 0 011-1.74l.15-.09a2 2 0 00.73-2.73l-.22-.38a2 2 0 00-2.73-.73l-.15.08a2 2 0 01-2 0l-.43-.25a2 2 0 01-1-1.73V4a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="3"/></svg>'
 };
 const SCREEN_LABELS = {
-  'screen-jobs': 'HOME', 'screen-search': 'SEARCH', 'screen-addresses': 'ADDRESSES',
+  'screen-jobs': 'HOME', 'screen-estimates': 'ESTIMATES', 'screen-search': 'SEARCH', 'screen-addresses': 'ADDRESSES',
   'screen-vector': 'VECTOR', 'screen-materials': 'MATERIALS', 'screen-archive': 'ARCHIVE',
   'screen-dashboard': 'DASHBOARD', 'screen-settings': 'SETTINGS'
 };
@@ -2622,48 +2623,12 @@ function toggleChip(el) { el.classList.toggle('selected'); }
 // SETTINGS / EXPORT / IMPORT
 // ═══════════════════════════════════════════
 async function renderSettings() {
-  // Step 4: Show current user info
-  var userInfoEl = document.getElementById('settings-user-info');
-  if (userInfoEl) {
-    var user = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
-    if (user) {
-      userInfoEl.innerHTML =
-        '<div class="dash-row"><div class="dash-row-label">NAME</div><div class="dash-row-value">' + esc(user.name || '—') + '</div></div>' +
-        '<div class="dash-row"><div class="dash-row-label">EMAIL</div><div class="dash-row-value" style="font-size:12px;">' + esc(user.email || '—') + '</div></div>' +
-        '<div class="dash-row"><div class="dash-row-label">ROLE</div><div class="dash-row-value" style="color:#FF6B00;text-transform:uppercase;">' + esc(user.role || '—') + '</div></div>';
-    } else {
-      userInfoEl.innerHTML = '<div class="dash-row"><div class="dash-row-label">STATUS</div><div class="dash-row-value">NOT SIGNED IN</div></div>';
-    }
-  }
+  var user = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+  var role = user ? user.role : 'tech';
+  var isAdmin = role === 'admin' || role === 'owner';
+  var isSupervisor = role === 'supervisor' || isAdmin;
 
-  // Step 7E: Update 2FA status in security section
-  if (window.Astra.updateMfaStatus) window.Astra.updateMfaStatus();
-
-  const jobs = loadJobs();
-  const active = jobs.filter(j => !j.archived).length;
-  const archived = jobs.filter(j => j.archived).length;
-  let photos = 0, drawings = 0, videos = 0;
-  jobs.forEach(j => { photos += (j.photos || []).length; drawings += (j.drawings || []).length; videos += (j.videos || []).length; });
-
-  document.getElementById('settings-stats').innerHTML = `
-    <div class="dash-row"><div class="dash-row-label">TOTAL</div><div class="dash-row-value">${jobs.length}</div></div>
-    <div class="dash-row"><div class="dash-row-label">ACTIVE</div><div class="dash-row-value" style="color:#FF6B00;">${active}</div></div>
-    <div class="dash-row"><div class="dash-row-label">ARCHIVED</div><div class="dash-row-value" style="color:#2d8a4e;">${archived}</div></div>
-    <div class="dash-row"><div class="dash-row-label">PHOTOS</div><div class="dash-row-value">${photos}</div></div>
-    <div class="dash-row"><div class="dash-row-label">VIDEOS</div><div class="dash-row-value">${videos}</div></div>
-    <div class="dash-row"><div class="dash-row-label">DRAWINGS</div><div class="dash-row-value">${drawings}</div></div>
-    <div class="dash-row"><div class="dash-row-label">PROPERTIES</div><div class="dash-row-value">${loadAddresses().length}</div></div>
-  `;
-
-  const gmapsInput = document.getElementById('gmaps-key');
-  if (gmapsInput) gmapsInput.value = getGmapsKey();
-  const homeBaseInput = document.getElementById('home-base-input');
-  if (homeBaseInput) homeBaseInput.value = getHomeBase();
-  const supaUrlInput = document.getElementById('supabase-url');
-  if (supaUrlInput && window.Astra.getSupabaseUrl) supaUrlInput.value = window.Astra.getSupabaseUrl();
-  const supaKeyInput = document.getElementById('supabase-key');
-  if (supaKeyInput && window.Astra.getSupabaseKey) supaKeyInput.value = window.Astra.getSupabaseKey();
-
+  // ── Compute storage (async) ──
   let mediaBytes = 0;
   try { mediaBytes = await getMediaDBSize(); } catch(e) {}
   let lsBytes = 0;
@@ -2672,54 +2637,139 @@ async function renderSettings() {
     lsBytes += (localStorage.getItem(key) || '').length * 2;
   }
   const usedMB = ((mediaBytes + lsBytes) / (1024 * 1024)).toFixed(1);
-
-  // D21: Storage warning threshold at 50MB
-  var warningHtml = '';
+  var storageWarning = '';
   if (parseFloat(usedMB) > 50) {
-    warningHtml = '<div class="dash-row" style="margin-top:8px;"><div class="dash-row-label" style="color:#c0392b;">⚠ STORAGE HIGH</div><div class="dash-row-value" style="color:#c0392b;">ARCHIVE OLD MEDIA</div></div>';
+    storageWarning = '<div class="dash-row" style="margin-top:8px;"><div class="dash-row-label" style="color:#c0392b;">⚠ STORAGE HIGH</div><div class="dash-row-value" style="color:#c0392b;">ARCHIVE OLD MEDIA</div></div>';
   }
 
-  // T2-D2 (SET2): Role-aware settings sections
-  var settingsToolsEl = document.getElementById('settings-tools');
-  if (settingsToolsEl) {
-    var toolsUser = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
-    var toolsRole = toolsUser ? toolsUser.role : 'tech';
-    // Tech sees nothing in tools section; supervisor/admin see everything
-    settingsToolsEl.style.display = (toolsRole === 'supervisor' || toolsRole === 'admin' || toolsRole === 'owner') ? '' : 'none';
-  }
+  // ── Compute data stats ──
+  const jobs = loadJobs();
+  const active = jobs.filter(j => !j.archived).length;
+  const archived = jobs.filter(j => j.archived).length;
+  let photos = 0, drawings = 0, videos = 0;
+  jobs.forEach(j => { photos += (j.photos || []).length; drawings += (j.drawings || []).length; videos += (j.videos || []).length; });
 
-  // T2-B6 (SET3): Show Supabase config only to admin/owner
-  var supaConfigEl = document.getElementById('supabase-config-admin');
-  if (supaConfigEl) {
-    var configUser = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
-    var configRole = configUser ? configUser.role : 'tech';
-    supaConfigEl.style.display = (configRole === 'admin' || configRole === 'owner') ? '' : 'none';
+  // ═══ SECTION 1: ACCOUNT (always visible, always first) ═══
+  var accountContent = '<div class="dash-card" style="margin-bottom:12px;">';
+  if (user) {
+    accountContent +=
+      '<div class="dash-row"><div class="dash-row-label">NAME</div><div class="dash-row-value">' + esc(user.name || '—') + '</div></div>' +
+      '<div class="dash-row"><div class="dash-row-label">EMAIL</div><div class="dash-row-value" style="font-size:12px;">' + esc(user.email || '—') + '</div></div>' +
+      '<div class="dash-row"><div class="dash-row-label">ROLE</div><div class="dash-row-value" style="color:#FF6B00;text-transform:uppercase;">' + esc(user.role || '—') + '</div></div>';
+  } else {
+    accountContent += '<div class="dash-row"><div class="dash-row-label">STATUS</div><div class="dash-row-value">NOT SIGNED IN</div></div>';
   }
+  accountContent += '</div>';
+  accountContent += '<button class="btn btn-secondary" style="margin-bottom:12px;border-color:#c0392b;color:#c0392b;min-height:48px;" onclick="doLogout()">SIGN OUT</button>';
+  accountContent += '<div class="dash-card"><div class="security-row" id="mfa-status-row">' +
+    '<span class="security-status disabled" id="mfa-status-label">2FA: DISABLED</span>' +
+    '<button class="security-btn security-btn-enable" id="mfa-toggle-btn" onclick="toggleMfa()">ENABLE 2FA</button>' +
+    '</div></div>';
 
-  // Step 7C: Show dev settings for admin only
-  var devEl = document.getElementById('dev-settings');
-  if (devEl) {
-    var devUser = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
-    var isAdmin = devUser && devUser.role === 'admin';
-    devEl.style.display = isAdmin ? '' : 'none';
-    if (isAdmin) {
-      var lastSync = localStorage.getItem('astra_last_sync') || 'NEVER';
-      var debugOn = localStorage.getItem('astra_debug') === 'true';
-      document.getElementById('dev-sync-info').innerHTML =
-        '<div class="dash-row"><div class="dash-row-label">LAST SYNC</div><div class="dash-row-value" style="font-size:11px;">' + esc(lastSync) + '</div></div>' +
-        '<div class="dash-row"><div class="dash-row-label">SYNC STATE</div><div class="dash-row-value">' + (window._syncInProgress ? 'IN PROGRESS' : 'IDLE') + '</div></div>' +
-        '<div class="dash-row"><div class="dash-row-label">RETRY COUNT</div><div class="dash-row-value">' + _syncRetryCount + '/' + _syncMaxRetries + '</div></div>' +
-        '<div class="dash-row"><div class="dash-row-label">DEBUG LOGS</div><div class="dash-row-value" style="color:' + (debugOn ? '#2d8a4e' : '#555') + ';">' + (debugOn ? 'ON' : 'OFF') + '</div></div>';
-    }
+  // ═══ SECTION 2: MY SHOP (supervisor/admin only) ═══
+  var shopContent =
+    '<div class="dash-card" style="margin-bottom:12px;">' +
+      '<div class="dash-row"><div class="dash-row-label">TOTAL</div><div class="dash-row-value">' + jobs.length + '</div></div>' +
+      '<div class="dash-row"><div class="dash-row-label">ACTIVE</div><div class="dash-row-value" style="color:#FF6B00;">' + active + '</div></div>' +
+      '<div class="dash-row"><div class="dash-row-label">ARCHIVED</div><div class="dash-row-value" style="color:#2d8a4e;">' + archived + '</div></div>' +
+      '<div class="dash-row"><div class="dash-row-label">PHOTOS</div><div class="dash-row-value">' + photos + '</div></div>' +
+      '<div class="dash-row"><div class="dash-row-label">VIDEOS</div><div class="dash-row-value">' + videos + '</div></div>' +
+      '<div class="dash-row"><div class="dash-row-label">DRAWINGS</div><div class="dash-row-value">' + drawings + '</div></div>' +
+      '<div class="dash-row"><div class="dash-row-label">PROPERTIES</div><div class="dash-row-value">' + loadAddresses().length + '</div></div>' +
+    '</div>' +
+    '<div class="dash-card" style="padding:14px;">' +
+      '<div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">ORIGIN FOR VECTOR ROUTE OPTIMIZATION</div>' +
+      '<div class="field" style="margin-bottom:0;">' +
+        '<input type="text" id="home-base-input" name="astra-xhomebase" autocomplete="nope" placeholder="1234 MAIN ST, HOUSTON, TX 77001" style="font-size:14px;" value="' + esc(getHomeBase()) + '" onblur="saveHomeBase(this.value)">' +
+      '</div>' +
+    '</div>';
+
+  // ═══ SECTION 3: SYNC (all roles, Supabase creds admin-only) ═══
+  var syncContent = '<div class="dash-card" style="padding:14px;">';
+  if (isAdmin) {
+    syncContent +=
+      '<div style="font-size:12px;color:#FF6B00;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">SUPABASE — ONE DB, EVERY DEVICE</div>' +
+      '<div class="field" style="margin-bottom:10px;"><label>PROJECT URL</label>' +
+        '<input type="text" id="supabase-url" name="astra-xsurl" autocomplete="nope" placeholder="https://xyz.supabase.co" style="font-size:13px;" value="' + esc(window.Astra.getSupabaseUrl ? window.Astra.getSupabaseUrl() : '') + '" onblur="Astra.saveSupabaseUrl(this.value)">' +
+      '</div>' +
+      '<div class="field" style="margin-bottom:12px;"><label>ANON KEY</label>' +
+        '<input type="text" id="supabase-key" name="astra-xskey" autocomplete="nope" placeholder="eyJhbGciOi..." style="font-size:13px;" value="' + esc(window.Astra.getSupabaseKey ? window.Astra.getSupabaseKey() : '') + '" onblur="Astra.saveSupabaseKey(this.value)">' +
+      '</div>';
   }
+  syncContent +=
+    '<div id="sync-status" style="font-size:12px;color:#555;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;display:none;"></div>' +
+    '<button class="btn btn-primary" style="margin-bottom:10px;background:#FF6B00;min-height:48px;" id="sync-push-btn" onclick="runSyncPush()">PUSH TO CLOUD</button>' +
+    '<button class="btn btn-secondary" style="margin-bottom:0;min-height:48px;" id="sync-pull-btn" onclick="runSyncPull()">PULL FROM CLOUD</button>' +
+    '</div>';
 
-  document.getElementById('storage-info').innerHTML = `
-    <div class="dash-row"><div class="dash-row-label">MEDIA</div><div class="dash-row-value">${(mediaBytes / (1024 * 1024)).toFixed(1)} MB</div></div>
-    <div class="dash-row"><div class="dash-row-label">METADATA</div><div class="dash-row-value">${(lsBytes / 1024).toFixed(0)} KB</div></div>
-    <div class="dash-row"><div class="dash-row-label">TOTAL</div><div class="dash-row-value" style="color:#FF6B00;">${usedMB} MB</div></div>
-    <div class="dash-row"><div class="dash-row-label">MAX PER FILE</div><div class="dash-row-value">2 MB</div></div>
-    ${warningHtml}
-  `;
+  // ═══ SECTION 4: TOOLS (supervisor/admin only) ═══
+  var toolsContent =
+    '<button class="btn btn-primary" style="margin-bottom:10px;min-height:48px;" onclick="exportData()">EXPORT BACKUP</button>' +
+    '<button class="btn btn-secondary" style="margin-bottom:16px;min-height:48px;" onclick="document.getElementById(\'import-input\').click()">IMPORT BACKUP</button>' +
+    '<div class="dash-card" style="padding:14px;margin-bottom:12px;">' +
+      '<div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">IMPORT JSON FILES FOR ROUGH AND TRIM</div>' +
+      '<button class="btn btn-secondary" style="margin-bottom:0;border:2px solid #FF6B00;color:#FF6B00;min-height:48px;" onclick="document.getElementById(\'material-import-input\').click()">IMPORT MATERIAL LIBRARY</button>' +
+    '</div>' +
+    '<div class="dash-card" style="padding:14px;margin-bottom:12px;">' +
+      '<div style="font-size:12px;color:#444;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">IMPORT JOB HISTORY (JSON)</div>' +
+      '<div style="font-size:11px;color:#333;margin-bottom:10px;">IMPORTS AS COMPLETED JOBS TO FEED THE PREDICTION ENGINE.</div>' +
+      '<div id="import-preview" style="display:none;margin-bottom:10px;"></div>' +
+      '<button class="btn btn-secondary" style="margin-bottom:0;min-height:48px;" onclick="document.getElementById(\'history-import-input\').click()">IMPORT JOB HISTORY</button>' +
+    '</div>' +
+    '<div class="dash-card" style="padding:14px;">' +
+      '<div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">GEOCODING AND ROUTE MAP</div>' +
+      '<div class="field" style="margin-bottom:0;">' +
+        '<input type="text" id="gmaps-key" name="astra-xapikey" autocomplete="nope" placeholder="API KEY" style="font-size:14px;" value="' + esc(getGmapsKey()) + '" onblur="saveGmapsKey(this.value)">' +
+      '</div>' +
+    '</div>';
+
+  // ═══ SECTION 5: STORAGE (all roles) ═══
+  var storageContent =
+    '<div class="dash-card">' +
+      '<div class="dash-row"><div class="dash-row-label">MEDIA</div><div class="dash-row-value">' + (mediaBytes / (1024 * 1024)).toFixed(1) + ' MB</div></div>' +
+      '<div class="dash-row"><div class="dash-row-label">METADATA</div><div class="dash-row-value">' + (lsBytes / 1024).toFixed(0) + ' KB</div></div>' +
+      '<div class="dash-row"><div class="dash-row-label">TOTAL</div><div class="dash-row-value" style="color:#FF6B00;">' + usedMB + ' MB</div></div>' +
+      '<div class="dash-row"><div class="dash-row-label">MAX PER FILE</div><div class="dash-row-value">2 MB</div></div>' +
+      storageWarning +
+    '</div>';
+
+  // ═══ SECTION 6: APP (all roles) ═══
+  var appContent =
+    '<button class="btn btn-secondary" style="margin-bottom:8px;min-height:48px;" onclick="hardReload()">RELOAD APP</button>' +
+    '<div style="color:#555;font-size:11px;text-align:center;margin-top:4px;text-transform:uppercase;letter-spacing:1px;font-weight:700;">ASTRA v0.7</div>';
+
+  // ═══ SECTION 7: DEVELOPER (admin only, danger-zone styled) ═══
+  var lastSync = localStorage.getItem('astra_last_sync') || 'NEVER';
+  var debugOn = localStorage.getItem('astra_debug') === 'true';
+  var devContent =
+    '<div class="dash-card" style="margin-bottom:12px;">' +
+      '<div class="dash-row"><div class="dash-row-label">LAST SYNC</div><div class="dash-row-value" style="font-size:11px;">' + esc(lastSync) + '</div></div>' +
+      '<div class="dash-row"><div class="dash-row-label">SYNC STATE</div><div class="dash-row-value">' + (window._syncInProgress ? 'IN PROGRESS' : 'IDLE') + '</div></div>' +
+      '<div class="dash-row"><div class="dash-row-label">RETRY COUNT</div><div class="dash-row-value">' + _syncRetryCount + '/' + _syncMaxRetries + '</div></div>' +
+      '<div class="dash-row"><div class="dash-row-label">DEBUG LOGS</div><div class="dash-row-value" style="color:' + (debugOn ? '#2d8a4e' : '#555') + ';">' + (debugOn ? 'ON' : 'OFF') + '</div></div>' +
+    '</div>' +
+    '<button class="btn btn-secondary" style="margin-bottom:8px;min-height:48px;" onclick="devClearCache()">CLEAR CACHE</button>' +
+    '<button class="btn btn-secondary" style="margin-bottom:8px;min-height:48px;" onclick="devForceSync()">FORCE SYNC</button>' +
+    '<button class="btn btn-secondary" style="margin-bottom:8px;min-height:48px;" onclick="devToggleDebug()">TOGGLE DEBUG LOGS</button>' +
+    '<div style="border-top:1px solid #333;margin:16px 0;"></div>' +
+    '<div style="font-size:10px;color:#c0392b;font-weight:700;letter-spacing:1px;margin-bottom:8px;text-align:center;">DANGER ZONE</div>' +
+    '<button class="btn btn-secondary" style="margin-bottom:0;min-height:48px;border-color:#c0392b;color:#c0392b;" onclick="devClearAllData()">WIPE LOCAL DATA</button>';
+
+  // ── Assemble with _collapsible() ──
+  var html = _collapsible('ACCOUNT', 'settings-account', accountContent, true);
+  if (isSupervisor) html += _collapsible('MY SHOP', 'settings-shop', shopContent, false);
+  html += _collapsible('SYNC', 'settings-sync', syncContent, true);
+  if (isSupervisor) html += _collapsible('TOOLS', 'settings-tools-section', toolsContent, false);
+  html += _collapsible('STORAGE', 'settings-storage', storageContent, true);
+  html += _collapsible('APP', 'settings-app', appContent, true);
+  if (isAdmin) html += _collapsible('DEVELOPER', 'settings-dev', devContent, false);
+
+  html += '<div style="height:24px;"></div>';
+
+  document.getElementById('settings-body').innerHTML = html;
+
+  // Post-render: update 2FA status
+  if (window.Astra.updateMfaStatus) window.Astra.updateMfaStatus();
 }
 
 // D29: Onboarding — save company, home base, first tech name
@@ -3269,7 +3319,7 @@ Object.assign(window, {
   // D29: Onboarding
   completeOnboarding,
   // Settings
-  saveGmapsKey, saveHomeBase, hardReload, _applyUpdate,
+  renderSettings, saveGmapsKey, saveHomeBase, hardReload, _applyUpdate,
   // D16: Custom modals + state machine + approval
   showConfirmModal, showInfoModal, _closeModal, _modalConfirm,
   getAllowedTransitions, setApprovalFilter, toggleMyJobs,
