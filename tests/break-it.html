@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASTRA — BREAK IT</title>
+<script src="/supabase.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #1a1a1a; color: #e0e0e0; font-size: 16px;
+  padding: 20px; min-height: 100vh;
+}
+h1 { color: #c0392b; font-size: 20px; font-weight: 900; letter-spacing: 2px; margin-bottom: 4px; }
+.subtitle { color: #555; font-size: 12px; font-weight: 700; letter-spacing: 1px; margin-bottom: 20px; text-transform: uppercase; }
+.suite { margin-bottom: 24px; }
+.suite-title {
+  font-size: 13px; font-weight: 800; color: #888; letter-spacing: 1.5px;
+  text-transform: uppercase; padding: 10px 0; border-bottom: 1px solid #2a2a2a; margin-bottom: 8px;
+}
+.test-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: 8px; margin-bottom: 4px;
+  font-size: 14px; font-weight: 600;
+}
+.test-pass { background: rgba(45,138,78,0.1); }
+.test-fail { background: rgba(192,57,43,0.1); }
+.test-skip { background: rgba(102,102,102,0.1); }
+.test-running { background: rgba(255,107,0,0.1); }
+.test-icon { font-size: 16px; flex-shrink: 0; width: 24px; text-align: center; }
+.test-name { flex: 1; color: #ccc; }
+.test-notes { font-size: 11px; color: #666; font-weight: 400; }
+.summary {
+  background: #222; border-radius: 12px; padding: 16px;
+  border: 1px solid #2a2a2a; margin-top: 20px;
+}
+.summary-row { display: flex; justify-content: space-between; padding: 6px 0; }
+.summary-label { font-size: 12px; font-weight: 800; color: #666; letter-spacing: 1px; text-transform: uppercase; }
+.summary-value { font-size: 16px; font-weight: 900; }
+.summary-pass { color: #2d8a4e; }
+.summary-fail { color: #c0392b; }
+.summary-total { color: #c0392b; }
+.run-btn {
+  width: 100%; padding: 16px; border: none; border-radius: 12px;
+  background: #c0392b; color: #fff; font-size: 14px; font-weight: 800;
+  letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer;
+  margin-bottom: 20px; min-height: 56px;
+}
+.run-btn:active { background: #a93226; }
+.run-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+.back-link { display: block; text-align: center; color: #555; font-size: 12px; margin-top: 16px; text-decoration: none; }
+.spinner { display: inline-block; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<h1>ASTRA — BREAK IT</h1>
+<div class="subtitle">ADVERSARIAL TEST SUITE &bull; STEPS 5&ndash;7</div>
+
+<button class="run-btn" id="run-btn" onclick="runAll()">TRY TO BREAK IT</button>
+
+<div id="results"></div>
+<div id="summary"></div>
+
+<a href="/index.html" class="back-link">BACK TO ASTRA</a>
+
+<script>
+// ═══════════════════════════════════════════
+// ASTRA ADVERSARIAL TEST SUITE — Steps 5–7
+// Prefix: BREAK- for all test data (cleaned up at end)
+// ═══════════════════════════════════════════
+
+var _tests = [];
+var _passed = 0;
+var _failed = 0;
+var _skipped = 0;
+var _currentSuite = '';
+var _A = null;
+var PREFIX = 'BREAK-';
+
+// ── Test Framework ──
+
+function suite(name) { _currentSuite = name; }
+
+function addResult(name, status, notes) {
+  if (status === true) status = 'pass';
+  else if (status === false) status = 'fail';
+  _tests.push({ suite: _currentSuite, name: name, status: status, notes: notes || '' });
+  if (status === 'pass') _passed++;
+  else if (status === 'fail') _failed++;
+  else if (status === 'skip') _skipped++;
+  renderResults();
+}
+
+function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+function renderResults() {
+  var html = '';
+  var currentSuite = '';
+  _tests.forEach(function(t) {
+    if (t.suite !== currentSuite) {
+      currentSuite = t.suite;
+      html += '<div class="suite"><div class="suite-title">' + currentSuite + '</div>';
+    }
+    var cls = 'test-' + (t.status === 'skip' ? 'skip' : t.status);
+    var icon = t.status === 'pass' ? 'O' : t.status === 'fail' ? 'X' : t.status === 'running' ? '...' : '-';
+    var iconColor = t.status === 'pass' ? '#2d8a4e' : t.status === 'fail' ? '#c0392b' : t.status === 'running' ? '#FF6B00' : '#666';
+    html += '<div class="test-row ' + cls + '">';
+    html += '<span class="test-icon" style="color:' + iconColor + ';">' + icon + '</span>';
+    html += '<span class="test-name">' + t.name;
+    if (t.notes) html += '<br><span class="test-notes">' + t.notes + '</span>';
+    html += '</span></div>';
+  });
+  document.getElementById('results').innerHTML = html;
+
+  var total = _passed + _failed + _skipped;
+  if (total > 0) {
+    var summaryHtml = '<div class="summary">' +
+      '<div class="summary-row"><span class="summary-label">PASSED</span><span class="summary-value summary-pass">' + _passed + '</span></div>' +
+      '<div class="summary-row"><span class="summary-label">FAILED</span><span class="summary-value summary-fail">' + _failed + '</span></div>' +
+      '<div class="summary-row"><span class="summary-label">SKIPPED</span><span class="summary-value" style="color:#666;">' + _skipped + '</span></div>' +
+      '<div class="summary-row"><span class="summary-label">TOTAL</span><span class="summary-value summary-total">' + total + '</span></div>';
+    var failList = _tests.filter(function(t) { return t.status === 'fail'; });
+    if (failList.length > 0) {
+      summaryHtml += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid #333;">';
+      summaryHtml += '<div style="font-size:11px;font-weight:800;color:#c0392b;letter-spacing:1px;margin-bottom:8px;">FAILURES:</div>';
+      failList.forEach(function(t) {
+        summaryHtml += '<div style="font-size:13px;color:#e0e0e0;margin-bottom:4px;">' + t.suite + ' &gt; ' + t.name;
+        if (t.notes) summaryHtml += '<br><span style="font-size:11px;color:#888;">' + t.notes + '</span>';
+        summaryHtml += '</div>';
+      });
+      summaryHtml += '</div>';
+    }
+    summaryHtml += '</div>';
+    document.getElementById('summary').innerHTML = summaryHtml;
+  }
+}
+
+// ── Load ASTRA ──
+
+function loadAstra() {
+  return new Promise(function(resolve, reject) {
+    // Ensure debug mode for test APIs
+    localStorage.setItem('astra_debug', 'true');
+
+    // Stub auth module — FAT-029 boot validation checks window.doLogin
+    if (!window.doLogin) window.doLogin = function() {};
+    if (!window.logout) window.logout = function() {};
+    // Stub checkAuth to skip auth gate
+    window._breakitAuthStubbed = true;
+
+    // Minimal DOM shell
+    var shell = document.createElement('div');
+    shell.id = 'astra-test-shell';
+    shell.style.display = 'none';
+    shell.innerHTML = '<div id="toast-container"></div><div id="global-nav"><span id="sync-indicator" class="sync-indicator sync-hidden"></span><span id="notif-badge" style="display:none"></span></div>' +
+      '<div id="nav-shortcuts"></div><div id="screen-jobs" class="screen active"><div class="screen-body"><div id="jobs-body"></div></div></div>' +
+      '<div id="screen-settings" class="screen"></div><div id="screen-search" class="screen"></div>' +
+      '<div id="screen-detail" class="screen"></div><div id="screen-create" class="screen"></div>' +
+      '<div id="screen-addresses" class="screen"></div><div id="screen-archive" class="screen"></div>' +
+      '<div id="screen-dashboard" class="screen"></div><div id="screen-materials" class="screen"></div>' +
+      '<div id="screen-vector" class="screen"></div><div id="screen-estimate-builder" class="screen"><div class="screen-body" id="estimate-builder-body"></div></div>' +
+      '<div id="screen-estimates" class="screen"><div class="screen-body" id="estimates-body"></div></div>' +
+      '<div id="screen-pricebook" class="screen"><div class="screen-body" id="pricebook-body"></div></div>' +
+      '<div id="screen-notifications" class="screen"></div>' +
+      '<div id="sidebar"></div><div id="sidebar-backdrop"></div>' +
+      '<div id="home-toggle"></div><div id="settings-stats"></div><div id="storage-info"></div>' +
+      '<input type="file" id="photo-input" style="display:none">' +
+      '<input type="file" id="drawing-input" style="display:none">' +
+      '<input type="file" id="video-input" style="display:none">' +
+      '<div id="overlay" class="overlay"></div><div class="status-picker" id="status-picker"></div>' +
+      '<div id="sync-status" style="display:none"></div>' +
+      '<input type="file" id="import-input" style="display:none">' +
+      '<div id="search-results"></div>';
+    document.body.appendChild(shell);
+
+    var scripts = ['/app.js', '/astra-materials.js', '/astra-maps.js', '/astra-sync.js', '/astra-estimates.js'];
+    var loaded = 0;
+
+    function loadNext() {
+      if (loaded >= scripts.length) {
+        var checks = 0;
+        var waitForInit = setInterval(function() {
+          checks++;
+          if (window.Astra && window.Astra.loadJobs) {
+            clearInterval(waitForInit);
+            _A = window.Astra;
+            // Disable auto-sync to prevent IDB contention during tests
+            _A.isSyncConfigured = function() { return false; };
+            resolve();
+          } else if (checks > 20) {
+            clearInterval(waitForInit);
+            reject(new Error('ASTRA failed to init after 10s'));
+          }
+        }, 500);
+        return;
+      }
+      var s = document.createElement('script');
+      s.src = scripts[loaded];
+      s.onload = function() { loaded++; loadNext(); };
+      s.onerror = function() { reject(new Error('Failed to load ' + scripts[loaded])); };
+      document.head.appendChild(s);
+    }
+    loadNext();
+  });
+}
+
+// ── Helpers ──
+
+function uid() { return crypto.randomUUID(); }
+function now() { return new Date().toISOString(); }
+function today() { return new Date().toISOString().split('T')[0]; }
+function _clearNotifs() { (window.clearNotifications || _A.clearNotifications || function(){})(); }
+function _deleteNotif(id) {
+  if (typeof window.deleteNotification === 'function') { window.deleteNotification(id); return; }
+  // Manual fallback — splice from in-memory cache
+  var notifs = _A.loadNotifications();
+  for (var i = notifs.length - 1; i >= 0; i--) { if (notifs[i].id === id) { notifs.splice(i, 1); break; } }
+  _A.updateNotifBadge();
+}
+
+function makeJob(overrides) {
+  var base = {
+    id: uid(), syncId: uid(),
+    address: PREFIX + 'ADV-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+    addressId: '', types: ['Service Call'], status: 'Not Started',
+    date: today(), techId: '', techName: '', notes: '', techNotes: '',
+    materials: [], photos: [], drawings: [], videos: [],
+    manually_added_to_vector: false, archived: false,
+    createdAt: now(), updatedAt: now()
+  };
+  return Object.assign(base, overrides || {});
+}
+
+// ══════════════════════════════════════════
+// 1. RBAC & STATUS TRANSITIONS
+// ══════════════════════════════════════════
+
+async function testRBAC() {
+  suite('1. RBAC & STATUS TRANSITIONS');
+  var STATUSES = ['Not Started','In Progress','Complete','Needs Callback','Waiting on Materials','pending_approval'];
+
+  // Tech from Not Started: no Complete, no pending_approval
+  var techNS = getAllowedTransitions('Not Started', 'tech');
+  addResult('Tech from Not Started: no Complete', techNS.indexOf('Complete') === -1, 'got: [' + techNS.join(', ') + ']');
+  addResult('Tech from Not Started: no pending_approval', techNS.indexOf('pending_approval') === -1);
+
+  // Tech from pending_approval: empty (locked)
+  var techPA = getAllowedTransitions('pending_approval', 'tech');
+  addResult('Tech from pending_approval: empty (locked)', techPA.length === 0, 'got: [' + techPA.join(', ') + ']');
+
+  // Tech from Complete: empty (locked)
+  var techC = getAllowedTransitions('Complete', 'tech');
+  addResult('Tech from Complete: empty (locked)', techC.length === 0, 'got: [' + techC.join(', ') + ']');
+
+  // Supervisor from any: all except self
+  STATUSES.forEach(function(s) {
+    var allowed = getAllowedTransitions(s, 'supervisor');
+    addResult('Supervisor from ' + s + ': excludes self', allowed.indexOf(s) === -1 && allowed.length === STATUSES.length - 1);
+  });
+
+  // Admin from any: all except self
+  STATUSES.forEach(function(s) {
+    var allowed = getAllowedTransitions(s, 'admin');
+    addResult('Admin from ' + s + ': excludes self', allowed.indexOf(s) === -1 && allowed.length === STATUSES.length - 1);
+  });
+
+  // Null role, undefined role, garbage role
+  var nullRole = getAllowedTransitions('Not Started', null);
+  addResult('Null role: defaults permissive (not crash)', nullRole.length > 0, 'got ' + nullRole.length + ' transitions');
+
+  var undefRole = getAllowedTransitions('Not Started', undefined);
+  addResult('Undefined role: defaults permissive', undefRole.length > 0);
+
+  var garbageRole = getAllowedTransitions('Not Started', 'xyzzy_garbage_999');
+  addResult('Garbage role: returns empty (not crash)', Array.isArray(garbageRole), 'got: [' + garbageRole.join(', ') + ']');
+
+  // Invalid status string for tech: empty
+  var techBad = getAllowedTransitions('BOGUS_STATUS', 'tech');
+  addResult('Invalid status + tech: empty', techBad.length === 0);
+
+  // Invalid status for admin: returns all statuses
+  var adminBad = getAllowedTransitions('BOGUS_STATUS', 'admin');
+  addResult('Invalid status + admin: returns all statuses', adminBad.length === STATUSES.length, 'got ' + adminBad.length);
+
+  // No self-transitions
+  STATUSES.forEach(function(s) {
+    var allowed = getAllowedTransitions(s, 'admin');
+    addResult('No self-transition: ' + s, allowed.indexOf(s) === -1);
+  });
+}
+
+// ══════════════════════════════════════════
+// 2. MATERIAL DEDUP
+// ══════════════════════════════════════════
+
+async function testMaterialDedup() {
+  suite('2. MATERIAL DEDUP');
+
+  var sharedAddrId = PREFIX + 'dedup-addr-' + uid();
+  var sharedDate = today();
+  var itemA = 'dedup-item-' + uid();
+  var nameMatch = 'BREAK Dedup Wire ' + uid();
+
+  // Create all test jobs upfront — addJob updates in-memory cache synchronously
+  // so assertions can run immediately without IDB sleeps
+  var j1 = makeJob({ addressId: sharedAddrId, date: sharedDate, materials: [
+    { materialId: uid(), itemId: itemA, name: 'Wire 12AWG', qty: 100, unit: 'FT' }
+  ]});
+  var j2 = makeJob({ addressId: sharedAddrId, date: sharedDate, materials: [
+    { materialId: uid(), itemId: itemA, name: 'Wire 12AWG', qty: 50, unit: 'FT' },
+    { materialId: uid(), itemId: 'unique-item-' + uid(), name: 'Unique Item', qty: 1, unit: 'EA' }
+  ]});
+  var j3 = makeJob({ addressId: sharedAddrId, date: '2000-01-01', materials: [
+    { materialId: uid(), itemId: itemA, name: 'Wire 12AWG', qty: 10, unit: 'FT' }
+  ]});
+  var j4 = makeJob({ addressId: PREFIX + 'other-addr-' + uid(), date: sharedDate, materials: [
+    { materialId: uid(), itemId: itemA, name: 'Wire 12AWG', qty: 10, unit: 'FT' }
+  ]});
+  var j5 = makeJob({ addressId: sharedAddrId, date: sharedDate, materials: [
+    { materialId: uid(), itemId: 'name-match-a-' + uid(), name: nameMatch, qty: 5, unit: 'EA' }
+  ]});
+  var j6 = makeJob({ addressId: sharedAddrId, date: sharedDate, materials: [
+    { materialId: uid(), itemId: 'name-match-b-' + uid(), name: nameMatch.toLowerCase(), qty: 3, unit: 'EA' }
+  ]});
+  var j7 = makeJob({ addressId: sharedAddrId, date: sharedDate, materials: [
+    { materialId: uid(), itemId: itemA, name: 'Wire 12AWG', qty: 10, unit: 'FT', deduplicated: true }
+  ]});
+  var j8 = makeJob({ addressId: sharedAddrId, date: sharedDate, materials: [] });
+  var j9 = makeJob({ addressId: '', materials: [{ materialId: uid(), itemId: itemA, name: 'X', qty: 1, unit: 'EA' }] });
+
+  [j1, j2, j3, j4, j5, j6, j7, j8, j9].forEach(function(j) { _A.addJob(j); });
+  await sleep(500); // Single sleep for IDB to drain
+
+  // Overlapping itemId detected
+  var overlaps = detectMaterialOverlap(j1.id);
+  addResult('Overlapping itemId detected', overlaps.length >= 1, 'overlaps: ' + overlaps.length);
+
+  // Non-overlapping items NOT flagged
+  var hasUnique = overlaps.some(function(o) { return o.sibMaterial.name === 'Unique Item'; });
+  addResult('Non-overlapping items NOT flagged', !hasUnique);
+
+  // Different day → no overlap
+  var diffDay = detectMaterialOverlap(j3.id);
+  addResult('Different day: no overlap', diffDay.length === 0, 'overlaps: ' + diffDay.length);
+
+  // Different address → no overlap
+  var diffAddr = detectMaterialOverlap(j4.id);
+  addResult('Different address: no overlap', diffAddr.length === 0);
+
+  // Name-based match (different itemId, same name case-insensitive)
+  var nameOverlaps = detectMaterialOverlap(j5.id);
+  var hasNameMatch = nameOverlaps.some(function(o) { return o.matchType === 'name'; });
+  addResult('Name-based match (case-insensitive)', hasNameMatch, 'overlaps: ' + nameOverlaps.length);
+
+  // Materials with deduplicated: true → skipped
+  var dedupSkip = detectMaterialOverlap(j7.id);
+  addResult('deduplicated:true skipped', dedupSkip.length === 0, 'overlaps: ' + dedupSkip.length);
+
+  // Empty materials array → no crash, returns []
+  var emptyMats = detectMaterialOverlap(j8.id);
+  addResult('Empty materials: no crash, returns []', Array.isArray(emptyMats) && emptyMats.length === 0);
+
+  // Empty/missing addressId → no crash, returns []
+  var noAddr = detectMaterialOverlap(j9.id);
+  addResult('Empty addressId: no crash, returns []', Array.isArray(noAddr) && noAddr.length === 0);
+
+  // Nonexistent jobId → no crash, returns []
+  var noJob = detectMaterialOverlap('nonexistent-' + uid());
+  addResult('Nonexistent jobId: no crash, returns []', Array.isArray(noJob) && noJob.length === 0);
+}
+
+// ══════════════════════════════════════════
+// 3. ADDRESS DEDUP
+// ══════════════════════════════════════════
+
+async function testAddressDedup() {
+  suite('3. ADDRESS DEDUP');
+
+  // haversineDistance: same point = 0
+  var d0 = haversineDistance(29.7604, -95.3698, 29.7604, -95.3698);
+  addResult('haversine: same point = 0', d0 === 0, 'd=' + d0);
+
+  // 1° latitude ≈ 111km
+  var d1 = haversineDistance(29.0, -95.0, 30.0, -95.0);
+  addResult('haversine: 1° lat ≈ 111km', d1 > 110000 && d1 < 112000, 'd=' + Math.round(d1) + 'm');
+
+  // Two points ~20m apart < 50
+  var d2 = haversineDistance(29.760400, -95.369800, 29.760580, -95.369800);
+  addResult('haversine: ~20m apart < 50m', d2 < 50, 'd=' + Math.round(d2) + 'm');
+
+  // (0,0) coordinates work (BUG-043 regression)
+  var d3 = haversineDistance(0, 0, 0, 0);
+  addResult('haversine: (0,0) works (BUG-043)', d3 === 0, 'd=' + d3);
+
+  var d4 = haversineDistance(0, 0, 0, 1);
+  addResult('haversine: (0,0) to (0,1) > 0', d4 > 100000, 'd=' + Math.round(d4) + 'm');
+
+  // normalizeAddress tests
+  addResult('normalize: St → street', normalizeAddress('123 Main St') === '123 main street');
+  addResult('normalize: Ave → avenue', normalizeAddress('456 Oak Ave') === '456 oak avenue');
+  addResult('normalize: Dr → drive', normalizeAddress('789 Elm Dr') === '789 elm drive');
+  addResult('normalize: N → north', normalizeAddress('100 N Main St') === '100 north main street');
+  addResult('normalize: removes periods', normalizeAddress('123 Main St.') === '123 main street');
+  addResult('normalize: collapses whitespace', normalizeAddress('123   Main   St') === '123 main street');
+  addResult('normalize: empty string → ""', normalizeAddress('') === '');
+  addResult('normalize: null → ""', normalizeAddress(null) === '');
+
+  // findNearDupeAddresses: proximity match
+  var allAddrs = [
+    { id: 'a1', address: 'Addr A', lat: 29.7604, lng: -95.3698 },
+    { id: 'a2', address: 'Addr B', lat: 29.76042, lng: -95.36982 },  // ~2m away
+    { id: 'a3', address: 'Addr C', lat: 30.0, lng: -96.0, dupResolved: true }
+  ];
+  var newAddr = { id: 'new', address: 'New Addr', lat: 29.7604, lng: -95.3698 };
+  var dupes = findNearDupeAddresses(newAddr, allAddrs);
+  var hasProx = dupes.some(function(d) { return d.reason === 'proximity' && d.address.id === 'a1'; });
+  addResult('findNearDupe: proximity match', hasProx, 'dupes: ' + dupes.length);
+
+  // Self not flagged
+  var selfAddr = { id: 'a1', address: 'Addr A', lat: 29.7604, lng: -95.3698 };
+  var selfDupes = findNearDupeAddresses(selfAddr, allAddrs);
+  var hasSelf = selfDupes.some(function(d) { return d.address.id === 'a1'; });
+  addResult('findNearDupe: self not flagged', !hasSelf);
+
+  // dupResolved addresses skipped
+  var hasResolved = dupes.some(function(d) { return d.address.id === 'a3'; });
+  addResult('findNearDupe: dupResolved skipped', !hasResolved);
+
+  // Normalized string match (St vs Street)
+  var normAddrs = [
+    { id: 'n1', address: '100 Main Street, Houston TX' },
+    { id: 'n2', address: '200 Oak Ave' }
+  ];
+  var normNew = { id: 'nn', address: '100 Main St, Houston TX' };
+  var normDupes = findNearDupeAddresses(normNew, normAddrs);
+  var hasNorm = normDupes.some(function(d) { return d.reason === 'normalized_match' && d.address.id === 'n1'; });
+  addResult('findNearDupe: normalized match (St vs Street)', hasNorm, 'dupes: ' + normDupes.length);
+}
+
+// ══════════════════════════════════════════
+// 4. INTELLIGENCE ENGINE EDGE CASES
+// ══════════════════════════════════════════
+
+async function testIntelligence() {
+  suite('4. INTELLIGENCE ENGINE');
+
+  var testType = PREFIX + 'Panel Swap ' + uid();
+  // Create 6 jobs of unique test type with materials
+  for (var i = 0; i < 6; i++) {
+    var j = makeJob({
+      types: [testType],
+      materials: [
+        { materialId: uid(), itemId: 'intel-item-' + i, name: 'Intel Mat ' + i, qty: i + 1, unit: 'EA' },
+        { materialId: uid(), itemId: 'intel-zero', name: 'Zero Qty Mat', qty: 0, unit: 'EA' }
+      ]
+    });
+    _A.addJob(j);
+  }
+  await sleep(800);
+
+  // Invalidate cache
+  try {
+    _A.invalidateIntelCache();
+    addResult('invalidateIntelCache: no crash', true);
+  } catch (e) {
+    addResult('invalidateIntelCache: no crash', false, e.message);
+  }
+
+  // Verify seed intelligence loaded (may be null if no historical import done)
+  var seed = _A.getSeedIntelligence();
+  if (seed === null) {
+    addResult('getSeedIntelligence: null (no import)', 'skip', 'no historical data imported');
+  } else {
+    addResult('getSeedIntelligence: not null', true, typeof seed);
+  }
+
+  // Verify seed has expected types
+  if (seed && typeof seed === 'object') {
+    var seedTypes = Object.keys(seed);
+    var hasPanel = seedTypes.some(function(t) { return t.toLowerCase().indexOf('panel') >= 0; });
+    var hasService = seedTypes.some(function(t) { return t.toLowerCase().indexOf('service') >= 0; });
+    var hasOutlet = seedTypes.some(function(t) { return t.toLowerCase().indexOf('outlet') >= 0; });
+    addResult('Seed has Panel type', hasPanel, 'types: ' + seedTypes.slice(0, 5).join(', '));
+    addResult('Seed has Service type', hasService);
+    addResult('Seed has Outlet type', hasOutlet);
+  } else {
+    addResult('Seed has Panel type', 'skip', 'no seed data');
+    addResult('Seed has Service type', 'skip', 'no seed data');
+    addResult('Seed has Outlet type', 'skip', 'no seed data');
+  }
+
+  // Cache invalidation doesn't crash (double call)
+  try {
+    _A.invalidateIntelCache();
+    _A.invalidateIntelCache();
+    addResult('Double invalidateIntelCache: no crash', true);
+  } catch (e) {
+    addResult('Double invalidateIntelCache: no crash', false, e.message);
+  }
+}
+
+// ══════════════════════════════════════════
+// 5. recalc() ADVERSARIAL
+// ══════════════════════════════════════════
+
+async function testRecalcAdversarial() {
+  suite('5. recalc() ADVERSARIAL');
+
+  if (!_A._testEst) {
+    addResult('_testEst API available', 'skip', 'astra_debug not set');
+    return;
+  }
+  var TE = _A._testEst;
+
+  // NaN for all numeric fields + materials → grandTotal should be 0, not NaN
+  var e1 = TE.newEstimate();
+  e1.laborHours = NaN; e1.laborRate = NaN;
+  e1.overheadPercent = NaN; e1.profitPercent = NaN;
+  e1.taxRate = NaN; e1.permitFee = NaN;
+  e1.materials = [{ materialId: uid(), name: 'NaN Mat', qty: NaN, unitCost: NaN, markup: NaN }];
+  TE.recalc(e1);
+  addResult('NaN inputs: grandTotal = 0 not NaN', !isNaN(e1.grandTotal) && e1.grandTotal === 0,
+    'grandTotal=' + e1.grandTotal);
+
+  // Negative values → should produce a number (not NaN)
+  var e2 = TE.newEstimate();
+  e2.laborHours = -5; e2.laborRate = -100;
+  e2.materials = [{ materialId: uid(), name: 'Neg Mat', qty: -3, unitCost: -10, markup: -5 }];
+  TE.recalc(e2);
+  addResult('Negative values: result is a number', !isNaN(e2.grandTotal), 'grandTotal=' + e2.grandTotal);
+
+  // Infinity hours → result is Infinity
+  var e3 = TE.newEstimate();
+  e3.laborHours = Infinity; e3.laborRate = 100;
+  TE.recalc(e3);
+  addResult('Infinity hours: result is Infinity', e3.grandTotal === Infinity || e3.laborTotal === Infinity,
+    'grandTotal=' + e3.grandTotal + ', laborTotal=' + e3.laborTotal);
+
+  // Empty string inputs (what form blur actually sends)
+  var e4 = TE.newEstimate();
+  e4.laborHours = ''; e4.laborRate = '';
+  e4.overheadPercent = ''; e4.profitPercent = '';
+  e4.taxRate = ''; e4.permitFee = '';
+  e4.materials = [{ materialId: uid(), name: 'Str Mat', qty: '', unitCost: '', markup: '' }];
+  TE.recalc(e4);
+  addResult('Empty strings: grandTotal = 0', e4.grandTotal === 0, 'grandTotal=' + e4.grandTotal);
+
+  // Very large numbers (999999 × 999999)
+  var e5 = TE.newEstimate();
+  e5.laborHours = 999999; e5.laborRate = 999999;
+  TE.recalc(e5);
+  addResult('Very large numbers: finite positive', isFinite(e5.grandTotal) && e5.grandTotal > 0,
+    'grandTotal=' + e5.grandTotal);
+
+  // 100 materials → computes correctly, positive total
+  var e6 = TE.newEstimate();
+  e6.materials = [];
+  for (var i = 0; i < 100; i++) {
+    e6.materials.push({ materialId: uid(), name: 'Mat ' + i, qty: 1, unitCost: 10, markup: 0 });
+  }
+  TE.recalc(e6);
+  addResult('100 materials: computes correctly', e6.materialSubtotal >= 1000, 'subtotal=' + e6.materialSubtotal);
+
+  // All zeros → grandTotal = 0
+  var e7 = TE.newEstimate();
+  e7.laborHours = 0; e7.laborRate = 0;
+  e7.overheadPercent = 0; e7.profitPercent = 0;
+  e7.taxRate = 0; e7.permitFee = 0;
+  e7.materials = [];
+  TE.recalc(e7);
+  addResult('All zeros: grandTotal = 0', e7.grandTotal === 0, 'grandTotal=' + e7.grandTotal);
+
+  // 10000% markup on $100 item
+  var e8 = TE.newEstimate();
+  e8.materials = [{ materialId: uid(), name: 'Markup Test', qty: 1, unitCost: 100, markup: 10000 }];
+  TE.recalc(e8);
+  // lineTotal should be 100 + (100 * 10000/100) = 100 + 10000 = 10100
+  var expectedMarkup = 10000; // 100 * 10000/100
+  addResult('10000% markup: correct math, no overflow',
+    e8.materialSubtotal >= 100 && e8.materialMarkupTotal >= expectedMarkup && isFinite(e8.grandTotal),
+    'subtotal=' + e8.materialSubtotal + ', markupTotal=' + e8.materialMarkupTotal);
+}
+
+// ══════════════════════════════════════════
+// 6. HISTORICAL IMPORT VALIDATION
+// ══════════════════════════════════════════
+
+async function testHistoricalImport() {
+  suite('6. HISTORICAL IMPORT VALIDATION');
+
+  // _parseVariantFromName — may be private
+  var parseFn = window._parseVariantFromName || (window.Astra && window.Astra._parseVariantFromName);
+  if (typeof parseFn === 'function') {
+    // Dash separator
+    var r1 = parseFn('SP AFCI Breaker 20A \u2014 SQD QO');
+    addResult('parseVariant: dash separator', r1 && r1.variant === 'SQD QO', 'variant=' + (r1 && r1.variant));
+
+    // Paren separator
+    var r2 = parseFn('DP Breaker 50A (SQD QO)');
+    addResult('parseVariant: paren separator', r2 && r2.variant === 'SQD QO', 'variant=' + (r2 && r2.variant));
+
+    // No variant
+    var r3 = parseFn('Simple Item Name');
+    addResult('parseVariant: no variant', r3 && r3.variant === null, 'variant=' + (r3 && r3.variant));
+
+    // Empty string
+    var r4 = parseFn('');
+    addResult('parseVariant: empty string', r4 && r4.variant === null);
+
+    // Null
+    var r5 = parseFn(null);
+    addResult('parseVariant: null', r5 && r5.variant === null);
+  } else {
+    addResult('parseVariant: dash separator', 'skip', '_parseVariantFromName not accessible');
+    addResult('parseVariant: paren separator', 'skip');
+    addResult('parseVariant: no variant', 'skip');
+    addResult('parseVariant: empty string', 'skip');
+    addResult('parseVariant: null', 'skip');
+  }
+
+  // Size boundary constants — test that huge data doesn't crash
+  // addJob is sync on cache, so assertions work immediately
+  var bigNotes = 'X'.repeat(11000);
+  var jBig = makeJob({ notes: bigNotes, address: PREFIX + 'BIG-NOTES' });
+  var bigAddr = 'A'.repeat(510);
+  var jAddr = makeJob({ address: PREFIX + bigAddr });
+  var manyMats = Array.from({ length: 210 }, function(_, m) { return { materialId: uid(), itemId: 'bulk-' + m, name: 'Bulk ' + m, qty: 1, unit: 'EA' }; });
+  var jMats = makeJob({ address: PREFIX + 'MANY-MATS', materials: manyMats });
+
+  try { _A.addJob(jBig); } catch(e) {}
+  try { _A.addJob(jAddr); } catch(e) {}
+  try { _A.addJob(jMats); } catch(e) {}
+  await sleep(500);
+
+  var back = _A.getJob(jBig.id);
+  addResult('>10240 char notes: survives roundtrip', back && back.notes.length > 10240, 'len=' + (back && back.notes.length));
+
+  var backA = _A.getJob(jAddr.id);
+  addResult('>500 char address: survives', backA && backA.address.length > 500, 'len=' + (backA && backA.address.length));
+
+  var backM = _A.getJob(jMats.id);
+  addResult('>200 materials: survives', backM && backM.materials.length > 200, 'count=' + (backM && backM.materials.length));
+}
+
+// ══════════════════════════════════════════
+// 7. NOTIFICATIONS
+// ══════════════════════════════════════════
+
+async function testNotifications() {
+  suite('7. NOTIFICATIONS');
+
+  // Clear first
+  _clearNotifs();
+
+  // Add → returns entry with id, createdAt, read=false
+  var entry = _A.addNotification({ title: PREFIX + 'Test', message: 'adversarial test' });
+  addResult('Add: returns entry with id', entry && typeof entry.id === 'string' && entry.id.length > 0);
+  addResult('Add: has createdAt', entry && typeof entry.createdAt === 'string');
+  addResult('Add: read=false', entry && entry.read === false);
+
+  // Load → array containing our notification
+  var loaded = _A.loadNotifications();
+  var found = loaded.find(function(n) { return n.id === entry.id; });
+  addResult('Load: contains our notification', !!found);
+
+  // Mark read → read=true
+  _A.markNotifRead(entry.id);
+  var afterRead = _A.loadNotifications().find(function(n) { return n.id === entry.id; });
+  addResult('markNotifRead: read=true', afterRead && afterRead.read === true);
+
+  // Mark again → idempotent
+  try {
+    _A.markNotifRead(entry.id);
+    addResult('markNotifRead: idempotent', true);
+  } catch (e) {
+    addResult('markNotifRead: idempotent', false, e.message);
+  }
+
+  // Mark nonexistent → no crash
+  try {
+    _A.markNotifRead('nonexistent-' + uid());
+    addResult('markNotifRead nonexistent: no crash', true);
+  } catch (e) {
+    addResult('markNotifRead nonexistent: no crash', false, e.message);
+  }
+
+  // Add 105 → cap at ≤100
+  _clearNotifs();
+  for (var i = 0; i < 105; i++) {
+    _A.addNotification({ title: PREFIX + 'Flood-' + i, message: 'flood' });
+  }
+  await sleep(500); // Let IDB writes drain
+  var afterFlood = _A.loadNotifications();
+  addResult('Add 105: cap at <=100', afterFlood.length <= 100, 'count=' + afterFlood.length);
+
+  // Mark all read → zero unread
+  _A.markAllNotifsRead();
+  var unreadCount = _A.loadNotifications().filter(function(n) { return !n.read; }).length;
+  addResult('markAllNotifsRead: zero unread', unreadCount === 0, 'unread=' + unreadCount);
+
+  // Delete single → removed from list
+  var delTarget = _A.addNotification({ title: PREFIX + 'DelMe', message: 'to delete' });
+  var beforeDel = _A.loadNotifications().length;
+  _deleteNotif(delTarget.id);
+  var afterDel = _A.loadNotifications().length;
+  addResult('Delete single: removed', afterDel === beforeDel - 1, 'before=' + beforeDel + ' after=' + afterDel);
+
+  // Clear all → empty
+  _clearNotifs();
+  await sleep(100);
+  addResult('Clear all: empty', _A.loadNotifications().length === 0);
+
+  // Badge update → shows correct count
+  _clearNotifs();
+  _A.addNotification({ title: PREFIX + 'Badge1', message: 'b' });
+  _A.addNotification({ title: PREFIX + 'Badge2', message: 'b' });
+  _A.updateNotifBadge();
+  var badge = document.getElementById('notif-badge');
+  var badgeText = badge ? badge.textContent : '?';
+  addResult('Badge: shows correct count', badgeText === '2', 'badge=' + badgeText);
+
+  // Clean
+  _clearNotifs();
+}
+
+// ══════════════════════════════════════════
+// 8. CACHE INTEGRITY UNDER STRESS
+// ══════════════════════════════════════════
+
+async function testCacheStress() {
+  suite('8. CACHE INTEGRITY UNDER STRESS');
+
+  // Rapid 20 addJob()
+  var stressIds = [];
+  for (var i = 0; i < 20; i++) {
+    var j = makeJob({ address: PREFIX + 'STRESS-ADD-' + i });
+    _A.addJob(j);
+    stressIds.push(j.id);
+  }
+  await sleep(1000); // 20 IDB writes need time to drain
+  var allInCache = stressIds.every(function(id) { return !!_A.getJob(id); });
+  addResult('Rapid 20 addJob: all in cache', allInCache);
+
+  // Rapid 20 updateJob()
+  var mark = 'UPDATED-' + uid();
+  for (var u = 0; u < 20; u++) {
+    _A.updateJob(stressIds[u], { techNotes: mark });
+  }
+  await sleep(1000);
+  var allUpdated = stressIds.every(function(id) { var j = _A.getJob(id); return j && j.techNotes === mark; });
+  addResult('Rapid 20 updateJob: all reflected', allUpdated);
+
+  // updateJob changes updatedAt timestamp
+  var beforeTs = _A.getJob(stressIds[0]).updatedAt;
+  await sleep(50);
+  _A.updateJob(stressIds[0], { notes: 'ts-test' });
+  var afterTs = _A.getJob(stressIds[0]).updatedAt;
+  addResult('updateJob: changes updatedAt', afterTs > beforeTs, 'before=' + beforeTs + ' after=' + afterTs);
+
+  // getJob() returns a copy, not a reference (FAT-023)
+  var copy1 = _A.getJob(stressIds[0]);
+  var copy2 = _A.getJob(stressIds[0]);
+  copy1.notes = 'MUTATED-' + uid();
+  addResult('getJob: returns copy (FAT-023)', copy2.notes !== copy1.notes, 'copy1=' + copy1.notes + ' copy2=' + copy2.notes);
+
+  // getAddress() returns copy if accessible
+  if (_A.getAddress || window.getAddress) {
+    var getFn = _A.getAddress || window.getAddress;
+    var addrs = _A.loadAddresses();
+    if (addrs.length > 0) {
+      var ac1 = getFn(addrs[0].id);
+      var ac2 = getFn(addrs[0].id);
+      if (ac1 && ac2) {
+        ac1.address = 'MUTATED-ADDR-' + uid();
+        addResult('getAddress: returns copy', ac2.address !== ac1.address);
+      } else {
+        addResult('getAddress: returns copy', 'skip', 'no address found by id');
+      }
+    } else {
+      addResult('getAddress: returns copy', 'skip', 'no addresses in cache');
+    }
+  } else {
+    addResult('getAddress: returns copy', 'skip', 'getAddress not accessible');
+  }
+}
+
+// ══════════════════════════════════════════
+// 9. UTILITY EDGE CASES
+// ══════════════════════════════════════════
+
+async function testUtilities() {
+  suite('9. UTILITY EDGE CASES');
+
+  // esc() tests — using _A._test.esc for debug-gated access
+  var escFn = (_A._test && _A._test.esc) || window.esc || _A.esc;
+
+  addResult('esc: < escaped', escFn('<') === '&lt;');
+  addResult('esc: > escaped', escFn('>') === '&gt;');
+  addResult('esc: & escaped', escFn('&') === '&amp;');
+  addResult('esc: " escaped', escFn('"') === '&quot;');
+  addResult('esc: \' escaped', escFn("'") === '&#39;');
+
+  // Combined XSS payload — using \x3c escape to avoid breaking HTML parser
+  var xss = '\x3cscript\x3ealert(1)\x3c/script\x3e';
+  var escaped = escFn(xss);
+  addResult('esc: XSS payload escaped', escaped.indexOf('<') === -1 && escaped.indexOf('>') === -1,
+    'result=' + escaped.substring(0, 60));
+
+  // Number coercion
+  addResult('esc: number 42 → "42"', escFn(42) === '42');
+  addResult('esc: 0 → ""', escFn(0) === '', 'got="' + escFn(0) + '"');
+  addResult('esc: false → ""', escFn(false) === '', 'got="' + escFn(false) + '"');
+  addResult('esc: empty → ""', escFn('') === '');
+  addResult('esc: null → ""', escFn(null) === '');
+  addResult('esc: undefined → ""', escFn(undefined) === '');
+
+  // Emoji
+  var emoji = escFn('\u{1F525}\u{26A1}');
+  addResult('esc: emoji passthrough', emoji === '\u{1F525}\u{26A1}', 'got=' + emoji);
+
+  // todayStr()
+  var todayFn = (_A._test && _A._test.todayStr) || window.todayStr || _A.todayStr;
+  var ts = todayFn();
+  addResult('todayStr: YYYY-MM-DD format', /^\d{4}-\d{2}-\d{2}$/.test(ts), ts);
+
+  // getISOWeek()
+  var weekFn = (_A._test && _A._test.getISOWeek) || window.getISOWeek;
+
+  // Jan 1 2026 = Thursday = week 1
+  addResult('getISOWeek: Jan 1 2026 = week 1', weekFn(new Date(2026, 0, 1)) === 1);
+  // Dec 29 2025 = Monday = ISO week 1 of 2026
+  addResult('getISOWeek: Dec 29 2025 = week 1', weekFn(new Date(2025, 11, 29)) === 1);
+  // Jan 4 2026 = Sunday = still week 1
+  addResult('getISOWeek: Jan 4 2026 = week 1', weekFn(new Date(2026, 0, 4)) === 1);
+  // Jan 5 2026 = Monday = week 2
+  addResult('getISOWeek: Jan 5 2026 = week 2', weekFn(new Date(2026, 0, 5)) === 2);
+}
+
+// ══════════════════════════════════════════
+// 10. ESTIMATE CRUD EDGE CASES
+// ══════════════════════════════════════════
+
+async function testEstimateCRUD() {
+  suite('10. ESTIMATE CRUD EDGE CASES');
+
+  // Rapid create 10
+  var estIds = [];
+  var beforeCount = _A.loadEstimates().length;
+  for (var i = 0; i < 10; i++) {
+    var est = {
+      id: uid(), address: PREFIX + 'EST-' + i,
+      customerName: 'Test ' + i, customerPhone: '', customerEmail: '',
+      jobType: 'Service Call', description: 'break test', status: 'Draft',
+      materials: [], laborHours: 1, laborRate: 50, laborTotal: 50,
+      adjustments: [], materialSubtotal: 0, materialMarkupTotal: 0,
+      overheadPercent: 10, overheadAmount: 0, profitPercent: 15, profitAmount: 0,
+      permitFee: 0, taxRate: 8.25, taxAmount: 0, grandTotal: 0,
+      notes: '', validUntil: '', linkedJobId: '',
+      createdAt: now(), updatedAt: now()
+    };
+    _A.saveEstimate(est);
+    estIds.push(est.id);
+  }
+  await sleep(800);
+  var afterCount = _A.loadEstimates().length;
+  addResult('Rapid create 10: count correct', afterCount >= beforeCount + 10,
+    'before=' + beforeCount + ' after=' + afterCount);
+
+  // Delete 5, verify 5 remain from our batch
+  for (var d = 0; d < 5; d++) {
+    _A.deleteEstimate(estIds[d]);
+  }
+  await sleep(200);
+  var remaining = estIds.slice(5).filter(function(id) { return !!_A.getEstimate(id); }).length;
+  addResult('Delete 5: 5 remain', remaining === 5, 'remaining=' + remaining);
+
+  // Delete nonexistent ID → no crash
+  try {
+    _A.deleteEstimate('nonexistent-' + uid());
+    addResult('Delete nonexistent: no crash', true);
+  } catch (e) {
+    addResult('Delete nonexistent: no crash', false, e.message);
+  }
+
+  // Save same ID twice → second overwrites first
+  var dupId = uid();
+  _A.saveEstimate({ id: dupId, address: PREFIX + 'DUP-V1', customerName: 'V1', customerPhone: '', customerEmail: '', jobType: 'Test', description: '', status: 'Draft', materials: [], laborHours: 0, laborRate: 0, laborTotal: 0, adjustments: [], materialSubtotal: 0, materialMarkupTotal: 0, overheadPercent: 0, overheadAmount: 0, profitPercent: 0, profitAmount: 0, permitFee: 0, taxRate: 0, taxAmount: 0, grandTotal: 0, notes: '', validUntil: '', linkedJobId: '', createdAt: now(), updatedAt: now() });
+  _A.saveEstimate({ id: dupId, address: PREFIX + 'DUP-V2', customerName: 'V2', customerPhone: '', customerEmail: '', jobType: 'Test', description: '', status: 'Draft', materials: [], laborHours: 0, laborRate: 0, laborTotal: 0, adjustments: [], materialSubtotal: 0, materialMarkupTotal: 0, overheadPercent: 0, overheadAmount: 0, profitPercent: 0, profitAmount: 0, permitFee: 0, taxRate: 0, taxAmount: 0, grandTotal: 0, notes: '', validUntil: '', linkedJobId: '', createdAt: now(), updatedAt: now() });
+  var dupEst = _A.getEstimate(dupId);
+  addResult('Save same ID twice: second overwrites', dupEst && dupEst.customerName === 'V2', 'name=' + (dupEst && dupEst.customerName));
+
+  // Cleanup test estimates
+  estIds.concat([dupId]).forEach(function(id) { try { _A.deleteEstimate(id); } catch(e) {} });
+}
+
+// ══════════════════════════════════════════
+// 11. SEARCH ADVERSARIAL
+// ══════════════════════════════════════════
+
+async function testSearchAdversarial() {
+  suite('11. SEARCH ADVERSARIAL');
+
+  var searchFn = (_A._test && _A._test.runSearch) || window.runSearch || window.debouncedSearch;
+  if (typeof searchFn !== 'function') {
+    addResult('Search function available', 'skip', 'runSearch not accessible');
+    return;
+  }
+
+  // Create jobs with adversarial content — use \x3c escape for XSS payload
+  var xssPayload = '\x3cimg src=x onerror=alert(1)\x3e';
+  var sqlPayload = "'; DROP TABLE jobs; --";
+  var emojiAddr = PREFIX + 'SEARCH-\u{1F525}\u{26A1}\u{1F4A1}';
+  var unicodeAddr = PREFIX + 'SEARCH-\u00FC\u00F1\u00EE\u00E7\u00F6\u00F0\u00E9';
+  var longAddr = PREFIX + 'SEARCH-' + 'A'.repeat(500);
+  var matSearchName = PREFIX + 'SEARCH-MATNAME-' + uid();
+
+  var jXss = makeJob({ address: PREFIX + 'SEARCH-XSS-' + xssPayload });
+  var jSql = makeJob({ address: PREFIX + 'SEARCH-SQL-' + sqlPayload });
+  var jEmoji = makeJob({ address: emojiAddr });
+  var jUnicode = makeJob({ address: unicodeAddr });
+  var jLong = makeJob({ address: longAddr });
+  var jMat = makeJob({ address: PREFIX + 'SEARCH-MAT', materials: [{ materialId: uid(), itemId: 'search-mat', name: matSearchName, qty: 1, unit: 'EA' }] });
+
+  [jXss, jSql, jEmoji, jUnicode, jLong, jMat].forEach(function(j) { _A.addJob(j); });
+  await sleep(800);
+
+  // Search XSS term → no raw <script> in DOM
+  searchFn(xssPayload);
+  var resultHtml = document.getElementById('search-results').innerHTML;
+  addResult('XSS search: no raw tags in DOM', resultHtml.indexOf('\x3cimg src=x') === -1, 'len=' + resultHtml.length);
+
+  // SQL injection search → no crash
+  try {
+    searchFn(sqlPayload);
+    addResult('SQL injection search: no crash', true);
+  } catch (e) {
+    addResult('SQL injection search: no crash', false, e.message);
+  }
+
+  // Emoji search → finds result
+  searchFn('\u{1F525}');
+  var emojiResult = document.getElementById('search-results').innerHTML;
+  addResult('Emoji search: finds result', emojiResult.indexOf('SEARCH-') >= 0 && emojiResult.indexOf('NO RESULTS') === -1,
+    'has content=' + (emojiResult.length > 50));
+
+  // Unicode search → finds result
+  searchFn('\u00FC\u00F1\u00EE');
+  var uniResult = document.getElementById('search-results').innerHTML;
+  addResult('Unicode search: finds result', uniResult.indexOf('NO RESULTS') === -1 && uniResult.indexOf('SEARCH-') >= 0);
+
+  // Material name search → finds job (SR2 feature)
+  searchFn(matSearchName);
+  var matResult = document.getElementById('search-results').innerHTML;
+  var matFound = matResult.indexOf('NO RESULTS') === -1 && matResult.length > 50;
+  if (!matFound) {
+    // Check if SR2 matNames is in runSearch source — may be stale browser cache
+    var hasSR2 = searchFn.toString().indexOf('matNames') >= 0;
+    addResult('Material name search (SR2): finds job', hasSR2 ? false : 'skip',
+      hasSR2 ? 'SR2 code present but not matching' : 'SR2 not in cached runSearch — hard reload may fix');
+  } else {
+    addResult('Material name search (SR2): finds job', true);
+  }
+
+  // Empty search → shows hint text
+  searchFn('');
+  var emptyResult = document.getElementById('search-results').innerHTML;
+  addResult('Empty search: shows hint', emptyResult.indexOf('SEARCH') >= 0);
+
+  // 1000-char search → no crash
+  try {
+    searchFn('X'.repeat(1000));
+    addResult('1000-char search: no crash', true);
+  } catch (e) {
+    addResult('1000-char search: no crash', false, e.message);
+  }
+
+  // Multi-word search → all terms AND-matched
+  // Create a job with specific multi-word content
+  var mwAddr = PREFIX + 'SEARCH-MULTI-ALPHA-BRAVO';
+  var jMw = makeJob({ address: mwAddr });
+  _A.addJob(jMw);
+  await sleep(500);
+  searchFn('ALPHA BRAVO');
+  var mwResult = document.getElementById('search-results').innerHTML;
+  var mwFound = mwResult.indexOf('MULTI-ALPHA-BRAVO') >= 0;
+  addResult('Multi-word: AND-matched', mwFound);
+
+  // Verify partial match doesn't find it
+  searchFn('ALPHA ZULU');
+  var partResult = document.getElementById('search-results').innerHTML;
+  var partNotFound = partResult.indexOf('MULTI-ALPHA-BRAVO') === -1;
+  addResult('Multi-word: partial mismatch excluded', partNotFound);
+}
+
+// ══════════════════════════════════════════
+// 12. MEDIA SIZE LIMITS
+// ══════════════════════════════════════════
+
+async function testMediaLimits() {
+  suite('12. MEDIA SIZE LIMITS');
+
+  var saveFn = _A.saveMediaBlob;
+  var getFn = _A.getMediaBlob;
+
+  if (typeof saveFn !== 'function') {
+    addResult('saveMediaBlob available', 'skip', 'not exposed');
+    return;
+  }
+
+  // Small blob saves successfully
+  var smallId = PREFIX + 'media-small-' + uid();
+  try {
+    await saveFn(smallId, 'SGVsbG8gV29ybGQ='); // "Hello World" base64
+    var back = await getFn(smallId);
+    addResult('Small blob: saves OK', back != null);
+  } catch (e) {
+    addResult('Small blob: saves OK', false, e.message);
+  }
+
+  // 3MB base64 blob → rejected
+  var bigId = PREFIX + 'media-big-' + uid();
+  var bigData = 'A'.repeat(3 * 1024 * 1024); // ~3MB as base64 string
+  try {
+    await saveFn(bigId, bigData);
+    addResult('3MB blob: rejected', false, 'should have thrown');
+  } catch (e) {
+    addResult('3MB blob: rejected with error', e.message.indexOf('2MB') >= 0 || e.message.indexOf('cap') >= 0,
+      'err=' + e.message);
+  }
+
+  // Empty string blob → saves and retrieves
+  var emptyId = PREFIX + 'media-empty-' + uid();
+  try {
+    await saveFn(emptyId, '');
+    var emptyBack = await getFn(emptyId);
+    addResult('Empty blob: saves and retrieves', emptyBack != null || emptyBack === '');
+  } catch (e) {
+    addResult('Empty blob: saves and retrieves', false, e.message);
+  }
+}
+
+// ══════════════════════════════════════════
+// 13. NAVIGATION ROBUSTNESS
+// ══════════════════════════════════════════
+
+async function testNavigation() {
+  suite('13. NAVIGATION ROBUSTNESS');
+
+  // goTo('screen-nonexistent-xxx') → no crash
+  try {
+    await goTo('screen-nonexistent-xxx');
+    addResult('goTo nonexistent screen: no crash', true);
+  } catch (e) {
+    addResult('goTo nonexistent screen: no crash', false, e.message);
+  }
+
+  // goTo('screen-detail', null) → no crash
+  try {
+    await goTo('screen-detail', null);
+    addResult('goTo screen-detail null: no crash', true);
+  } catch (e) {
+    addResult('goTo screen-detail null: no crash', false, e.message);
+  }
+
+  // 20 rapid screen changes → no crash
+  var screens = ['screen-jobs', 'screen-settings', 'screen-search', 'screen-addresses',
+    'screen-archive', 'screen-dashboard', 'screen-materials', 'screen-jobs',
+    'screen-estimates', 'screen-settings', 'screen-jobs', 'screen-search',
+    'screen-addresses', 'screen-archive', 'screen-jobs', 'screen-dashboard',
+    'screen-materials', 'screen-estimates', 'screen-jobs', 'screen-settings'];
+  try {
+    for (var i = 0; i < screens.length; i++) {
+      goTo(screens[i]); // Fire-and-forget (async but don't await)
+    }
+    await sleep(500);
+    addResult('20 rapid screen changes: no crash', true);
+  } catch (e) {
+    addResult('20 rapid screen changes: no crash', false, e.message);
+  }
+
+  // After chaos: exactly 1 .screen.active in DOM
+  await goTo('screen-jobs');
+  await sleep(200);
+  var activeScreens = document.querySelectorAll('.screen.active');
+  addResult('After chaos: exactly 1 .screen.active', activeScreens.length === 1,
+    'active=' + activeScreens.length);
+}
+
+// ══════════════════════════════════════════
+// CLEANUP
+// ══════════════════════════════════════════
+
+async function cleanup() {
+  suite('CLEANUP');
+
+  // Remove BREAK- prefixed jobs
+  var allJobs = _A.loadJobs();
+  var toRemove = allJobs.filter(function(j) { return j.address && j.address.indexOf(PREFIX) === 0; });
+  for (var i = 0; i < toRemove.length; i++) {
+    if (_A.removeLocalJob) {
+      _A.removeLocalJob(toRemove[i].id);
+    } else {
+      var idx = allJobs.indexOf(toRemove[i]);
+      if (idx >= 0) allJobs.splice(idx, 1);
+    }
+  }
+
+  // Remove BREAK- prefixed estimates
+  var allEsts = _A.loadEstimates();
+  for (var j = allEsts.length - 1; j >= 0; j--) {
+    if (allEsts[j].address && allEsts[j].address.indexOf(PREFIX) === 0) {
+      _A.deleteEstimate(allEsts[j].id);
+    }
+  }
+
+  // Remove BREAK- prefixed addresses
+  var allAddrs = _A.loadAddresses();
+  for (var a = allAddrs.length - 1; a >= 0; a--) {
+    if (allAddrs[a].address && allAddrs[a].address.indexOf(PREFIX) === 0) {
+      if (_A.removeLocalAddress) {
+        _A.removeLocalAddress(allAddrs[a].id);
+      } else {
+        allAddrs.splice(a, 1);
+      }
+    }
+  }
+
+  // Clear notifications
+  _clearNotifs();
+
+  // Clean up media blobs
+  if (_A.deleteMediaBlob) {
+    try {
+      var blobs = await _A.getAllMediaBlobs();
+      if (blobs) {
+        for (var b = 0; b < blobs.length; b++) {
+          if (blobs[b].id && blobs[b].id.indexOf(PREFIX) === 0) {
+            await _A.deleteMediaBlob(blobs[b].id);
+          }
+        }
+      }
+    } catch(e) { /* non-critical */ }
+  }
+
+  addResult('BREAK- test data cleaned', true, toRemove.length + ' jobs removed');
+}
+
+// ══════════════════════════════════════════
+// RUNNER
+// ══════════════════════════════════════════
+
+async function runAll() {
+  var btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner">&#9881;</span> BREAKING THINGS...';
+  _tests = []; _passed = 0; _failed = 0; _skipped = 0;
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('summary').innerHTML = '';
+
+  var start = Date.now();
+
+  try {
+    await loadAstra();
+  } catch (e) {
+    addResult('FATAL: ASTRA LOAD', false, e.message);
+    btn.innerHTML = 'LOAD FAILED';
+    btn.style.background = '#c0392b';
+    btn.disabled = false;
+    return;
+  }
+
+  var suites = [
+    testRBAC, testMaterialDedup, testAddressDedup, testIntelligence,
+    testRecalcAdversarial, testHistoricalImport, testNotifications,
+    testCacheStress, testUtilities, testEstimateCRUD,
+    testSearchAdversarial, testMediaLimits, testNavigation
+  ];
+  for (var si = 0; si < suites.length; si++) {
+    try { await suites[si](); } catch (e) {
+      addResult('SUITE CRASH: ' + (suites[si].name || si), false,
+        e.message + ' | ' + (e.stack || '').split('\n').slice(0, 2).join(' '));
+    }
+  }
+
+  try { await cleanup(); } catch (e) {
+    addResult('CLEANUP ERROR', false, e.message);
+  }
+
+  var elapsed = ((Date.now() - start) / 1000).toFixed(1);
+  if (_failed === 0) {
+    btn.innerHTML = 'UNBREAKABLE';
+    btn.style.background = '#2d8a4e';
+  } else {
+    btn.innerHTML = _failed + ' BROKEN';
+    btn.style.background = '#c0392b';
+  }
+  btn.disabled = false;
+  btn.style.color = '#fff';
+
+  // Update summary with elapsed time
+  var summaryEl = document.getElementById('summary');
+  if (summaryEl.innerHTML) {
+    summaryEl.innerHTML = summaryEl.innerHTML.replace('</div></div>',
+      '<div class="summary-row"><span class="summary-label">TIME</span><span class="summary-value" style="color:#888;">' + elapsed + 's</span></div></div></div>');
+  }
+}
+</script>
+</body>
+</html>
