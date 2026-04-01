@@ -3196,8 +3196,8 @@ if (!navigator.onLine) _updateSyncIndicator('offline');
 if ('serviceWorker' in navigator) {
   let _swUpdateReady = false;
   navigator.serviceWorker.register('sw.js').then(reg => {
-    // Check for updates every 30 seconds
-    setInterval(() => reg.update(), 30000);
+    // Check for updates every 60s (swallow invalid-state errors during transitions)
+    setInterval(() => reg.update().catch(() => {}), 60000);
     reg.addEventListener('updatefound', () => {
       const newSW = reg.installing;
       if (!newSW) return;
