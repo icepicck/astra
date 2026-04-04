@@ -18,7 +18,7 @@ if (location.protocol === 'http:' && location.hostname !== 'localhost' && locati
 (function() {
   var csp = document.createElement('meta');
   csp.httpEquiv = 'Content-Security-Policy';
-  csp.content = "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co https://*.googleapis.com; connect-src 'self' https://*.supabase.co https://*.googleapis.com wss://*.supabase.co;";
+  csp.content = "script-src 'self' 'unsafe-inline' https://maps.googleapis.com https://maps.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co https://*.googleapis.com https://*.gstatic.com https://*.ggpht.com; connect-src 'self' https://*.supabase.co https://*.googleapis.com wss://*.supabase.co;";
   document.head.appendChild(csp);
 })();
 </script>
