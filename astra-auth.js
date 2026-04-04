@@ -889,6 +889,46 @@
     toggleMfa: toggleMfa,
     // T2-B3: Password verify modal for onclick handlers
     _verifyPasswordConfirm: _verifyPasswordConfirm,
+    // Connection config — accessible pre-auth for first-time setup
+    showConnectionConfig: function() {
+      var currentUrl = localStorage.getItem('astra_supabase_url') || '';
+      var currentKey = localStorage.getItem('astra_supabase_key') || '';
+      // Build modal manually since showConfirmModal may not be available pre-auth
+      var overlay = document.createElement('div');
+      overlay.id = 'conn-config-overlay';
+      overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+      overlay.innerHTML = '<div style="background:#1a1a1a;border-radius:12px;padding:24px;width:100%;max-width:360px;">' +
+        '<div style="font-size:14px;font-weight:800;letter-spacing:2px;text-align:center;margin-bottom:20px;color:#e0e0e0;">CONNECTION</div>' +
+        '<div style="font-size:11px;color:#555;text-align:center;margin-bottom:16px;letter-spacing:0.5px;">SUPABASE PROJECT URL AND ANON KEY.<br>FOUND IN SUPABASE DASHBOARD → SETTINGS → API.</div>' +
+        '<div style="margin-bottom:12px;">' +
+          '<label style="font-size:11px;color:#555;font-weight:700;letter-spacing:1px;display:block;margin-bottom:4px;">PROJECT URL</label>' +
+          '<input type="url" id="conn-url" value="' + A.esc(currentUrl) + '" placeholder="https://xxxxx.supabase.co" style="width:100%;height:48px;background:#111;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-size:13px;padding:0 12px;font-family:inherit;box-sizing:border-box;">' +
+        '</div>' +
+        '<div style="margin-bottom:20px;">' +
+          '<label style="font-size:11px;color:#555;font-weight:700;letter-spacing:1px;display:block;margin-bottom:4px;">ANON KEY</label>' +
+          '<input type="text" id="conn-key" value="' + A.esc(currentKey) + '" placeholder="eyJhbGciOi..." style="width:100%;height:48px;background:#111;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-size:13px;padding:0 12px;font-family:inherit;box-sizing:border-box;">' +
+        '</div>' +
+        '<button onclick="saveConnectionConfig()" style="width:100%;height:48px;background:#FF6B00;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:800;letter-spacing:2px;cursor:pointer;">SAVE</button>' +
+        '<button onclick="document.getElementById(\'conn-config-overlay\').remove()" style="width:100%;height:48px;background:none;border:1px solid #333;border-radius:10px;color:#555;font-size:12px;font-weight:700;letter-spacing:1px;cursor:pointer;margin-top:8px;">CANCEL</button>' +
+      '</div>';
+      document.body.appendChild(overlay);
+    },
+    saveConnectionConfig: function() {
+      var url = (document.getElementById('conn-url') || {}).value || '';
+      var key = (document.getElementById('conn-key') || {}).value || '';
+      if (!url.trim() || !key.trim()) { return; }
+      localStorage.setItem('astra_supabase_url', url.trim());
+      localStorage.setItem('astra_supabase_key', key.trim());
+      // Clear cached client so it reconnects with new config
+      _client = null;
+      window._astraSupabaseClient = null;
+      var overlay = document.getElementById('conn-config-overlay');
+      if (overlay) overlay.remove();
+      // Clear any error and show success
+      var errEl = document.getElementById('login-error');
+      if (errEl) { errEl.style.display = 'none'; }
+      if (A.showToast) A.showToast('CONNECTION SAVED');
+    },
     // L3: Forgot password
     forgotPassword: function() {
       var email = (document.getElementById('login-email') || {}).value || '';
