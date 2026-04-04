@@ -1,7 +1,7 @@
 // S-09: Every supabase.min.js update REQUIRES a CACHE_NAME bump.
 // The SW caches the vendored Supabase client — a vulnerability in the cached copy
 // persists until the cache is invalidated. Bump the version suffix on every update.
-const CACHE_NAME = 'astra-v69';
+const CACHE_NAME = 'astra-v70';
 const ASSETS = [
   'index.html', 'diagnostics.html', 'app.js', 'astra-materials.js', 'astra-maps.js', 'astra-auth.js', 'astra-sync.js', 'astra-estimates.js',
   'manifest.json', 'rough_materials.json', 'trim_materials.json',

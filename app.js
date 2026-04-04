@@ -1070,7 +1070,7 @@ async function _processPendingReleases() {
 
 async function goTo(screenId, jobId) {
   // S-17: Validate parameters — screenId must be a known screen, jobId must be UUID-shaped
-  if (typeof screenId !== 'string' || !/^screen-[a-z]+$/.test(screenId)) return;
+  if (typeof screenId !== 'string' || !/^screen-[a-z]+(-[a-z]+)*$/.test(screenId)) return;
   if (jobId !== undefined && (typeof jobId !== 'string' || !/^[0-9a-f-]{36}$/.test(jobId))) return;
   // Phase C: Release lock when navigating away from detail screen
   // T2-C1: Queue release instead of fire-and-forget
