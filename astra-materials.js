@@ -111,8 +111,11 @@ function filterMaterials(query) {
     html += `<div class="section-title" style="margin-top:12px;">${A.esc(cat.label)} (${items.length})</div>`;
     html += `<div class="dash-card" style="padding:4px 14px;">`;
     for (const item of items) {
+      const ep = A.getEffectivePrice(item.id);
+      const priceStr = ep > 0 ? '$' + ep.toFixed(2) : '';
       html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #2a2a2a;">
         <span style="font-size:13px;font-weight:600;flex:1;">${A.esc(item.name)}</span>
+        <span style="font-size:12px;color:#FF6B00;font-weight:700;min-width:50px;text-align:right;margin-right:8px;">${priceStr}</span>
         <span style="font-size:11px;color:#555;min-width:30px;text-align:right;">${A.esc(item.unit)}</span>
       </div>`;
     }
@@ -150,16 +153,30 @@ function renderJobMaterials(jobId) {
   if (lib) lib.categories.forEach(c => c.items.forEach(i => { catMap[i.id] = c.label; }));
   const grouped = {};
   for (const m of mats) {
-    const cat = catMap[m.itemId] || 'OTHER';
+    const cat = m.custom ? 'CUSTOM ITEMS' : (catMap[m.itemId] || 'OTHER');
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push(m);
   }
   let html = '';
+  let grandTotal = 0;
   for (const [cat, items] of Object.entries(grouped)) {
     html += `<div class="cat-label">${A.esc(cat)}</div>`;
     for (const m of items) {
+      // Effective price: custom items carry their own unitPrice; catalog items use three-tier lookup
+      const unitPrice = m.custom ? (parseFloat(m.unitPrice) || 0) : (A.getEffectivePrice(m.itemId) || 0);
+      const lineTotal = unitPrice * (m.qty || 0);
+      grandTotal += lineTotal;
+      const priceDisplay = unitPrice > 0
+        ? '<span style="color:#888;font-size:11px;">$' + unitPrice.toFixed(2) + '/' + A.esc(m.unit) + '</span>'
+        : (m.custom && unitPrice === 0 ? '<span style="color:#555;font-size:11px;">BUILDER-SUPPLIED</span>' : '');
+      const lineTotalDisplay = lineTotal > 0
+        ? '<span style="color:#FF6B00;font-size:12px;font-weight:800;min-width:60px;text-align:right;">$' + lineTotal.toFixed(2) + '</span>'
+        : '';
       html += `<div class="mat-row">
-        <span class="mat-name">${A.esc(m.name)}${m.variant ? ' <span style="color:#FF6B00;font-size:11px;">(' + A.esc(m.variant) + ')</span>' : ''}${m.partRef ? ' <span style="color:#444;font-size:10px;">#' + A.esc(m.partRef) + '</span>' : ''}</span>
+        <div style="flex:1;min-width:0;">
+          <div class="mat-name">${A.esc(m.name)}${m.variant ? ' <span style="color:#FF6B00;font-size:11px;">(' + A.esc(m.variant) + ')</span>' : ''}${m.partRef ? ' <span style="color:#444;font-size:10px;">#' + A.esc(m.partRef) + '</span>' : ''}</div>
+          <div>${priceDisplay}</div>
+        </div>
         <div class="mat-controls">
           <button class="qty-btn" onclick="adjustMatQty('${jobId}','${m.materialId}',-1)">−</button>
           <input type="number" inputmode="numeric" class="qty-input" value="${m.qty}" min="1"
@@ -167,10 +184,18 @@ function renderJobMaterials(jobId) {
             onblur="setMatQty('${jobId}','${m.materialId}',this.value)"
             onfocus="this.select()">
           <span class="qty-unit">${A.esc(m.unit)}</span>
+          ${lineTotalDisplay}
           <button class="remove-btn" onclick="removeMatFromJob('${jobId}','${m.materialId}')">✕</button>
         </div>
       </div>`;
     }
+  }
+  // Material cost total
+  if (grandTotal > 0) {
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-top:2px solid #FF6B00;margin-top:8px;">
+      <span style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:1px;">MATERIAL COST</span>
+      <span style="font-size:16px;font-weight:800;color:#FF6B00;">$${grandTotal.toFixed(2)}</span>
+    </div>`;
   }
   el.innerHTML = html;
 }
@@ -473,7 +498,8 @@ function addMatToJob(jobId, itemId, nameOverride, unitOverride, qtyStr) {
   const name = item ? item.name : (nameOverride || itemId);
   const unit = item ? item.unit : (unitOverride || 'EA');
   const qty = Math.max(1, parseInt(qtyStr) || 1);
-  const entry = { materialId: crypto.randomUUID(), itemId, name, qty, unit };
+  const unitPrice = A.getEffectivePrice(itemId) || 0;
+  const entry = { materialId: crypto.randomUUID(), itemId, name, qty, unit, unitPrice };
   if (_matPickerActiveVariant) {
     entry.variant = _matPickerActiveVariant;
     // Attach part ref if available
@@ -702,9 +728,45 @@ function dedupKeep(jobId, materialId) {
   if (banner) banner.innerHTML = renderDedupBanner(jobId);
 }
 
+// ── Custom item entry (Tier 3) ──
+function showAddCustomItem(jobId) {
+  showConfirmModal('ADD CUSTOM ITEM', `
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <input type="text" id="custom-mat-name" placeholder="ITEM NAME" style="height:48px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-size:14px;padding:0 12px;font-family:inherit;">
+      <div style="display:flex;gap:8px;">
+        <input type="number" id="custom-mat-qty" inputmode="numeric" placeholder="QTY" value="1" min="1" style="flex:1;height:48px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-size:14px;text-align:center;font-family:inherit;">
+        <select id="custom-mat-unit" class="select-dark" style="flex:1;height:48px;font-size:14px;">
+          <option value="EA">EA</option><option value="FT">FT</option><option value="ROLL">ROLL</option><option value="PK">PK</option><option value="RL">RL</option><option value="SET">SET</option><option value="BOX">BOX</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="color:#888;font-size:14px;">$</span>
+        <input type="number" id="custom-mat-price" inputmode="decimal" placeholder="UNIT PRICE (0 = BUILDER-SUPPLIED)" step="0.01" min="0" style="flex:1;height:48px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-size:14px;text-align:center;font-family:inherit;">
+      </div>
+    </div>
+  `, 'ADD', function() {
+    const name = (document.getElementById('custom-mat-name').value || '').trim();
+    if (!name) { A.showToast('NAME REQUIRED'); return; }
+    const qty = Math.max(1, parseInt(document.getElementById('custom-mat-qty').value) || 1);
+    const unit = document.getElementById('custom-mat-unit').value || 'EA';
+    const unitPrice = Math.max(0, parseFloat(document.getElementById('custom-mat-price').value) || 0);
+    const mats = getJobMaterials(jobId);
+    mats.push({
+      materialId: crypto.randomUUID(),
+      itemId: 'custom_' + Date.now(),
+      name: name.toUpperCase(),
+      qty, unit, unitPrice,
+      custom: true
+    });
+    setJobMaterials(jobId, mats);
+    renderJobMaterials(jobId);
+    A.showToast(name.toUpperCase() + ' ×' + qty + ' ADDED');
+  });
+}
+
 // ── Public API ──
 Object.assign(window, {
-  renderMaterials, renderJobMaterials, autoLoadBuiltInLibraries,
+  renderMaterials, renderJobMaterials, autoLoadBuiltInLibraries, showAddCustomItem,
   openMatPicker, closeMatPicker, filterMatPicker, showMatQtyInput,
   adjustMatQty, setMatQty, removeMatFromJob, applyBulkTemplate,
   addMatToJob, filterMaterials, importMaterialLibrary,

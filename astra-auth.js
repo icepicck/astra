@@ -7,12 +7,12 @@
 
   var A = window.Astra;
   var DEFAULT_ACCOUNT_ID = '00000000-0000-0000-0000-000000000001';
-  var OFFLINE_SESSION_MAX_DAYS = 7; // SEC-003: Max days a cached session can survive without server validation
+  var OFFLINE_SESSION_MAX_DAYS = 2; // SEC-003/S-08: Max days cached session survives without server validation. Reduced from 7 to 2 per security audit — field techs sync at least once daily.
 
-  // ── Hardcoded defaults — survives cache clear ──
-  // Anon key is public by design. RLS is the real security.
-  var DEFAULT_SUPA_URL = 'https://uyjpvjdpdyckkkxrfpsl.supabase.co'; // ← PASTE YOUR SUPABASE PROJECT URL HERE (e.g. https://xxxxx.supabase.co)
-  var DEFAULT_SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV5anB2amRwZHlja2treHJmcHNsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0ODIwNzQsImV4cCI6MjA5MDA1ODA3NH0.xFSPy7Qdmg4TQVuj-loMFjv5jQ2JSdxufbfGJHeSvZY'; // ← PASTE YOUR SUPABASE ANON KEY HERE
+  // S-01: No hardcoded credentials in source. User enters in Settings, stored in localStorage.
+  // Anon key is public by design, but URL+key in source lets attackers enumerate the API surface.
+  var DEFAULT_SUPA_URL = '';
+  var DEFAULT_SUPA_KEY = '';
 
   // ── Supabase Client (shared singleton) ──
   // Created eagerly so auth can be checked before sync
@@ -27,7 +27,13 @@
     var url = localStorage.getItem('astra_supabase_url') || DEFAULT_SUPA_URL;
     var key = localStorage.getItem('astra_supabase_key') || DEFAULT_SUPA_KEY;
     if (!url || !key || !window.supabase || !window.supabase.createClient) return null;
-    _client = window.supabase.createClient(url, key);
+    _client = window.supabase.createClient(url, key, {
+      auth: {
+        persistSession: true,
+        storageKey: 'astra-auth',
+        storage: window.localStorage
+      }
+    });
     window._astraSupabaseClient = _client;
     return _client;
   }
@@ -406,11 +412,10 @@
     // Clear user state
     _clearCachedUser();
 
-    // Clear in-memory cache
-    if (A._clearCache) A._clearCache();
-
-    // Clear IDB data stores
-    if (A._clearAllStores) A._clearAllStores();
+    // S-04: Clear via private channel — not on public Astra namespace
+    var priv = window._astraPrivate || {};
+    if (priv._clearCache) priv._clearCache();
+    if (priv._clearAllStores) priv._clearAllStores();
 
     // Stop realtime
     if (window.stopRealtime) window.stopRealtime();
@@ -467,7 +472,8 @@
     sb.auth.onAuthStateChange(function (event, session) {
       if (event === 'SIGNED_OUT') {
         _clearCachedUser();
-        if (A._clearCache) A._clearCache();
+        var priv = window._astraPrivate || {};
+        if (priv._clearCache) priv._clearCache();
         _showLogin();
       } else if (event === 'TOKEN_REFRESHED') {
         // E2c: Token refresh proves server connectivity — re-stamp cached user

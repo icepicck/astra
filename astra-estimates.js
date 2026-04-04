@@ -991,12 +991,13 @@ function _estImportMat(itemId, name, unit, qty, variant) {
   if (!_state.currentEstimate) return;
   _captureFormState();
   var pb = loadPricebook();
+  var eprice = A.getEffectivePrice ? A.getEffectivePrice(itemId) : 0;
   var mat = {
     itemId: itemId,
     name: name,
     qty: qty,
     unit: unit,
-    unitCost: 0,
+    unitCost: eprice,
     markup: pb.materialMarkup,
     lineTotal: 0
   };
@@ -1017,12 +1018,13 @@ function _estImportAllSimilar() {
   similar.materials.forEach(function(m) {
     var alreadyAdded = est.materials.some(function(em) { return ((em.itemId === m.itemId) || (em.name === m.name)) && (em.variant || '') === (m.variant || ''); });
     if (!alreadyAdded) {
+      var eprice = A.getEffectivePrice ? A.getEffectivePrice(m.itemId) : 0;
       var mat = {
         itemId: m.itemId,
         name: m.name,
         qty: m.avgQty,
         unit: m.unit,
-        unitCost: 0,
+        unitCost: eprice,
         markup: pb.materialMarkup,
         lineTotal: 0
       };
@@ -1046,12 +1048,13 @@ function _estImportAllAddress() {
   addrData.materials.forEach(function(m) {
     var alreadyAdded = est.materials.some(function(em) { return ((em.itemId === m.itemId) || (em.name === m.name)) && (em.variant || '') === (m.variant || ''); });
     if (!alreadyAdded) {
+      var eprice = A.getEffectivePrice ? A.getEffectivePrice(m.itemId) : 0;
       var mat = {
         itemId: m.itemId,
         name: m.name,
         qty: m.lastQty,
         unit: m.unit,
-        unitCost: 0,
+        unitCost: eprice,
         markup: pb.materialMarkup,
         lineTotal: 0
       };

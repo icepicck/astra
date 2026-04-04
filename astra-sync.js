@@ -13,6 +13,18 @@
 
 var A = window.Astra;
 
+// S-14: IDB-backed pending media delete queue (replaces localStorage)
+function _getPendingMediaDeletes() {
+  if (!A._idbConfigGet) return Promise.resolve([]);
+  return A._idbConfigGet('pendingMediaDeletes').then(function(val) {
+    return val || [];
+  }).catch(function() { return []; });
+}
+function _savePendingMediaDeletes(arr) {
+  if (!A._idbConfigPut) return;
+  A._idbConfigPut('pendingMediaDeletes', arr); // fire-and-forget, same pattern as other config writes
+}
+
 // FAT-016+: Field mapping tables — documents cloud↔local field names
 // Jobs: id, sync_id→syncId, address, address_id→addressId, types, status, date,
 //   tech_id→techId, tech_name→techName, notes, tech_notes→techNotes, materials,
@@ -317,12 +329,18 @@ async function _deleteCloudMedia(acctId, mediaId) {
 }
 
 // Download a media blob from Supabase Storage. Returns Blob on success, null on failure.
+var MAX_MEDIA_BYTES = 50 * 1024 * 1024; // 50MB cap — matches video limit
 async function downloadMediaBlob(acctId, mediaId) {
   try {
     var sb = getClient();
     var path = acctId + '/' + mediaId;
     var result = await sb.storage.from('job-media').download(path);
     if (result.error) { console.warn('Media download failed:', mediaId, result.error.message); return null; }
+    // S-12: Reject oversized blobs — prevents IDB fill from malicious/corrupted storage entries
+    if (result.data && result.data.size > MAX_MEDIA_BYTES) {
+      console.warn('Media download rejected — exceeds size limit:', mediaId, result.data.size, 'bytes');
+      return null;
+    }
     return result.data;
   } catch (e) {
     console.warn('Media download error:', mediaId, e);
@@ -542,8 +560,8 @@ async function syncToCloud(statusCallback) {
         }
       }
 
-      // Process pending cloud media deletes
-      var pendingDeletes = JSON.parse(localStorage.getItem('astra_pending_media_deletes') || '[]');
+      // S-14: Process pending cloud media deletes from IDB (migrated from localStorage)
+      var pendingDeletes = await _getPendingMediaDeletes();
       if (pendingDeletes.length) {
         var remaining = [];
         for (var pd = 0; pd < pendingDeletes.length; pd++) {
@@ -553,7 +571,15 @@ async function syncToCloud(statusCallback) {
             remaining.push(pendingDeletes[pd]); // Retry next push
           }
         }
-        localStorage.setItem('astra_pending_media_deletes', JSON.stringify(remaining));
+        await _savePendingMediaDeletes(remaining);
+      }
+      // S-14: Also drain any legacy localStorage entries (one-time migration)
+      var legacyDeletes = JSON.parse(localStorage.getItem('astra_pending_media_deletes') || '[]');
+      if (legacyDeletes.length) {
+        for (var ld = 0; ld < legacyDeletes.length; ld++) {
+          try { await _deleteCloudMedia(legacyDeletes[ld].accountId, legacyDeletes[ld].mediaId); } catch (e) {}
+        }
+        localStorage.removeItem('astra_pending_media_deletes');
       }
 
       if (mediaUploaded) console.log('Media sync: uploaded', mediaUploaded, 'blobs');
@@ -869,6 +895,10 @@ function _handleRemoteChange(table, payload) {
   var oldRec = payload.old;
   var eventType = payload.eventType;
   if (!newRec && !oldRec) return;
+  // S-10: Validate required fields before merging — defense against malformed realtime payloads
+  var rec = newRec || oldRec;
+  if (!rec.id || typeof rec.id !== 'string') return;
+  if (rec.account_id !== undefined && typeof rec.account_id !== 'string') return;
   if (window._syncInProgress) return;
   if (window._syncCooldown) return;
   // BUG-021: Per-record cooldown — skip events for recently pushed records
@@ -1026,19 +1056,9 @@ async function acquireLock(jobId) {
   var result = await sb.rpc('acquire_lock', { p_job_id: jobId, p_user_id: user.id });
 
   if (result.error) {
+    // SEC-INV-6: No client-side fallback. If RPC fails, lock fails. A failed lock is safer than a bypassed lock.
     console.error('Lock acquire failed:', result.error.message);
-    // Fallback to client-side lock if RPC not deployed yet
-    var now = new Date().toISOString();
-    var staleThreshold = new Date(Date.now() - LOCK_TIMEOUT_MS).toISOString();
-    var fallback = await sb.from('jobs')
-      .update({ locked_by: user.id, locked_at: now })
-      .eq('id', jobId)
-      .or('locked_by.is.null,locked_by.eq.' + user.id + ',locked_at.lt.' + staleThreshold)
-      .select('id');
-    if (fallback.data && fallback.data.length > 0) {
-      A.updateJob(jobId, { lockedBy: user.id, lockedAt: now });
-      return { success: true };
-    }
+    return { success: false, lockedBy: 'SYSTEM (LOCK SERVICE UNAVAILABLE)' };
   } else if (result.data === true) {
     A.updateJob(jobId, { lockedBy: user.id, lockedAt: new Date().toISOString() });
     return { success: true };
@@ -1058,7 +1078,7 @@ async function acquireLock(jobId) {
 }
 
 // Release lock on a job (called on navigate away, save, etc.)
-// T2-B5: Uses server-side RPC with client-side fallback
+// T2-B5/SEC-INV-6: Server-side only — no client-side fallback
 async function releaseLock(jobId) {
   if (!jobId) return;
   var sb = getClient();
@@ -1067,20 +1087,23 @@ async function releaseLock(jobId) {
 
   var result = await sb.rpc('release_lock', { p_job_id: jobId, p_user_id: user.id });
   if (result.error) {
-    // Fallback to direct update if RPC not deployed yet
-    await sb.from('jobs')
-      .update({ locked_by: null, locked_at: null })
-      .eq('id', jobId)
-      .eq('locked_by', user.id);
+    // SEC-INV-6: No fallback. Server-side 30-minute timeout is the safety net.
+    console.error('Lock release failed:', result.error.message);
   }
   A.updateJob(jobId, { lockedBy: null, lockedAt: null });
 }
 
 // Force-unlock + re-lock to supervisor in ONE atomic call (Silas: no window between)
+// S-11: Audit trail — record who held the lock before force-unlock
 async function forceUnlock(jobId) {
   var sb = getClient();
   var user = (A.getCurrentUser && A.getCurrentUser()) || null;
-  if (!user || user.role !== 'supervisor') return { success: false };
+  if (!user || (user.role !== 'supervisor' && user.role !== 'admin')) return { success: false };
+
+  // S-11: Capture previous lock holder before overwriting
+  var prevCheck = await sb.from('jobs').select('locked_by, locked_at').eq('id', jobId).single();
+  var previousHolder = (prevCheck.data && prevCheck.data.locked_by) || null;
+  var previousAt = (prevCheck.data && prevCheck.data.locked_at) || null;
 
   var now = new Date().toISOString();
   var result = await sb.from('jobs')
@@ -1092,7 +1115,21 @@ async function forceUnlock(jobId) {
     return { success: false };
   }
 
-  A.updateJob(jobId, { lockedBy: user.id, lockedAt: now });
+  // S-11: Persist lock history on the local job record — audit trail for disputes
+  var job = A.getJob(jobId);
+  var lockHistory = (job && job.lockHistory) || [];
+  lockHistory.push({
+    from: previousHolder,
+    to: user.id,
+    toName: user.name || 'SUPERVISOR',
+    at: now,
+    previousLockedAt: previousAt,
+    action: 'force_unlock'
+  });
+  // Cap history to prevent unbounded growth
+  if (lockHistory.length > 50) lockHistory = lockHistory.slice(-50);
+
+  A.updateJob(jobId, { lockedBy: user.id, lockedAt: now, lockHistory: lockHistory });
   return { success: true };
 }
 

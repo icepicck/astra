@@ -6,6 +6,21 @@
 <meta name="theme-color" content="#FF6B00">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- S-02/S-20: HTTPS enforcement + external script blocking -->
+<script>
+// S-02: Force HTTPS on production (GitHub Pages) — skip on localhost for dev
+if (location.protocol === 'http:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+  location.replace('https:' + location.href.substring(location.protocol.length));
+}
+// S-20: Dynamic CSP — blocks external scripts while allowing same-origin + inline (required by app)
+// Applied via script instead of meta tag to avoid iframe/preview conflicts
+(function() {
+  var csp = document.createElement('meta');
+  csp.httpEquiv = 'Content-Security-Policy';
+  csp.content = "script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.supabase.co https://*.googleapis.com; connect-src 'self' https://*.supabase.co https://*.googleapis.com wss://*.supabase.co;";
+  document.head.appendChild(csp);
+})();
+</script>
 <link rel="manifest" href="manifest.json">
 <title>ASTRA</title>
 <style>
@@ -830,7 +845,8 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
 .picker-row.added { opacity: 0.5; }
 .picker-item-name { font-size: 14px; flex: 1; min-width: 0; }
 .picker-check { color: #2d8a4e; font-size: 16px; margin-left: 8px; flex-shrink: 0; }
-.picker-qty-group { display: flex; align-items: center; gap: 8px; }
+.picker-qty-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 400px) { .picker-qty-group { gap: 6px; } .picker-add-btn { flex: 1; } }
 .picker-qty-btn { width: 48px; height: 48px; border-radius: 10px; background: #1a1a1a; color: #e0e0e0; font-size: 20px; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
 .picker-qty-input { flex: 1; height: 48px; background: #1a1a1a; border-radius: 10px; color: #e0e0e0; font-size: 20px; font-weight: 800; text-align: center; font-family: inherit; outline: none; }
 .picker-add-btn { height: 48px; min-width: 72px; border: none; border-radius: 10px; color: #fff; font-size: 14px; font-weight: 800; cursor: pointer; letter-spacing: 1px; }
@@ -890,7 +906,7 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
 .est-card-total { font-size: 18px; font-weight: 900; color: #FF6B00; }
 .est-card-date { font-size: 11px; color: #555; text-transform: uppercase; }
 .badge-draft { background: #444; color: #aaa; }
-.badge-sent { background: #3B82F6; color: #fff; }
+.badge-sent { background: #FF6B00; color: #fff; }
 .badge-accepted { background: #2d8a4e; color: #fff; }
 .badge-declined { background: #c0392b; color: #fff; }
 .badge-expired { background: #333; color: #666; }
@@ -1283,6 +1299,7 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
     <!-- C3: Materials count badge to remind users -->
     <div class="section-title" style="margin-top:16px;">MATERIALS <span id="create-mat-count" style="color:#FF6B00;">(0)</span></div>
     <button class="upload-btn" onclick="openMatPicker('_new_')">ADD MATERIALS</button>
+    <button class="upload-btn" style="background:none;border:1px solid #333;color:#888;margin-left:8px;" onclick="showAddCustomItem('_new_')">+ CUSTOM ITEM</button>
     <div id="create-materials-list"></div>
     <div style="display:flex;gap:10px;margin-top:16px;">
       <button class="btn btn-primary" style="flex:1;" onclick="saveNewTicket()">SAVE</button>
@@ -1361,7 +1378,7 @@ select.prop-input option { direction: ltr; background: #1a1a1a; color: #e0e0e0; 
 <div id="screen-settings" class="screen">
   <div class="screen-body" id="settings-body"></div>
   <!-- Hidden file inputs (must persist outside dynamic render) -->
-  <input type="file" class="hidden-input" id="import-input" accept=".json" onchange="importData(this)">
+  <input type="file" class="hidden-input" id="import-input" accept=".json,.astra" onchange="importData(this)">
   <input type="file" class="hidden-input" id="material-import-input" accept=".json" onchange="importMaterialLibrary(this)">
   <input type="file" class="hidden-input" id="history-import-input" accept=".json" onchange="importHistoricalJobs(this)">
 </div>

@@ -343,6 +343,26 @@ More jobs = more data = better estimates
 
 ---
 
+## SECURITY INVARIANTS — NON-NEGOTIABLE
+
+*Added per Silas Crenshaw security audit (2026-04-01). These are standing orders.*
+
+1. **No secret with elevated privileges ever goes in localStorage or source code.** Anon key is acceptable (public by design, RLS is the boundary). Service role key, admin tokens, or API secrets are not. Ever.
+2. **Every `innerHTML` write must pass through `esc()`.** No exceptions. No "it's just a number." Numbers become strings. Strings become vectors.
+3. **Export files are business intelligence.** Treat them as classified. Encrypted via Web Crypto API with user-provided passphrase. No unencrypted exports in production.
+4. **The device is the perimeter.** Session expiry, inactivity timeout, and 2FA are the three boundaries. All three must be active in production.
+5. **RLS policy changes require a full audit.** Every migration that touches RLS gets a `SELECT policyname, cmd, qual FROM pg_policies` verification step before and after. No exceptions.
+6. **Lock acquisition never falls back to client-side.** If the server-side RPC fails, the lock fails. A failed lock is safer than a bypassed lock.
+7. **`window.Astra` exposes only what HTML handlers need.** Destructive operations (`_clearAllStores`, `_clearCache`) are never on the public namespace. Debug/test APIs are gated behind admin role + debug flag.
+8. **Every `supabase.min.js` update requires a `CACHE_NAME` bump in `sw.js`.** The SW caches the vendored client — a vulnerability in the cached copy persists until the cache is invalidated. No exceptions.
+9. **Push order is security-relevant.** Addresses → Techs → Jobs → Materials → Estimates respects FK dependencies. If RLS policies ever add cross-table joins, push order must be re-verified.
+10. **Client-side rate limiting is supplementary only.** Login attempt limits and MFA cooldowns are client-side (bypassable via curl). Supabase server-side rate limiting is the real boundary. Verify Supabase rate limiting is configured on every project setup.
+11. **30-minute server-side lock timeout scales to ~20 techs.** At larger team sizes, reduce to 10–15 minutes or implement heartbeat-based lock renewal. Document this limit when onboarding shops above 10 techs.
+12. **All imported string fields are sanitized on input.** `_stripTags()` runs on address, notes, techNotes, techName during import. Defense in depth — `esc()` on output is the primary barrier, input sanitization is the second.
+13. **Notification content is length-capped and tag-stripped.** Titles max 200 chars, messages max 1000 chars, type must be in whitelist. Prevents injection via realtime events.
+
+---
+
 ## CONTACTS
 
 - **Creator/Architect:** Robert — electrical background, field reality, final word on workflow decisions.

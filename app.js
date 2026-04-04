@@ -2,6 +2,15 @@
 // ASTRA v0.7 — FIELD SERVICE
 // ═══════════════════════════════════════════
 window.Astra = window.Astra || {};
+// S-15: Polyfill crypto.randomUUID for non-secure contexts (HTTP without localhost)
+// Prevents silent undefined IDs when HTTPS is unavailable
+if (!crypto.randomUUID) {
+  crypto.randomUUID = function() {
+    return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, function(c) {
+      return (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16);
+    });
+  };
+}
 (function() {
 'use strict';
 
@@ -146,12 +155,14 @@ var _notifCache = [];
 var MAX_NOTIFICATIONS = 100; // Cap to prevent unbounded growth
 
 function addNotification(notif) {
+  // S-22: Sanitize notification content — titles and messages could come from realtime events
+  var VALID_NOTIF_TYPES = ['info', 'approval', 'rejection', 'lock_takeover', 'assignment', 'changes_requested'];
   var entry = {
     id: notif.id || crypto.randomUUID(),
-    type: notif.type || 'info',
-    title: notif.title || '',
-    message: notif.message || '',
-    jobId: notif.jobId || null,
+    type: VALID_NOTIF_TYPES.indexOf(notif.type) !== -1 ? notif.type : 'info',
+    title: _stripTags(String(notif.title || '').substring(0, 200)),
+    message: _stripTags(String(notif.message || '').substring(0, 1000)),
+    jobId: (notif.jobId && /^[0-9a-f-]{36}$/.test(notif.jobId)) ? notif.jobId : null,
     read: false,
     createdAt: new Date().toISOString()
   };
@@ -268,6 +279,25 @@ function loadPricebookConfig() { return _configCache.pricebook || null; }
 function savePricebookConfig(pb) {
   _configCache.pricebook = pb;
   _idbConfigPut('pricebook', pb);
+}
+// Three-tier pricing: shop-level price overrides (Tier 2)
+function loadShopPrices() { return _configCache.shopPrices || {}; }
+function saveShopPrices(prices) {
+  _configCache.shopPrices = prices;
+  _idbConfigPut('shopPrices', prices);
+}
+// Effective price: shop_price (Tier 2) ?? default_price (Tier 1) ?? 0
+function getEffectivePrice(itemId) {
+  var shop = loadShopPrices();
+  if (shop[itemId] !== undefined && shop[itemId] !== null) return parseFloat(shop[itemId]) || 0;
+  var lib = loadMaterialLibrary();
+  if (!lib) return 0;
+  for (var c = 0; c < lib.categories.length; c++) {
+    for (var i = 0; i < lib.categories[c].items.length; i++) {
+      if (lib.categories[c].items[i].id === itemId) return parseFloat(lib.categories[c].items[i].default_price) || 0;
+    }
+  }
+  return 0;
 }
 
 // In-memory cache — all reads are synchronous from here
@@ -650,6 +680,14 @@ async function initDataLayer() {
     try { _configCache.pricebook = JSON.parse(localStorage.getItem('astra_pricebook')) || null; } catch { _configCache.pricebook = null; }
     if (_configCache.pricebook) { _idbConfigPut('pricebook', _configCache.pricebook); localStorage.removeItem('astra_pricebook'); }
   }
+  // Three-tier pricing: load shop price overrides
+  var idbShopPrices = await _idbConfigGet('shopPrices');
+  if (idbShopPrices) { _configCache.shopPrices = idbShopPrices; }
+  else { _configCache.shopPrices = {}; }
+  // Editable dropdown lists
+  var idbCustomLists = await _idbConfigGet('customLists');
+  if (idbCustomLists) { _configCache.customLists = idbCustomLists; }
+  else { _configCache.customLists = {}; }
 
   // D19: Seed default tech — use "DEFAULT TECH" instead of hardcoded name
   if (_cache.techs.length === 0) {
@@ -1031,6 +1069,9 @@ async function _processPendingReleases() {
 }
 
 async function goTo(screenId, jobId) {
+  // S-17: Validate parameters — screenId must be a known screen, jobId must be UUID-shaped
+  if (typeof screenId !== 'string' || !/^screen-[a-z]+$/.test(screenId)) return;
+  if (jobId !== undefined && (typeof jobId !== 'string' || !/^[0-9a-f-]{36}$/.test(jobId))) return;
   // Phase C: Release lock when navigating away from detail screen
   // T2-C1: Queue release instead of fire-and-forget
   if (_lockedJobId && (screenId !== 'screen-detail' || jobId !== _lockedJobId)) {
@@ -1465,6 +1506,8 @@ function pickAddr(addrId) {
 }
 
 function saveNewTicket() {
+  // S-23: Block writes during initial cloud pull to prevent local/remote conflicts
+  if (window._syncInProgress) { showToast('SYNC IN PROGRESS — WAIT', 'error'); return; }
   const street = document.getElementById('c-street').value.trim();
   if (!street) { document.getElementById('c-street').focus(); return; }
 
@@ -1735,7 +1778,8 @@ async function renderDetail(jobId) {
     + '</div>';
 
   // Materials section
-  var matsContent = (isLocked ? '' : '<button class="upload-btn" onclick="openMatPicker(\'' + jobId + '\')">ADD MATERIALS</button>')
+  var matsContent = (isLocked ? '' : '<button class="upload-btn" onclick="openMatPicker(\'' + jobId + '\')">ADD MATERIALS</button>'
+    + '<button class="upload-btn" style="background:none;border:1px solid #333;color:#888;margin-left:8px;" onclick="showAddCustomItem(\'' + jobId + '\')">+ CUSTOM ITEM</button>')
     + '<div id="dedup-banner-' + jobId + '">' + (isSupervisor && window.renderDedupBanner ? renderDedupBanner(jobId) : '') + '</div>'
     + '<div id="job-materials-list"></div>';
 
@@ -1875,14 +1919,37 @@ function runSearch(query) {
 // ═══════════════════════════════════════════
 // ADDRESS DATABASE
 // ═══════════════════════════════════════════
+// Default dropdown seeds — overridden by shop custom lists
+const DEFAULT_LISTS = {
+  panelType: ['Square D QO','Square D Homeline','Siemens','GE','Eaton BR','Eaton CH','Cutler-Hammer','Federal Pacific','Zinsco','Murray'],
+  ampRating: ['100A','125A','150A','200A','250A','300A','400A','600A'],
+  breakerType: ['SQD QO','SQD Homeline','Eaton CH','Eaton BR','Siemens QP','GE THQL','Murray MP'],
+  serviceType: ['Underground','Overhead'],
+  panelLocation: ['Indoor','Outdoor','Garage','Utility Room','Exterior Wall']
+};
+// Get effective list: custom overrides → defaults. "UNKNOWN / OTHER" always appended.
+function _getDropdownOptions(fieldKey) {
+  var custom = loadCustomLists();
+  var list = (custom[fieldKey] && custom[fieldKey].length) ? custom[fieldKey] : (DEFAULT_LISTS[fieldKey] || []);
+  // Ensure UNKNOWN / OTHER is always last and never duplicated
+  var filtered = list.filter(function(o) { return o !== 'UNKNOWN / OTHER'; });
+  filtered.push('UNKNOWN / OTHER');
+  return filtered;
+}
+function loadCustomLists() { return _configCache.customLists || {}; }
+function saveCustomLists(lists) {
+  _configCache.customLists = lists;
+  _idbConfigPut('customLists', lists);
+}
+
 const ADDR_FIELDS = [
   { key: 'builder', label: 'BUILDER' },
   { key: 'subdivision', label: 'SUBDIVISION' },
-  { key: 'panelType', label: 'PANEL TYPE', options: ['Main Breaker','Main Lug','Sub Panel'] },
-  { key: 'ampRating', label: 'AMP RATING', options: ['100A','125A','150A','200A','250A','300A','400A','600A'] },
-  { key: 'breakerType', label: 'BREAKER TYPE', options: ['SQD','CH','BR','SIEM'] },
-  { key: 'serviceType', label: 'SERVICE TYPE', options: ['Underground','Overhead'] },
-  { key: 'panelLocation', label: 'PANEL LOCATION', options: ['Indoor','Outdoor'] },
+  { key: 'panelType', label: 'PANEL TYPE', dynamic: true },
+  { key: 'ampRating', label: 'AMP RATING', dynamic: true },
+  { key: 'breakerType', label: 'BREAKER TYPE', dynamic: true },
+  { key: 'serviceType', label: 'SERVICE TYPE', dynamic: true },
+  { key: 'panelLocation', label: 'PANEL LOCATION', dynamic: true },
   { key: 'notes', label: 'PROPERTY NOTES', textarea: true }
 ];
 
@@ -1966,8 +2033,8 @@ function renderAddrDetail(addrId) {
           oninput="autoExpand(this)" onblur="updateAddress('${addrId}',{${f.key}:this.value})">${esc(val)}</textarea>
       </div>`;
     }
-    if (f.options) {
-      const opts = f.options.map(o => `<option value="${o}"${val === o ? ' selected' : ''}>${o}</option>`).join('');
+    if (f.dynamic) {
+      const opts = _getDropdownOptions(f.key).map(o => `<option value="${o}"${val === o ? ' selected' : ''}>${o}</option>`).join('');
       return `<div class="prop-field">
         <span class="prop-label">${f.label}</span>
         <select class="prop-input"
@@ -2466,12 +2533,19 @@ async function deleteMedia(jobId, type, mediaId) {
     const item = (j[type] || []).find(m => m.id === mediaId);
     if (item) {
       await deleteMediaBlob(item.id);
-      // Step 7A: Queue cloud deletion for next push sync
+      // Step 7A/S-14: Queue cloud deletion in IDB (not localStorage) for next push sync
       var acct = (window.Astra.getAccountId && window.Astra.getAccountId()) || null;
-      if (acct) {
-        var pending = JSON.parse(localStorage.getItem('astra_pending_media_deletes') || '[]');
-        pending.push({ mediaId: item.id, accountId: acct });
-        localStorage.setItem('astra_pending_media_deletes', JSON.stringify(pending));
+      if (acct && _astraDB) {
+        try {
+          var delTx = _astraDB.transaction('_syncMeta', 'readwrite');
+          var store = delTx.objectStore('_syncMeta');
+          var getReq = store.get('pendingMediaDeletes');
+          getReq.onsuccess = function() {
+            var pending = (getReq.result && getReq.result.value) || [];
+            pending.push({ mediaId: item.id, accountId: acct });
+            store.put({ key: 'pendingMediaDeletes', value: pending });
+          };
+        } catch (e) { console.warn('S-14: Failed to queue media delete in IDB:', e); }
       }
     }
     const updated = (j[type] || []).filter(m => m.id !== mediaId);
@@ -2622,6 +2696,179 @@ function toggleChip(el) { el.classList.toggle('selected'); }
 // ═══════════════════════════════════════════
 // SETTINGS / EXPORT / IMPORT
 // ═══════════════════════════════════════════
+
+// ── Three-tier pricing: shop price editor overlay ──
+function openShopPriceEditor() {
+  var lib = loadMaterialLibrary();
+  if (!lib) { showInfoModal('NO LIBRARY', 'NO MATERIAL LIBRARY LOADED.'); return; }
+  var shop = loadShopPrices();
+  var overlay = document.getElementById('shop-price-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'shop-price-overlay';
+    document.body.appendChild(overlay);
+  }
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#111;z-index:9999;display:flex;flex-direction:column;padding:16px;overflow-y:auto;';
+  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+    '<span style="font-weight:800;font-size:14px;letter-spacing:1px;">SHOP PRICE OVERRIDES</span>' +
+    '<button onclick="closeShopPriceEditor()" style="background:none;border:none;color:#e0e0e0;font-size:24px;cursor:pointer;padding:4px 8px;">✕</button></div>';
+  html += '<div class="search-bar" style="margin-bottom:12px;"><span class="search-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg></span>' +
+    '<input type="text" id="shop-price-search" autocomplete="nope" placeholder="SEARCH..." oninput="filterShopPriceEditor(this.value)"></div>';
+  html += '<div id="shop-price-list">';
+  html += _renderShopPriceItems(lib, shop, '');
+  html += '</div>';
+  overlay.innerHTML = html;
+}
+function _renderShopPriceItems(lib, shop, query) {
+  var q = query.trim().toLowerCase();
+  var html = '';
+  for (var c = 0; c < lib.categories.length; c++) {
+    var cat = lib.categories[c];
+    var items = q ? cat.items.filter(function(i) { return i.name.toLowerCase().indexOf(q) !== -1; }) : cat.items;
+    if (!items.length) continue;
+    html += '<div class="section-title" style="margin-top:8px;">' + esc(cat.label) + '</div>';
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var dp = parseFloat(item.default_price) || 0;
+      var sp = shop[item.id];
+      var hasOverride = sp !== undefined && sp !== null;
+      html += '<div class="dash-card" style="padding:8px 12px;margin:2px 0;display:flex;align-items:center;gap:8px;">' +
+        '<div style="flex:1;min-width:0;"><div style="font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(item.name) + '</div>' +
+        '<div style="font-size:10px;color:#555;">DEFAULT: $' + dp.toFixed(2) + '/' + esc(item.unit) + '</div></div>' +
+        '<div style="display:flex;align-items:center;gap:4px;"><span style="color:#888;font-size:13px;">$</span>' +
+        '<input type="number" inputmode="decimal" step="0.01" min="0" value="' + (hasOverride ? parseFloat(sp).toFixed(2) : '') + '" ' +
+        'placeholder="' + dp.toFixed(2) + '" data-item-id="' + item.id + '" ' +
+        'style="width:80px;height:40px;background:#1a1a1a;border:1px solid ' + (hasOverride ? '#FF6B00' : '#333') + ';border-radius:8px;color:#e0e0e0;font-size:14px;text-align:center;font-family:inherit;" ' +
+        'onchange="setShopPrice(\'' + item.id + '\',this.value,this)">' +
+        '</div></div>';
+    }
+  }
+  return html;
+}
+function filterShopPriceEditor(query) {
+  var lib = loadMaterialLibrary();
+  if (!lib) return;
+  var el = document.getElementById('shop-price-list');
+  if (el) el.innerHTML = _renderShopPriceItems(lib, loadShopPrices(), query);
+}
+function setShopPrice(itemId, val, inputEl) {
+  var shop = loadShopPrices();
+  if (val === '' || val === null || val === undefined) {
+    delete shop[itemId];
+    if (inputEl) inputEl.style.borderColor = '#333';
+  } else {
+    shop[itemId] = parseFloat(val) || 0;
+    if (inputEl) inputEl.style.borderColor = '#FF6B00';
+  }
+  saveShopPrices(shop);
+}
+function closeShopPriceEditor() {
+  var overlay = document.getElementById('shop-price-overlay');
+  if (overlay) overlay.remove();
+}
+function resetAllShopPrices() {
+  showConfirmModal('RESET PRICES', 'RESET ALL SHOP PRICES TO DEFAULT? YOUR OVERRIDES WILL BE CLEARED.', 'RESET', function() {
+    saveShopPrices({});
+    showToast('ALL PRICES RESET TO DEFAULT');
+  }, { destructive: true });
+}
+
+// ── Editable dropdown list editor ──
+function openListEditor(fieldKey) {
+  var lbl = ADDR_FIELDS.find(function(f) { return f.key === fieldKey; });
+  var label = lbl ? lbl.label : fieldKey.toUpperCase();
+  var custom = loadCustomLists();
+  var items = (custom[fieldKey] && custom[fieldKey].length) ? custom[fieldKey].slice() : (DEFAULT_LISTS[fieldKey] || []).slice();
+  // Remove UNKNOWN / OTHER — it's auto-appended
+  items = items.filter(function(o) { return o !== 'UNKNOWN / OTHER'; });
+
+  function _renderListEditor() {
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+      '<span style="font-weight:800;font-size:14px;letter-spacing:1px;">' + esc(label) + '</span>' +
+      '<button onclick="closeListEditor()" style="background:none;border:none;color:#e0e0e0;font-size:24px;cursor:pointer;padding:4px 8px;">✕</button></div>';
+    html += '<div id="list-editor-items">';
+    for (var i = 0; i < items.length; i++) {
+      html += '<div style="display:flex;align-items:center;gap:8px;margin:4px 0;">' +
+        '<span style="color:#555;font-size:12px;width:24px;text-align:center;">' + (i + 1) + '</span>' +
+        '<input type="text" value="' + esc(items[i]) + '" data-idx="' + i + '" ' +
+        'style="flex:1;height:44px;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#e0e0e0;font-size:14px;padding:0 12px;font-family:inherit;" ' +
+        'onblur="_listEditorUpdate(' + i + ',this.value)">' +
+        '<button style="width:44px;height:44px;background:none;border:1px solid #333;border-radius:8px;color:#c0392b;font-size:18px;cursor:pointer;" onclick="_listEditorRemove(' + i + ')">✕</button>' +
+        '</div>';
+    }
+    html += '</div>';
+    // UNKNOWN / OTHER shown as locked
+    html += '<div style="display:flex;align-items:center;gap:8px;margin:4px 0;opacity:0.5;">' +
+      '<span style="color:#555;font-size:12px;width:24px;text-align:center;">✓</span>' +
+      '<span style="flex:1;height:44px;line-height:44px;background:#1a1a1a;border:1px solid #222;border-radius:8px;color:#555;font-size:14px;padding:0 12px;">UNKNOWN / OTHER</span>' +
+      '</div>';
+    html += '<button class="btn btn-primary" style="min-height:48px;margin-top:12px;width:100%;" onclick="_listEditorAdd()">+ ADD OPTION</button>';
+    html += '<button class="btn btn-secondary" style="min-height:48px;margin-top:8px;width:100%;" onclick="_listEditorReset()">RESET TO DEFAULTS</button>';
+    return html;
+  }
+
+  // Store state for editor callbacks
+  window._listEditorState = { fieldKey: fieldKey, items: items, renderFn: null };
+  window._listEditorState.renderFn = function() {
+    var overlay = document.getElementById('list-editor-overlay');
+    if (overlay) overlay.innerHTML = _renderListEditor();
+  };
+  window._listEditorUpdate = function(idx, val) {
+    window._listEditorState.items[idx] = val.trim();
+    _saveListEditorState();
+  };
+  window._listEditorRemove = function(idx) {
+    window._listEditorState.items.splice(idx, 1);
+    _saveListEditorState();
+    window._listEditorState.renderFn();
+  };
+  window._listEditorAdd = function() {
+    window._listEditorState.items.push('');
+    _saveListEditorState();
+    window._listEditorState.renderFn();
+    setTimeout(function() {
+      var inputs = document.querySelectorAll('#list-editor-items input');
+      if (inputs.length) inputs[inputs.length - 1].focus();
+    }, 50);
+  };
+  window._listEditorReset = function() {
+    window._listEditorState.items = (DEFAULT_LISTS[window._listEditorState.fieldKey] || []).slice();
+    var custom = loadCustomLists();
+    delete custom[window._listEditorState.fieldKey];
+    saveCustomLists(custom);
+    window._listEditorState.renderFn();
+    showToast('RESET TO DEFAULTS');
+  };
+
+  function _saveListEditorState() {
+    var custom = loadCustomLists();
+    var clean = window._listEditorState.items.filter(function(o) { return o.trim() !== ''; });
+    custom[window._listEditorState.fieldKey] = clean;
+    saveCustomLists(custom);
+  }
+
+  var overlay = document.getElementById('list-editor-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'list-editor-overlay';
+    document.body.appendChild(overlay);
+  }
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#111;z-index:9999;display:flex;flex-direction:column;padding:16px;overflow-y:auto;';
+  overlay.innerHTML = _renderListEditor();
+}
+function closeListEditor() {
+  var overlay = document.getElementById('list-editor-overlay');
+  if (overlay) overlay.remove();
+  window._listEditorState = null;
+}
+function resetAllCustomLists() {
+  showConfirmModal('RESET LISTS', 'RESET ALL DROPDOWN LISTS TO DEFAULTS?', 'RESET', function() {
+    saveCustomLists({});
+    showToast('ALL LISTS RESET TO DEFAULTS');
+    renderSettings();
+  }, { destructive: true });
+}
+
 async function renderSettings() {
   var user = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
   var role = user ? user.role : 'tech';
@@ -2759,6 +3006,24 @@ async function renderSettings() {
   var html = _collapsible('ACCOUNT', 'settings-account', accountContent, true);
   if (isSupervisor) html += _collapsible('MY SHOP', 'settings-shop', shopContent, false);
   html += _collapsible('SYNC', 'settings-sync', syncContent, true);
+  // Three-tier pricing: shop price overrides
+  var pricingContent =
+    '<div style="font-size:12px;color:#888;margin-bottom:12px;">SET YOUR SHOP PRICES. ITEMS WITHOUT A SHOP PRICE USE THE DEFAULT (HD RETAIL).</div>' +
+    '<button class="btn btn-primary" style="min-height:48px;margin-bottom:8px;" onclick="openShopPriceEditor()">MANAGE PRICES</button>' +
+    '<button class="btn btn-secondary" style="min-height:48px;" onclick="resetAllShopPrices()">RESET ALL TO DEFAULT</button>';
+  // Editable dropdown lists
+  var listEditorContent =
+    '<div style="font-size:12px;color:#888;margin-bottom:12px;">CUSTOMIZE DROPDOWN OPTIONS FOR PROPERTY FIELDS. "UNKNOWN / OTHER" IS ALWAYS INCLUDED.</div>';
+  var listKeys = Object.keys(DEFAULT_LISTS);
+  for (var li = 0; li < listKeys.length; li++) {
+    var lk = listKeys[li];
+    var lbl = ADDR_FIELDS.find(function(f) { return f.key === lk; });
+    listEditorContent += '<button class="btn btn-secondary" style="min-height:48px;margin-bottom:6px;text-align:left;" onclick="openListEditor(\'' + lk + '\')">' +
+      (lbl ? lbl.label : lk.toUpperCase()) + ' <span style="color:#555;font-size:11px;">(' + _getDropdownOptions(lk).length + ')</span></button>';
+  }
+  listEditorContent += '<button class="btn btn-secondary" style="min-height:48px;margin-top:8px;border-color:#c0392b;color:#c0392b;" onclick="resetAllCustomLists()">RESET ALL TO DEFAULTS</button>';
+  if (isSupervisor) html += _collapsible('DROPDOWN LISTS', 'settings-lists', listEditorContent, false);
+  if (isSupervisor) html += _collapsible('MATERIAL PRICING', 'settings-pricing', pricingContent, false);
   if (isSupervisor) html += _collapsible('TOOLS', 'settings-tools-section', toolsContent, false);
   html += _collapsible('STORAGE', 'settings-storage', storageContent, true);
   html += _collapsible('APP', 'settings-app', appContent, true);
@@ -2812,7 +3077,9 @@ async function hardReload() {
 // Step 7C: Developer settings actions
 function devClearCache() {
   showConfirmModal('CLEAR CACHE', 'CLEAR ALL CACHED DATA? APP WILL RELOAD.', 'CLEAR', async function() {
-    if (window.Astra._clearCache) window.Astra._clearCache();
+    // S-04: Use private channel — _clearCache no longer on public Astra namespace
+    var priv = window._astraPrivate || {};
+    if (priv._clearCache) priv._clearCache();
     await hardReload();
   }, { destructive: true });
 }
@@ -2835,27 +3102,107 @@ function devToggleDebug() {
 
 function devClearAllData() {
   showConfirmModal('WIPE ALL DATA', 'DELETE ALL LOCAL JOBS, ADDRESSES, AND MEDIA? THIS CANNOT BE UNDONE.', 'WIPE', async function() {
-    if (window.Astra._clearAllStores) await window.Astra._clearAllStores();
+    // S-04: Use private channel — _clearAllStores no longer on public Astra namespace
+    var priv = window._astraPrivate || {};
+    if (priv._clearAllStores) await priv._clearAllStores();
     await clearAllMediaBlobs();
     showToast('ALL DATA WIPED');
     await hardReload();
   }, { destructive: true });
 }
 
+// SEC-027/S-05: Export encryption via Web Crypto API
+// Export files are business intelligence — encrypted with user-provided passphrase.
+
+// Derive AES-GCM key from passphrase using PBKDF2
+async function _deriveKey(passphrase, salt) {
+  var enc = new TextEncoder();
+  var keyMaterial = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: salt, iterations: 310000, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+async function _encryptData(jsonStr, passphrase) {
+  var enc = new TextEncoder();
+  var salt = crypto.getRandomValues(new Uint8Array(16));
+  var iv = crypto.getRandomValues(new Uint8Array(12));
+  var key = await _deriveKey(passphrase, salt);
+  var ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, enc.encode(jsonStr));
+  // Pack: 16-byte salt + 12-byte iv + ciphertext
+  var packed = new Uint8Array(salt.length + iv.length + new Uint8Array(ciphertext).length);
+  packed.set(salt, 0);
+  packed.set(iv, 16);
+  packed.set(new Uint8Array(ciphertext), 28);
+  return packed;
+}
+
+async function _decryptData(packed, passphrase) {
+  var salt = packed.slice(0, 16);
+  var iv = packed.slice(16, 28);
+  var ciphertext = packed.slice(28);
+  var key = await _deriveKey(passphrase, salt);
+  var dec = new TextDecoder();
+  var plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv }, key, ciphertext);
+  return dec.decode(plaintext);
+}
+
+var _exportPassphraseCallback = null;
+
 async function exportData() {
-  // SEC-027: Warn that export contains sensitive data
   return new Promise(function(resolve) {
-    showConfirmModal('EXPORT DATA', 'EXPORT CONTAINS ALL TICKETS, NOTES, AND MEDIA. THIS FILE IS UNENCRYPTED.', 'EXPORT', async function() {
-      await _doExport();
+    // Show passphrase prompt via custom modal
+    document.getElementById('modal-title').textContent = 'ENCRYPT BACKUP';
+    document.getElementById('modal-message').textContent = '';
+    document.getElementById('modal-actions').innerHTML =
+      '<div style="width:100%;margin-bottom:12px;">' +
+        '<label style="font-size:11px;color:#999;letter-spacing:1px;">PASSPHRASE</label>' +
+        '<input type="password" id="export-passphrase" placeholder="MIN 8 CHARACTERS" style="width:100%;padding:12px;font-size:16px;background:#222;color:#e0e0e0;border:1px solid #444;border-radius:6px;margin-top:4px;" autocomplete="new-password">' +
+        '<label style="font-size:11px;color:#999;letter-spacing:1px;margin-top:8px;display:block;">CONFIRM PASSPHRASE</label>' +
+        '<input type="password" id="export-passphrase-confirm" placeholder="CONFIRM" style="width:100%;padding:12px;font-size:16px;background:#222;color:#e0e0e0;border:1px solid #444;border-radius:6px;margin-top:4px;" autocomplete="new-password">' +
+        '<p style="font-size:11px;color:#FF6B00;margin-top:8px;">SAVE THIS PASSPHRASE. WITHOUT IT, THE BACKUP CANNOT BE RESTORED.</p>' +
+      '</div>' +
+      '<button class="modal-btn modal-btn-confirm" id="export-encrypt-btn">ENCRYPT & EXPORT</button>' +
+      '<button class="modal-btn modal-btn-cancel" onclick="_closeModal()">CANCEL</button>';
+    document.getElementById('modal-backdrop').classList.add('active');
+    document.getElementById('modal-sheet').classList.add('active');
+
+    // Focus passphrase input
+    setTimeout(function() { var el = document.getElementById('export-passphrase'); if (el) el.focus(); }, 100);
+
+    document.getElementById('export-encrypt-btn').onclick = async function() {
+      var pass = document.getElementById('export-passphrase').value;
+      var confirm = document.getElementById('export-passphrase-confirm').value;
+      if (!pass || pass.length < 8) {
+        showToast('PASSPHRASE MUST BE AT LEAST 8 CHARACTERS', 'error');
+        return;
+      }
+      if (pass !== confirm) {
+        showToast('PASSPHRASES DO NOT MATCH', 'error');
+        return;
+      }
+      _closeModal();
+      showToast('ENCRYPTING BACKUP...', 'info');
+      try {
+        await _doExport(pass);
+        showToast('ENCRYPTED BACKUP EXPORTED', 'success');
+      } catch (e) {
+        console.error('Export encryption failed:', e);
+        showToast('EXPORT FAILED: ' + e.message, 'error');
+      }
       resolve();
-    });
+    };
   });
 }
-// TODO: SEC-027 future — add optional encryption via Web Crypto API
-async function _doExport() {
+
+async function _doExport(passphrase) {
   const mediaBlobs = await getAllMediaBlobs();
   const data = {
-    version: '0.7', // D37: matches manifest.json
+    version: '0.7',
     exportedAt: new Date().toISOString(),
     jobs: loadJobs(),
     techs: loadTechs(),
@@ -2866,11 +3213,18 @@ async function _doExport() {
     homeBase: getHomeBase(),
     media: mediaBlobs
   };
-  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  var jsonStr = JSON.stringify(data);
+  var encrypted = await _encryptData(jsonStr, passphrase);
+  // Prepend magic bytes so import can detect encrypted vs legacy plaintext
+  var header = new TextEncoder().encode('ASTRA_ENC_V1\n');
+  var output = new Uint8Array(header.length + encrypted.length);
+  output.set(header, 0);
+  output.set(encrypted, header.length);
+  var blob = new Blob([output], { type: 'application/octet-stream' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
   a.href = url;
-  a.download = 'astra-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.download = 'astra-backup-' + new Date().toISOString().slice(0, 10) + '.astra';
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -2891,6 +3245,12 @@ function _parseVariantFromName(name) {
   return { cleanName: name, variant: null };
 }
 
+// S-13: Strip HTML tags from string fields — defense in depth on import
+function _stripTags(str) {
+  if (!str || typeof str !== 'string') return str;
+  return str.replace(/<[^>]*>/g, '');
+}
+
 function _transformSeedJob(seedJob) {
   var parsed = (seedJob.materials_used || []).map(function(m) {
     var v = _parseVariantFromName(m.name);
@@ -2909,16 +3269,16 @@ function _transformSeedJob(seedJob) {
   return {
     id: crypto.randomUUID(),
     syncId: crypto.randomUUID(),
-    address: seedJob.address || '',
-    types: [seedJob.job_type_label || seedJob.job_type || 'GENERAL'],
+    address: _stripTags(seedJob.address || ''),
+    types: [_stripTags(seedJob.job_type_label || seedJob.job_type || 'GENERAL')],
     status: 'Complete',
     date: seedJob.date_completed || todayStr(),
-    notes: (seedJob.notes || '') +
+    notes: _stripTags((seedJob.notes || '') +
       (seedJob.customer ? '\nCUSTOMER: ' + seedJob.customer : '') +
       (seedJob.labor_hours ? '\nLABOR: ' + seedJob.labor_hours + 'HRS @ $' + (seedJob.labor_rate || 95) + '/HR' : '') +
-      (seedJob.job_total ? '\nTOTAL: $' + seedJob.job_total.toFixed(2) : ''),
+      (seedJob.job_total ? '\nTOTAL: $' + seedJob.job_total.toFixed(2) : '')),
     techNotes: '',
-    techName: seedJob.tech || '',
+    techName: _stripTags(seedJob.tech || ''),
     materials: parsed,
     photos: [], drawings: [], videos: [],
     archived: true,
@@ -2985,65 +3345,116 @@ function importHistoricalJobs(input) {
   reader.readAsText(input.files[0]);
 }
 
+// S-05: Import handles both encrypted (.astra) and legacy plaintext (.json) backups
 async function importData(input) {
   if (!input.files.length) return;
-  const reader = new FileReader();
-  reader.onload = async function() {
-    try {
-      const data = JSON.parse(reader.result);
-      if (!data.jobs || !Array.isArray(data.jobs)) { showInfoModal('INVALID BACKUP', 'NO JOBS ARRAY.'); return; }
-      const invalid = data.jobs.filter(j => !j.id || !j.address);
-      if (invalid.length > 0) { showInfoModal('INVALID BACKUP', invalid.length + ' JOBS MISSING ID OR ADDRESS.'); return; }
-      if (data.techs && !Array.isArray(data.techs)) { showInfoModal('INVALID BACKUP', 'TECHS NOT AN ARRAY.'); return; }
-      if (data.addresses && !Array.isArray(data.addresses)) { showInfoModal('INVALID BACKUP', 'ADDRESSES NOT AN ARRAY.'); return; }
-      // T2-A1: Deep structural validation before destructive replaceAll
-      var importErrors = [];
-      if (!data.jobs.every(function(j) { return j && typeof j === 'object' && typeof j.id === 'string' && j.id.length > 0 && (!j.materials || Array.isArray(j.materials)) && (!j.types || Array.isArray(j.types)); })) {
-        importErrors.push('JOBS: INVALID STRUCTURE');
-      }
-      if (data.techs && !data.techs.every(function(t) { return t && typeof t === 'object' && typeof t.id === 'string' && t.id.length > 0; })) {
-        importErrors.push('TECHS: INVALID STRUCTURE');
-      }
-      if (data.addresses && !data.addresses.every(function(a) { return a && typeof a === 'object' && typeof a.id === 'string' && a.id.length > 0; })) {
-        importErrors.push('ADDRESSES: INVALID STRUCTURE');
-      }
-      if (importErrors.length) {
-        showInfoModal('IMPORT FAILED', importErrors.join('\n'));
-        return;
-      }
+  var file = input.files[0];
 
-      showConfirmModal('RESTORE BACKUP', 'REPLACE ALL DATA WITH BACKUP? (' + data.jobs.length + ' TICKETS)', 'REPLACE', async function() {
-        data.jobs.forEach(j => {
-          if (!j.photos) j.photos = [];
-          if (!j.drawings) j.drawings = [];
-          if (!j.videos) j.videos = [];
-          if (!j.status) j.status = 'Not Started';
-          if (!j.types) j.types = ['GENERAL'];
-          if (!j.date) j.date = j.createdAt ? j.createdAt.split('T')[0] : todayStr();
-          if (j.techNotes === undefined) j.techNotes = '';
-          if (j.manually_added_to_vector === undefined) j.manually_added_to_vector = false;
-        });
-        replaceAllJobs(data.jobs);
-        if (data.techs) replaceAllTechs(data.techs);
-        if (data.addresses) replaceAllAddresses(data.addresses);
-        if (data.materialLibrary) localStorage.setItem(MAT_LIB_KEY, JSON.stringify(data.materialLibrary));
-        if (data.materialLibraryTrim) localStorage.setItem(MAT_LIB_TRIM_KEY, JSON.stringify(data.materialLibraryTrim));
-        if (data.navFrequency) localStorage.setItem(NAV_FREQ_KEY, JSON.stringify(data.navFrequency));
-        if (data.homeBase) saveHomeBase(data.homeBase);
-        if (data.gmapsKey) saveGmapsKey(data.gmapsKey);
-        if (data.media && Array.isArray(data.media)) {
-          await clearAllMediaBlobs();
-          for (const blob of data.media) {
-            if (blob && blob.id && blob.data) await saveMediaBlob(blob.id, blob.data);
-          }
-        }
-        renderSettings();
-        showInfoModal('BACKUP RESTORED', data.jobs.length + ' TICKETS RESTORED.');
-      }, { destructive: true });
-    } catch (e) { showInfoModal('IMPORT FAILED', e.message); }
-    input.value = '';
+  // Read as ArrayBuffer first to detect magic header
+  var buf = await file.arrayBuffer();
+  var headerBytes = new Uint8Array(buf.slice(0, 13));
+  var headerStr = new TextDecoder().decode(headerBytes);
+
+  if (headerStr === 'ASTRA_ENC_V1\n') {
+    // Encrypted file — prompt for passphrase
+    _promptImportPassphrase(new Uint8Array(buf.slice(13)), input);
+  } else {
+    // Legacy plaintext JSON
+    var jsonStr = new TextDecoder().decode(buf);
+    _processImportData(jsonStr, input);
+  }
+}
+
+function _promptImportPassphrase(encryptedData, input) {
+  document.getElementById('modal-title').textContent = 'DECRYPT BACKUP';
+  document.getElementById('modal-message').textContent = '';
+  document.getElementById('modal-actions').innerHTML =
+    '<div style="width:100%;margin-bottom:12px;">' +
+      '<label style="font-size:11px;color:#999;letter-spacing:1px;">PASSPHRASE</label>' +
+      '<input type="password" id="import-passphrase" placeholder="ENTER BACKUP PASSPHRASE" style="width:100%;padding:12px;font-size:16px;background:#222;color:#e0e0e0;border:1px solid #444;border-radius:6px;margin-top:4px;" autocomplete="current-password">' +
+    '</div>' +
+    '<button class="modal-btn modal-btn-confirm" id="import-decrypt-btn">DECRYPT & IMPORT</button>' +
+    '<button class="modal-btn modal-btn-cancel" onclick="_closeModal()">CANCEL</button>';
+  document.getElementById('modal-backdrop').classList.add('active');
+  document.getElementById('modal-sheet').classList.add('active');
+  setTimeout(function() { var el = document.getElementById('import-passphrase'); if (el) el.focus(); }, 100);
+
+  document.getElementById('import-decrypt-btn').onclick = async function() {
+    var pass = document.getElementById('import-passphrase').value;
+    if (!pass) { showToast('ENTER PASSPHRASE', 'error'); return; }
+    _closeModal();
+    try {
+      var jsonStr = await _decryptData(encryptedData, pass);
+      _processImportData(jsonStr, input);
+    } catch (e) {
+      console.error('Decryption failed:', e);
+      showInfoModal('DECRYPTION FAILED', 'WRONG PASSPHRASE OR CORRUPTED FILE.');
+      input.value = '';
+    }
   };
-  reader.readAsText(input.files[0]);
+}
+
+function _processImportData(jsonStr, input) {
+  try {
+    var data = JSON.parse(jsonStr);
+    if (!data.jobs || !Array.isArray(data.jobs)) { showInfoModal('INVALID BACKUP', 'NO JOBS ARRAY.'); input.value = ''; return; }
+    var invalid = data.jobs.filter(function(j) { return !j.id || !j.address; });
+    if (invalid.length > 0) { showInfoModal('INVALID BACKUP', invalid.length + ' JOBS MISSING ID OR ADDRESS.'); input.value = ''; return; }
+    if (data.techs && !Array.isArray(data.techs)) { showInfoModal('INVALID BACKUP', 'TECHS NOT AN ARRAY.'); input.value = ''; return; }
+    if (data.addresses && !Array.isArray(data.addresses)) { showInfoModal('INVALID BACKUP', 'ADDRESSES NOT AN ARRAY.'); input.value = ''; return; }
+    // T2-A1: Deep structural validation before destructive replaceAll
+    var importErrors = [];
+    if (!data.jobs.every(function(j) { return j && typeof j === 'object' && typeof j.id === 'string' && j.id.length > 0 && (!j.materials || Array.isArray(j.materials)) && (!j.types || Array.isArray(j.types)); })) {
+      importErrors.push('JOBS: INVALID STRUCTURE');
+    }
+    if (data.techs && !data.techs.every(function(t) { return t && typeof t === 'object' && typeof t.id === 'string' && t.id.length > 0; })) {
+      importErrors.push('TECHS: INVALID STRUCTURE');
+    }
+    if (data.addresses && !data.addresses.every(function(a) { return a && typeof a === 'object' && typeof a.id === 'string' && a.id.length > 0; })) {
+      importErrors.push('ADDRESSES: INVALID STRUCTURE');
+    }
+    if (importErrors.length) {
+      showInfoModal('IMPORT FAILED', importErrors.join('\n'));
+      input.value = '';
+      return;
+    }
+
+    showConfirmModal('RESTORE BACKUP', 'REPLACE ALL DATA WITH BACKUP? (' + data.jobs.length + ' TICKETS)', 'REPLACE', async function() {
+      data.jobs.forEach(function(j) {
+        if (!j.photos) j.photos = [];
+        if (!j.drawings) j.drawings = [];
+        if (!j.videos) j.videos = [];
+        if (!j.status) j.status = 'Not Started';
+        if (!j.types) j.types = ['GENERAL'];
+        if (!j.date) j.date = j.createdAt ? j.createdAt.split('T')[0] : todayStr();
+        if (j.techNotes === undefined) j.techNotes = '';
+        if (j.manually_added_to_vector === undefined) j.manually_added_to_vector = false;
+        // S-13: Strip HTML tags from all string fields on import — defense in depth
+        if (j.address) j.address = _stripTags(j.address);
+        if (j.notes) j.notes = _stripTags(j.notes);
+        if (j.techNotes) j.techNotes = _stripTags(j.techNotes);
+        if (j.techName) j.techName = _stripTags(j.techName);
+      });
+      replaceAllJobs(data.jobs);
+      if (data.techs) replaceAllTechs(data.techs);
+      if (data.addresses) replaceAllAddresses(data.addresses);
+      if (data.materialLibrary) localStorage.setItem(MAT_LIB_KEY, JSON.stringify(data.materialLibrary));
+      if (data.materialLibraryTrim) localStorage.setItem(MAT_LIB_TRIM_KEY, JSON.stringify(data.materialLibraryTrim));
+      if (data.navFrequency) localStorage.setItem(NAV_FREQ_KEY, JSON.stringify(data.navFrequency));
+      if (data.homeBase) saveHomeBase(data.homeBase);
+      if (data.gmapsKey) saveGmapsKey(data.gmapsKey);
+      if (data.media && Array.isArray(data.media)) {
+        await clearAllMediaBlobs();
+        for (var i = 0; i < data.media.length; i++) {
+          var blob = data.media[i];
+          if (blob && blob.id && blob.data) await saveMediaBlob(blob.id, blob.data);
+        }
+      }
+      renderSettings();
+      showInfoModal('BACKUP RESTORED', data.jobs.length + ' TICKETS RESTORED.');
+    }, { destructive: true });
+  } catch (e) { showInfoModal('IMPORT FAILED', e.message); }
+  input.value = '';
 }
 
 // ── Cloud Sync UI ──
@@ -3284,9 +3695,11 @@ Object.assign(window.Astra, {
   getGmapsKey, saveGmapsKey, getHomeBase, saveHomeBase,
   MAT_LIB_KEY, MAT_LIB_TRIM_KEY, loadMaterialLibrary, loadRoughLibrary, loadTrimLibrary,
   saveRoughLibrary, saveTrimLibrary, loadPricebookConfig, savePricebookConfig,
+  loadShopPrices, saveShopPrices, getEffectivePrice,
+  loadCustomLists, saveCustomLists,
   loadEstimates, getEstimate, saveEstimate, deleteEstimate,
-  // Step 4: Auth support
-  _idbConfigGet, _idbConfigPut, _clearCache, _clearAllStores, initDataLayer,
+  // Step 4: Auth support — _clearCache and _clearAllStores moved to debug-gated namespace (S-04)
+  _idbConfigGet, _idbConfigPut, initDataLayer,
   // Step 5: Soft delete removal
   removeLocalJob, removeLocalAddress, removeLocalEstimate,
   // Step 7D: Notification center
@@ -3320,6 +3733,8 @@ Object.assign(window, {
   completeOnboarding,
   // Settings
   renderSettings, saveGmapsKey, saveHomeBase, hardReload, _applyUpdate,
+  openShopPriceEditor, closeShopPriceEditor, filterShopPriceEditor, setShopPrice, resetAllShopPrices,
+  openListEditor, closeListEditor, resetAllCustomLists,
   // D16: Custom modals + state machine + approval
   showConfirmModal, showInfoModal, _closeModal, _modalConfirm,
   getAllowedTransitions, setApprovalFilter, toggleMyJobs,
@@ -3335,13 +3750,21 @@ Object.assign(window, {
   lazyDownloadMedia,
 });
 
+// S-04: Destructive ops available to auth module via private key, NOT on public Astra namespace
+// Auth module (logout/delete) needs these for cross-module cache wipe — uses _astraPrivate
+window._astraPrivate = { _clearCache: _clearCache, _clearAllStores: _clearAllStores };
+
 // ── Test API (diagnostics.html only) ── T2-B4 (SEC-024): Debug-gated
-if (localStorage.getItem('astra_debug') === 'true') {
+// S-18: Gate requires both debug flag AND admin role — prevents customer discovery
+var _debugUser = window.Astra.getCurrentUser ? window.Astra.getCurrentUser() : null;
+if (localStorage.getItem('astra_debug') === 'true' && (!_debugUser || _debugUser.role === 'admin')) {
   Object.assign(window.Astra, {
     _test: {
       runSearch, esc, todayStr, getISOWeek,
-      // Media blob functions now on main Astra export — kept here for diagnostics.html backward compat
-    }
+    },
+    // S-04: Nuclear buttons only available in debug mode, not on main namespace
+    _clearCache: _clearCache,
+    _clearAllStores: _clearAllStores,
   });
 }
 

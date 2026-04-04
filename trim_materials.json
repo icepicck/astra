@@ -1,5 +1,5 @@
 {
-  "version": "2.0",
+  "version": "2.1",
   "phase": "TRIM",
   "description": "Residential Electrical Construction — Trim Out Material List",
   "variant_note": "Items with 'variants' field require selection at time of logging (style, brand, etc.)",
@@ -8,217 +8,217 @@
       "id": "devices_receptacles",
       "label": "DEVICES & RECEPTACLES",
       "items": [
-        { "id": "tr_001", "name": "Duplex Receptacle 15A Tamper Resistant (TR)", "unit": "EA" },
-        { "id": "tr_002", "name": "Duplex Receptacle 20A Tamper Resistant (TR)", "unit": "EA" },
-        { "id": "tr_003", "name": "GFCI Receptacle 15A TR White", "unit": "EA" },
-        { "id": "tr_004", "name": "GFCI Receptacle 20A TR White", "unit": "EA" },
-        { "id": "tr_005", "name": "AFCI/GFCI Combo Receptacle 20A", "unit": "EA" },
-        { "id": "tr_006", "name": "Duplex Receptacle Split-Tab 15A TR", "unit": "EA" },
-        { "id": "tr_007", "name": "Receptacle 20A T-Slot (Kitchen/Laundry)", "unit": "EA" },
-        { "id": "tr_008", "name": "Dryer Receptacle 30A 250V NEMA 14-30R", "unit": "EA" },
-        { "id": "tr_009", "name": "Range Receptacle 50A 250V NEMA 14-50R", "unit": "EA" },
-        { "id": "tr_010", "name": "Receptacle Outdoor WR/TR 15A", "unit": "EA" },
-        { "id": "tr_011", "name": "Receptacle Outdoor WR/TR 20A", "unit": "EA" },
-        { "id": "tr_012", "name": "USB Receptacle Combo 15A TR (Type A+C)", "unit": "EA" },
-        { "id": "tr_013", "name": "Receptacle Floor Box (In-Floor Mount)", "unit": "EA" }
+        { "id": "tr_001", "name": "Duplex Receptacle 15A Tamper Resistant (TR)", "unit": "EA", "default_price": 0.98 },
+        { "id": "tr_002", "name": "Duplex Receptacle 20A Tamper Resistant (TR)", "unit": "EA", "default_price": 1.98 },
+        { "id": "tr_003", "name": "GFCI Receptacle 15A TR White", "unit": "EA", "default_price": 16.98 },
+        { "id": "tr_004", "name": "GFCI Receptacle 20A TR White", "unit": "EA", "default_price": 19.98 },
+        { "id": "tr_005", "name": "AFCI/GFCI Combo Receptacle 20A", "unit": "EA", "default_price": 39.98 },
+        { "id": "tr_006", "name": "Duplex Receptacle Split-Tab 15A TR", "unit": "EA", "default_price": 1.98 },
+        { "id": "tr_007", "name": "Receptacle 20A T-Slot (Kitchen/Laundry)", "unit": "EA", "default_price": 2.48 },
+        { "id": "tr_008", "name": "Dryer Receptacle 30A 250V NEMA 14-30R", "unit": "EA", "default_price": 14.98 },
+        { "id": "tr_009", "name": "Range Receptacle 50A 250V NEMA 14-50R", "unit": "EA", "default_price": 16.98 },
+        { "id": "tr_010", "name": "Receptacle Outdoor WR/TR 15A", "unit": "EA", "default_price": 3.98 },
+        { "id": "tr_011", "name": "Receptacle Outdoor WR/TR 20A", "unit": "EA", "default_price": 5.48 },
+        { "id": "tr_012", "name": "USB Receptacle Combo 15A TR (Type A+C)", "unit": "EA", "default_price": 24.98 },
+        { "id": "tr_013", "name": "Receptacle Floor Box (In-Floor Mount)", "unit": "EA", "default_price": 34.98 }
       ]
     },
     {
       "id": "switches_dimmers",
       "label": "SWITCHES & DIMMERS",
       "items": [
-        { "id": "sw_001", "name": "Single Pole Switch 15A (S1)", "unit": "EA", "variants": ["Toggle", "Decora"] },
-        { "id": "sw_002", "name": "3-Way Switch 15A (S3)", "unit": "EA", "variants": ["Toggle", "Decora"] },
-        { "id": "sw_003", "name": "4-Way Switch 15A (S4)", "unit": "EA", "variants": ["Toggle", "Decora"] },
-        { "id": "sw_004", "name": "Single Pole Dimmer 150W LED/CFL", "unit": "EA", "variants": ["Toggle", "Decora"] },
-        { "id": "sw_005", "name": "Single Pole Dimmer 600W Incandescent", "unit": "EA", "variants": ["Toggle", "Decora"] },
-        { "id": "sw_006", "name": "3-Way Dimmer LED/CFL", "unit": "EA", "variants": ["Toggle", "Decora"] },
-        { "id": "sw_007", "name": "Fan Speed Control Single Pole", "unit": "EA", "variants": ["Toggle", "Decora"] },
-        { "id": "sw_008", "name": "Fan/Light Combo Control (Separate)", "unit": "EA", "variants": ["Toggle", "Decora"] },
-        { "id": "sw_009", "name": "Switch w/ Pilot Light 15A", "unit": "EA", "variants": ["Toggle", "Decora"] },
-        { "id": "sw_010", "name": "Timer Switch In-Wall 15A", "unit": "EA", "variants": ["Toggle", "Decora"] },
-        { "id": "sw_011", "name": "Motion Sensor Switch Single Pole", "unit": "EA", "variants": ["Toggle", "Decora"] },
-        { "id": "sw_012", "name": "Smart Switch Single Pole (Wi-Fi, Neutral Req.)", "unit": "EA", "variants": ["Toggle", "Decora"] },
-        { "id": "sw_013", "name": "Smart 3-Way Switch (Wi-Fi, Neutral Req.)", "unit": "EA", "variants": ["Toggle", "Decora"] },
-        { "id": "sw_014", "name": "Disconnect AC/Appliance 30A 240V Non-Fused", "unit": "EA" },
-        { "id": "sw_015", "name": "Disconnect Fused 60A 240V (HVAC)", "unit": "EA" }
+        { "id": "sw_001", "name": "Single Pole Switch 15A (S1)", "unit": "EA", "default_price": 0.98, "variants": ["Toggle", "Decora"] },
+        { "id": "sw_002", "name": "3-Way Switch 15A (S3)", "unit": "EA", "default_price": 2.48, "variants": ["Toggle", "Decora"] },
+        { "id": "sw_003", "name": "4-Way Switch 15A (S4)", "unit": "EA", "default_price": 8.98, "variants": ["Toggle", "Decora"] },
+        { "id": "sw_004", "name": "Single Pole Dimmer 150W LED/CFL", "unit": "EA", "default_price": 19.98, "variants": ["Toggle", "Decora"] },
+        { "id": "sw_005", "name": "Single Pole Dimmer 600W Incandescent", "unit": "EA", "default_price": 14.98, "variants": ["Toggle", "Decora"] },
+        { "id": "sw_006", "name": "3-Way Dimmer LED/CFL", "unit": "EA", "default_price": 24.98, "variants": ["Toggle", "Decora"] },
+        { "id": "sw_007", "name": "Fan Speed Control Single Pole", "unit": "EA", "default_price": 19.98, "variants": ["Toggle", "Decora"] },
+        { "id": "sw_008", "name": "Fan/Light Combo Control (Separate)", "unit": "EA", "default_price": 24.98, "variants": ["Toggle", "Decora"] },
+        { "id": "sw_009", "name": "Switch w/ Pilot Light 15A", "unit": "EA", "default_price": 9.98, "variants": ["Toggle", "Decora"] },
+        { "id": "sw_010", "name": "Timer Switch In-Wall 15A", "unit": "EA", "default_price": 19.98, "variants": ["Toggle", "Decora"] },
+        { "id": "sw_011", "name": "Motion Sensor Switch Single Pole", "unit": "EA", "default_price": 19.98, "variants": ["Toggle", "Decora"] },
+        { "id": "sw_012", "name": "Smart Switch Single Pole (Wi-Fi, Neutral Req.)", "unit": "EA", "default_price": 29.98, "variants": ["Toggle", "Decora"] },
+        { "id": "sw_013", "name": "Smart 3-Way Switch (Wi-Fi, Neutral Req.)", "unit": "EA", "default_price": 34.98, "variants": ["Toggle", "Decora"] },
+        { "id": "sw_014", "name": "Disconnect AC/Appliance 30A 240V Non-Fused", "unit": "EA", "default_price": 14.98 },
+        { "id": "sw_015", "name": "Disconnect Fused 60A 240V (HVAC)", "unit": "EA", "default_price": 19.98 }
       ]
     },
     {
       "id": "cover_plates",
       "label": "COVER PLATES & WALL PLATES",
       "items": [
-        { "id": "cp_001", "name": "1-Gang Plate Duplex Receptacle", "unit": "EA", "variants": ["Standard", "Decora"] },
-        { "id": "cp_002", "name": "1-Gang Plate Toggle Switch", "unit": "EA", "variants": ["Standard", "Decora"] },
-        { "id": "cp_003", "name": "1-Gang Plate Blank", "unit": "EA" },
-        { "id": "cp_004", "name": "2-Gang Plate Duplex/Duplex", "unit": "EA", "variants": ["Standard", "Decora"] },
-        { "id": "cp_005", "name": "2-Gang Plate Switch/Switch", "unit": "EA", "variants": ["Standard", "Decora"] },
-        { "id": "cp_006", "name": "2-Gang Plate Switch/Duplex Combo", "unit": "EA", "variants": ["Standard", "Decora"] },
-        { "id": "cp_007", "name": "3-Gang Plate", "unit": "EA", "variants": ["Standard", "Decora"] },
-        { "id": "cp_008", "name": "4-Gang Plate", "unit": "EA", "variants": ["Standard", "Decora"] },
-        { "id": "cp_009", "name": "Cover Plate Weatherproof 1-Gang In-Use (Bubble)", "unit": "EA" },
-        { "id": "cp_010", "name": "Cover Plate Weatherproof 2-Gang In-Use (Bubble)", "unit": "EA" },
-        { "id": "cp_011", "name": "Jumbo/Oversized Cover Plate 1-Gang (Patch-Over)", "unit": "EA" },
-        { "id": "cp_012", "name": "Cover Plate Dryer/Range 50A Flush Round", "unit": "EA" },
-        { "id": "cp_013", "name": "Floor Box Cover Plate Duplex", "unit": "EA" }
+        { "id": "cp_001", "name": "1-Gang Plate Duplex Receptacle", "unit": "EA", "default_price": 0.58, "variants": ["Standard", "Decora"] },
+        { "id": "cp_002", "name": "1-Gang Plate Toggle Switch", "unit": "EA", "default_price": 0.58, "variants": ["Standard", "Decora"] },
+        { "id": "cp_003", "name": "1-Gang Plate Blank", "unit": "EA", "default_price": 0.58 },
+        { "id": "cp_004", "name": "2-Gang Plate Duplex/Duplex", "unit": "EA", "default_price": 1.18, "variants": ["Standard", "Decora"] },
+        { "id": "cp_005", "name": "2-Gang Plate Switch/Switch", "unit": "EA", "default_price": 1.18, "variants": ["Standard", "Decora"] },
+        { "id": "cp_006", "name": "2-Gang Plate Switch/Duplex Combo", "unit": "EA", "default_price": 1.18, "variants": ["Standard", "Decora"] },
+        { "id": "cp_007", "name": "3-Gang Plate", "unit": "EA", "default_price": 2.98, "variants": ["Standard", "Decora"] },
+        { "id": "cp_008", "name": "4-Gang Plate", "unit": "EA", "default_price": 4.48, "variants": ["Standard", "Decora"] },
+        { "id": "cp_009", "name": "Cover Plate Weatherproof 1-Gang In-Use (Bubble)", "unit": "EA", "default_price": 7.98 },
+        { "id": "cp_010", "name": "Cover Plate Weatherproof 2-Gang In-Use (Bubble)", "unit": "EA", "default_price": 12.98 },
+        { "id": "cp_011", "name": "Jumbo/Oversized Cover Plate 1-Gang (Patch-Over)", "unit": "EA", "default_price": 2.48 },
+        { "id": "cp_012", "name": "Cover Plate Dryer/Range 50A Flush Round", "unit": "EA", "default_price": 4.98 },
+        { "id": "cp_013", "name": "Floor Box Cover Plate Duplex", "unit": "EA", "default_price": 8.98 }
       ]
     },
     {
       "id": "breakers_sp_standard",
       "label": "BREAKERS — SINGLE POLE STANDARD",
       "items": [
-        { "id": "br_sp_001", "name": "SP Breaker 15A Standard", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO115", "SQD Homeline": "HOM115", "Eaton CH": "CH115", "Siemens QP": "Q115" } },
-        { "id": "br_sp_002", "name": "SP Breaker 20A Standard", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO120", "SQD Homeline": "HOM120", "Eaton CH": "CH120", "Siemens QP": "Q120" } },
-        { "id": "br_sp_003", "name": "SP Breaker 30A Standard", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO130", "SQD Homeline": "HOM130", "Eaton CH": "CH130", "Siemens QP": "Q130" } }
+        { "id": "br_sp_001", "name": "SP Breaker 15A Standard", "unit": "EA", "default_price": 8.48, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO115", "SQD Homeline": "HOM115", "Eaton CH": "CH115", "Siemens QP": "Q115" } },
+        { "id": "br_sp_002", "name": "SP Breaker 20A Standard", "unit": "EA", "default_price": 8.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO120", "SQD Homeline": "HOM120", "Eaton CH": "CH120", "Siemens QP": "Q120" } },
+        { "id": "br_sp_003", "name": "SP Breaker 30A Standard", "unit": "EA", "default_price": 9.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO130", "SQD Homeline": "HOM130", "Eaton CH": "CH130", "Siemens QP": "Q130" } }
       ]
     },
     {
       "id": "breakers_sp_afci",
       "label": "BREAKERS — SINGLE POLE AFCI (CAFCI)",
       "items": [
-        { "id": "br_afci_001", "name": "SP AFCI Breaker 15A (Pigtail Neutral)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO115AFC", "SQD Homeline": "HOM115CAFI", "Eaton CH": "CHFCAF115", "Siemens QP": "QA115AFC" } },
-        { "id": "br_afci_002", "name": "SP AFCI Breaker 20A (Pigtail Neutral)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO120AFC", "SQD Homeline": "HOM120CAFI", "Eaton CH": "CHFCAF120", "Siemens QP": "QA120AFC" } },
-        { "id": "br_afci_003", "name": "SP AFCI Breaker 15A (Plug-On Neutral)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO115PCAFI", "SQD Homeline": "HOM115PCAFI", "Eaton CH": "CHFP115AF", "Siemens QP": "Q115AFCP" } },
-        { "id": "br_afci_004", "name": "SP AFCI Breaker 20A (Plug-On Neutral)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO120PCAFI", "SQD Homeline": "HOM120PCAFI", "Eaton CH": "CHFP120AF", "Siemens QP": "Q120AFCP" } }
+        { "id": "br_afci_001", "name": "SP AFCI Breaker 15A (Pigtail Neutral)", "unit": "EA", "default_price": 38.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO115AFC", "SQD Homeline": "HOM115CAFI", "Eaton CH": "CHFCAF115", "Siemens QP": "QA115AFC" } },
+        { "id": "br_afci_002", "name": "SP AFCI Breaker 20A (Pigtail Neutral)", "unit": "EA", "default_price": 38.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO120AFC", "SQD Homeline": "HOM120CAFI", "Eaton CH": "CHFCAF120", "Siemens QP": "QA120AFC" } },
+        { "id": "br_afci_003", "name": "SP AFCI Breaker 15A (Plug-On Neutral)", "unit": "EA", "default_price": 42.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO115PCAFI", "SQD Homeline": "HOM115PCAFI", "Eaton CH": "CHFP115AF", "Siemens QP": "Q115AFCP" } },
+        { "id": "br_afci_004", "name": "SP AFCI Breaker 20A (Plug-On Neutral)", "unit": "EA", "default_price": 42.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO120PCAFI", "SQD Homeline": "HOM120PCAFI", "Eaton CH": "CHFP120AF", "Siemens QP": "Q120AFCP" } }
       ]
     },
     {
       "id": "breakers_sp_gfci",
       "label": "BREAKERS — SINGLE POLE GFCI",
       "items": [
-        { "id": "br_gfci_001", "name": "SP GFCI Breaker 15A", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO115GFI", "SQD Homeline": "HOM115GFI", "Eaton CH": "CHFGF115", "Siemens QP": "QF115A" } },
-        { "id": "br_gfci_002", "name": "SP GFCI Breaker 20A", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO120GFI", "SQD Homeline": "HOM120GFI", "Eaton CH": "CHFGF120", "Siemens QP": "QF120A" } },
-        { "id": "br_gfci_003", "name": "SP GFCI Breaker 30A", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO130GFI", "SQD Homeline": "HOM130GFI", "Eaton CH": "CHFGF130", "Siemens QP": "QF130A" } }
+        { "id": "br_gfci_001", "name": "SP GFCI Breaker 15A", "unit": "EA", "default_price": 38.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO115GFI", "SQD Homeline": "HOM115GFI", "Eaton CH": "CHFGF115", "Siemens QP": "QF115A" } },
+        { "id": "br_gfci_002", "name": "SP GFCI Breaker 20A", "unit": "EA", "default_price": 38.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO120GFI", "SQD Homeline": "HOM120GFI", "Eaton CH": "CHFGF120", "Siemens QP": "QF120A" } },
+        { "id": "br_gfci_003", "name": "SP GFCI Breaker 30A", "unit": "EA", "default_price": 48.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO130GFI", "SQD Homeline": "HOM130GFI", "Eaton CH": "CHFGF130", "Siemens QP": "QF130A" } }
       ]
     },
     {
       "id": "breakers_sp_dualfunction",
       "label": "BREAKERS — SINGLE POLE DUAL FUNCTION (AFCI+GFCI)",
       "items": [
-        { "id": "br_df_001", "name": "SP Dual Function 15A (Pigtail Neutral)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO115CAFI", "SQD Homeline": "HOM115CAFI", "Eaton CH": "CHFAFGF115", "Siemens QP": "Q115DF" } },
-        { "id": "br_df_002", "name": "SP Dual Function 20A (Pigtail Neutral)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO120CAFI", "SQD Homeline": "HOM120CAFI", "Eaton CH": "CHFAFGF120", "Siemens QP": "Q120DF" } },
-        { "id": "br_df_003", "name": "SP Dual Function 15A (Plug-On Neutral)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO115PDFC", "SQD Homeline": "HOM115PDFC", "Eaton CH": "CHFP115DF", "Siemens QP": "Q115DFNP" } },
-        { "id": "br_df_004", "name": "SP Dual Function 20A (Plug-On Neutral)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO120PDFC", "SQD Homeline": "HOM120PDFC", "Eaton CH": "CHFP120DF", "Siemens QP": "Q120DFNP" } }
+        { "id": "br_df_001", "name": "SP Dual Function 15A (Pigtail Neutral)", "unit": "EA", "default_price": 64.68, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO115CAFI", "SQD Homeline": "HOM115CAFI", "Eaton CH": "CHFAFGF115", "Siemens QP": "Q115DF" } },
+        { "id": "br_df_002", "name": "SP Dual Function 20A (Pigtail Neutral)", "unit": "EA", "default_price": 77.00, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO120CAFI", "SQD Homeline": "HOM120CAFI", "Eaton CH": "CHFAFGF120", "Siemens QP": "Q120DF" } },
+        { "id": "br_df_003", "name": "SP Dual Function 15A (Plug-On Neutral)", "unit": "EA", "default_price": 63.55, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO115PDFC", "SQD Homeline": "HOM115PDFC", "Eaton CH": "CHFP115DF", "Siemens QP": "Q115DFNP" } },
+        { "id": "br_df_004", "name": "SP Dual Function 20A (Plug-On Neutral)", "unit": "EA", "default_price": 68.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO120PDFC", "SQD Homeline": "HOM120PDFC", "Eaton CH": "CHFP120DF", "Siemens QP": "Q120DFNP" } }
       ]
     },
     {
       "id": "breakers_dp_standard",
       "label": "BREAKERS — DOUBLE POLE STANDARD",
       "items": [
-        { "id": "br_dp_001", "name": "DP Breaker 20A Standard", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO220", "SQD Homeline": "HOM220", "Eaton CH": "CH220", "Siemens QP": "Q220" } },
-        { "id": "br_dp_002", "name": "DP Breaker 30A Standard (Dryer/HVAC)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO230", "SQD Homeline": "HOM230", "Eaton CH": "CH230", "Siemens QP": "Q230" } },
-        { "id": "br_dp_003", "name": "DP Breaker 40A Standard", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO240", "SQD Homeline": "HOM240", "Eaton CH": "CH240", "Siemens QP": "Q240" } },
-        { "id": "br_dp_004", "name": "DP Breaker 50A Standard (Range)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO250", "SQD Homeline": "HOM250", "Eaton CH": "CH250", "Siemens QP": "Q250" } },
-        { "id": "br_dp_005", "name": "DP Breaker 60A Standard (Subpanel/HVAC)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO260", "SQD Homeline": "HOM260", "Eaton CH": "CH260", "Siemens QP": "Q260" } },
-        { "id": "br_dp_006", "name": "DP Breaker 70A Standard", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO270", "SQD Homeline": "HOM270", "Eaton CH": "CH270", "Siemens QP": "Q270" } },
-        { "id": "br_dp_007", "name": "DP Breaker 100A Standard (Main/Subpanel)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO2100", "SQD Homeline": "HOM2100", "Eaton CH": "CH2100", "Siemens QP": "Q2100" } },
-        { "id": "br_dp_008", "name": "DP Breaker 125A Standard", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO2125", "SQD Homeline": "HOM2125", "Eaton CH": "CH2125", "Siemens QP": "Q2125" } },
-        { "id": "br_dp_009", "name": "DP Breaker 150A Standard (Main)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO2150", "SQD Homeline": "HOM2150", "Eaton CH": "CH2150", "Siemens QP": "Q2150" } },
-        { "id": "br_dp_010", "name": "DP Breaker 200A Standard (Main)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO2200", "SQD Homeline": "HOM2200", "Eaton CH": "CH2200", "Siemens QP": "Q2200" } }
+        { "id": "br_dp_001", "name": "DP Breaker 20A Standard", "unit": "EA", "default_price": 16.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO220", "SQD Homeline": "HOM220", "Eaton CH": "CH220", "Siemens QP": "Q220" } },
+        { "id": "br_dp_002", "name": "DP Breaker 30A Standard (Dryer/HVAC)", "unit": "EA", "default_price": 18.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO230", "SQD Homeline": "HOM230", "Eaton CH": "CH230", "Siemens QP": "Q230" } },
+        { "id": "br_dp_003", "name": "DP Breaker 40A Standard", "unit": "EA", "default_price": 19.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO240", "SQD Homeline": "HOM240", "Eaton CH": "CH240", "Siemens QP": "Q240" } },
+        { "id": "br_dp_004", "name": "DP Breaker 50A Standard (Range)", "unit": "EA", "default_price": 22.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO250", "SQD Homeline": "HOM250", "Eaton CH": "CH250", "Siemens QP": "Q250" } },
+        { "id": "br_dp_005", "name": "DP Breaker 60A Standard (Subpanel/HVAC)", "unit": "EA", "default_price": 28.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO260", "SQD Homeline": "HOM260", "Eaton CH": "CH260", "Siemens QP": "Q260" } },
+        { "id": "br_dp_006", "name": "DP Breaker 70A Standard", "unit": "EA", "default_price": 32.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO270", "SQD Homeline": "HOM270", "Eaton CH": "CH270", "Siemens QP": "Q270" } },
+        { "id": "br_dp_007", "name": "DP Breaker 100A Standard (Main/Subpanel)", "unit": "EA", "default_price": 48.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO2100", "SQD Homeline": "HOM2100", "Eaton CH": "CH2100", "Siemens QP": "Q2100" } },
+        { "id": "br_dp_008", "name": "DP Breaker 125A Standard", "unit": "EA", "default_price": 58.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO2125", "SQD Homeline": "HOM2125", "Eaton CH": "CH2125", "Siemens QP": "Q2125" } },
+        { "id": "br_dp_009", "name": "DP Breaker 150A Standard (Main)", "unit": "EA", "default_price": 68.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO2150", "SQD Homeline": "HOM2150", "Eaton CH": "CH2150", "Siemens QP": "Q2150" } },
+        { "id": "br_dp_010", "name": "DP Breaker 200A Standard (Main)", "unit": "EA", "default_price": 89.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO2200", "SQD Homeline": "HOM2200", "Eaton CH": "CH2200", "Siemens QP": "Q2200" } }
       ]
     },
     {
       "id": "breakers_dp_gfci",
       "label": "BREAKERS — DOUBLE POLE GFCI",
       "items": [
-        { "id": "br_dpgf_001", "name": "DP GFCI Breaker 20A (Hot Tub/Spa)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO220GFI", "SQD Homeline": "HOM220GFI", "Eaton CH": "CHFGF220", "Siemens QP": "QF220A" } },
-        { "id": "br_dpgf_002", "name": "DP GFCI Breaker 30A", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO230GFI", "SQD Homeline": "HOM230GFI", "Eaton CH": "CHFGF230", "Siemens QP": "QF230A" } },
-        { "id": "br_dpgf_003", "name": "DP GFCI Breaker 40A (Pool Equipment)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO240GFI", "SQD Homeline": "HOM240GFI", "Eaton CH": "CHFGF240", "Siemens QP": "QF240A" } },
-        { "id": "br_dpgf_004", "name": "DP GFCI Breaker 50A", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO250GFI", "SQD Homeline": "HOM250GFI", "Eaton CH": "CHFGF250", "Siemens QP": "QF250A" } }
+        { "id": "br_dpgf_001", "name": "DP GFCI Breaker 20A (Hot Tub/Spa)", "unit": "EA", "default_price": 89.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO220GFI", "SQD Homeline": "HOM220GFI", "Eaton CH": "CHFGF220", "Siemens QP": "QF220A" } },
+        { "id": "br_dpgf_002", "name": "DP GFCI Breaker 30A", "unit": "EA", "default_price": 98.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO230GFI", "SQD Homeline": "HOM230GFI", "Eaton CH": "CHFGF230", "Siemens QP": "QF230A" } },
+        { "id": "br_dpgf_003", "name": "DP GFCI Breaker 40A (Pool Equipment)", "unit": "EA", "default_price": 108.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO240GFI", "SQD Homeline": "HOM240GFI", "Eaton CH": "CHFGF240", "Siemens QP": "QF240A" } },
+        { "id": "br_dpgf_004", "name": "DP GFCI Breaker 50A", "unit": "EA", "default_price": 118.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO250GFI", "SQD Homeline": "HOM250GFI", "Eaton CH": "CHFGF250", "Siemens QP": "QF250A" } }
       ]
     },
     {
       "id": "breakers_dp_afci",
       "label": "BREAKERS — DOUBLE POLE AFCI (Multi-Wire Branch Circuit)",
       "items": [
-        { "id": "br_dpaf_001", "name": "DP AFCI Breaker 15A (Shared Neutral)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO215AFC", "SQD Homeline": "HOM215CAFI", "Eaton CH": "CH215CAF", "Siemens QP": "Q215AFC" } },
-        { "id": "br_dpaf_002", "name": "DP AFCI Breaker 20A (Shared Neutral)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO220AFC", "SQD Homeline": "HOM220CAFI", "Eaton CH": "CH220CAF", "Siemens QP": "Q220AFC" } }
+        { "id": "br_dpaf_001", "name": "DP AFCI Breaker 15A (Shared Neutral)", "unit": "EA", "default_price": 68.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO215AFC", "SQD Homeline": "HOM215CAFI", "Eaton CH": "CH215CAF", "Siemens QP": "Q215AFC" } },
+        { "id": "br_dpaf_002", "name": "DP AFCI Breaker 20A (Shared Neutral)", "unit": "EA", "default_price": 68.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QO220AFC", "SQD Homeline": "HOM220CAFI", "Eaton CH": "CH220CAF", "Siemens QP": "Q220AFC" } }
       ]
     },
     {
       "id": "breakers_tandem",
       "label": "BREAKERS — TANDEM (2 CIRCUITS / 1 SLOT)",
       "items": [
-        { "id": "br_tn_001", "name": "Tandem Breaker 15A/15A", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QOT1515", "SQD Homeline": "HOMT1515", "Eaton CH": "CHT1515", "Siemens QP": "QT1515" } },
-        { "id": "br_tn_002", "name": "Tandem Breaker 20A/20A", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QOT2020", "SQD Homeline": "HOMT2020", "Eaton CH": "CHT2020", "Siemens QP": "QT2020" } },
-        { "id": "br_tn_003", "name": "Tandem Breaker 15A/20A", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QOT1520", "SQD Homeline": "HOMT1520", "Eaton CH": "CHT1520", "Siemens QP": "QT1520" } },
-        { "id": "br_tn_004", "name": "Tandem Breaker 30A/30A (Max per series)", "unit": "EA", "variants": ["SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD Homeline": "HOMT3030", "Eaton CH": "CHT3030", "Siemens QP": "QT3030" } },
-        { "id": "br_tn_005", "name": "Tandem AFCI 15A/15A (Pigtail)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QOT1515AFC", "SQD Homeline": "HOMT1515AFC", "Eaton CH": "CHTCAF1515", "Siemens QP": "QAT1515" } },
-        { "id": "br_tn_006", "name": "Tandem AFCI 20A/20A (Pigtail)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QOT2020AFC", "SQD Homeline": "HOMT2020AFC", "Eaton CH": "CHTCAF2020", "Siemens QP": "QAT2020" } },
-        { "id": "br_tn_007", "name": "Quad Breaker 20A/20A/20A/20A", "unit": "EA", "variants": ["SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD Homeline": "HOMQ220220", "Eaton CH": "CHTQ2020", "Siemens QP": "QQ220220" } }
+        { "id": "br_tn_001", "name": "Tandem Breaker 15A/15A", "unit": "EA", "default_price": 14.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QOT1515", "SQD Homeline": "HOMT1515", "Eaton CH": "CHT1515", "Siemens QP": "QT1515" } },
+        { "id": "br_tn_002", "name": "Tandem Breaker 20A/20A", "unit": "EA", "default_price": 15.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QOT2020", "SQD Homeline": "HOMT2020", "Eaton CH": "CHT2020", "Siemens QP": "QT2020" } },
+        { "id": "br_tn_003", "name": "Tandem Breaker 15A/20A", "unit": "EA", "default_price": 15.48, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QOT1520", "SQD Homeline": "HOMT1520", "Eaton CH": "CHT1520", "Siemens QP": "QT1520" } },
+        { "id": "br_tn_004", "name": "Tandem Breaker 30A/30A (Max per series)", "unit": "EA", "default_price": 24.98, "variants": ["SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD Homeline": "HOMT3030", "Eaton CH": "CHT3030", "Siemens QP": "QT3030" } },
+        { "id": "br_tn_005", "name": "Tandem AFCI 15A/15A (Pigtail)", "unit": "EA", "default_price": 68.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QOT1515AFC", "SQD Homeline": "HOMT1515AFC", "Eaton CH": "CHTCAF1515", "Siemens QP": "QAT1515" } },
+        { "id": "br_tn_006", "name": "Tandem AFCI 20A/20A (Pigtail)", "unit": "EA", "default_price": 72.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QOT2020AFC", "SQD Homeline": "HOMT2020AFC", "Eaton CH": "CHTCAF2020", "Siemens QP": "QAT2020" } },
+        { "id": "br_tn_007", "name": "Quad Breaker 20A/20A/20A/20A", "unit": "EA", "default_price": 38.98, "variants": ["SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD Homeline": "HOMQ220220", "Eaton CH": "CHTQ2020", "Siemens QP": "QQ220220" } }
       ]
     },
     {
       "id": "breakers_misc",
       "label": "BREAKERS — SPECIALTY & ACCESSORIES",
       "items": [
-        { "id": "br_misc_001", "name": "Whole House Surge Protector (Panel Mount)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QOVS2175SB", "SQD Homeline": "HOM2175SB", "Eaton CH": "CHSPT2ULTRA", "Siemens QP": "QSA2AFP" } },
-        { "id": "br_misc_002", "name": "Main Breaker 150A (Panel Main)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"] },
-        { "id": "br_misc_003", "name": "Main Breaker 200A (Panel Main)", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"] },
-        { "id": "br_misc_004", "name": "Blank Filler Slot Cover", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"] },
-        { "id": "br_misc_005", "name": "Panel Directory Label Kit", "unit": "EA" },
-        { "id": "br_misc_006", "name": "Handle Tie / Lockout Kit", "unit": "EA", "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"] }
+        { "id": "br_misc_001", "name": "Whole House Surge Protector (Panel Mount)", "unit": "EA", "default_price": 89.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"], "part_refs": { "SQD QO": "QOVS2175SB", "SQD Homeline": "HOM2175SB", "Eaton CH": "CHSPT2ULTRA", "Siemens QP": "QSA2AFP" } },
+        { "id": "br_misc_002", "name": "Main Breaker 150A (Panel Main)", "unit": "EA", "default_price": 68.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"] },
+        { "id": "br_misc_003", "name": "Main Breaker 200A (Panel Main)", "unit": "EA", "default_price": 89.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"] },
+        { "id": "br_misc_004", "name": "Blank Filler Slot Cover", "unit": "EA", "default_price": 1.48, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"] },
+        { "id": "br_misc_005", "name": "Panel Directory Label Kit", "unit": "EA", "default_price": 4.98 },
+        { "id": "br_misc_006", "name": "Handle Tie / Lockout Kit", "unit": "EA", "default_price": 6.98, "variants": ["SQD QO", "SQD Homeline", "Eaton CH", "Siemens QP"] }
       ]
     },
     {
       "id": "life_safety",
       "label": "LIFE SAFETY & LOW VOLTAGE",
       "items": [
-        { "id": "ls_001", "name": "Smoke Detector Hardwired Interconnect (Ionization)", "unit": "EA" },
-        { "id": "ls_002", "name": "Smoke Detector Hardwired Photoelectric", "unit": "EA" },
-        { "id": "ls_003", "name": "Smoke/CO Combo Detector Hardwired", "unit": "EA" },
-        { "id": "ls_004", "name": "CO Detector Hardwired", "unit": "EA" },
-        { "id": "ls_005", "name": "Smoke Detector Interconnect Wiring Harness", "unit": "EA" },
-        { "id": "ls_006", "name": "Doorbell Pushbutton (Wired)", "unit": "EA" },
-        { "id": "ls_007", "name": "Doorbell Chime Unit", "unit": "EA" },
-        { "id": "ls_008", "name": "Doorbell Transformer 16V", "unit": "EA" },
-        { "id": "ls_009", "name": "Thermostat 5-2 Day Programmable", "unit": "EA" },
-        { "id": "ls_010", "name": "Thermostat Smart (Wi-Fi, C-Wire Req.)", "unit": "EA" },
-        { "id": "ls_011", "name": "C-Wire Adapter/Power Extender (Smart Stat)", "unit": "EA" }
+        { "id": "ls_001", "name": "Smoke Detector Hardwired Interconnect (Ionization)", "unit": "EA", "default_price": 14.98 },
+        { "id": "ls_002", "name": "Smoke Detector Hardwired Photoelectric", "unit": "EA", "default_price": 19.98 },
+        { "id": "ls_003", "name": "Smoke/CO Combo Detector Hardwired", "unit": "EA", "default_price": 34.98 },
+        { "id": "ls_004", "name": "CO Detector Hardwired", "unit": "EA", "default_price": 29.98 },
+        { "id": "ls_005", "name": "Smoke Detector Interconnect Wiring Harness", "unit": "EA", "default_price": 8.98 },
+        { "id": "ls_006", "name": "Doorbell Pushbutton (Wired)", "unit": "EA", "default_price": 7.98 },
+        { "id": "ls_007", "name": "Doorbell Chime Unit", "unit": "EA", "default_price": 22.98 },
+        { "id": "ls_008", "name": "Doorbell Transformer 16V", "unit": "EA", "default_price": 15.98 },
+        { "id": "ls_009", "name": "Thermostat 5-2 Day Programmable", "unit": "EA", "default_price": 29.98 },
+        { "id": "ls_010", "name": "Thermostat Smart (Wi-Fi, C-Wire Req.)", "unit": "EA", "default_price": 129.98 },
+        { "id": "ls_011", "name": "C-Wire Adapter/Power Extender (Smart Stat)", "unit": "EA", "default_price": 19.98 }
       ]
     },
     {
       "id": "lighting_fans",
       "label": "LIGHTING & CEILING FANS",
       "items": [
-        { "id": "lf_001", "name": "Recessed Light Trim 4\" Baffle White", "unit": "EA" },
-        { "id": "lf_002", "name": "Recessed Light Trim 6\" Baffle White", "unit": "EA" },
-        { "id": "lf_003", "name": "Recessed Light Trim 4\" Gimbal/Eyeball", "unit": "EA" },
-        { "id": "lf_004", "name": "Recessed Light Trim 6\" Gimbal/Eyeball", "unit": "EA" },
-        { "id": "lf_005", "name": "Recessed Light Trim Wet/Damp Rated (Bath)", "unit": "EA" },
-        { "id": "lf_006", "name": "LED Retrofit Bulb 65W Eq. BR30 (Recessed)", "unit": "EA" },
-        { "id": "lf_007", "name": "LED Retrofit Bulb 100W Eq. A19", "unit": "EA" },
-        { "id": "lf_008", "name": "Bath Fan Trim/Grille (Replacement)", "unit": "EA" },
-        { "id": "lf_009", "name": "Ceiling Fan (52\" Standard)", "unit": "EA" },
-        { "id": "lf_010", "name": "Ceiling Fan Light Kit", "unit": "EA" },
-        { "id": "lf_011", "name": "Ceiling Fan Downrod 6\"", "unit": "EA" },
-        { "id": "lf_012", "name": "Ceiling Fan Downrod 12\"", "unit": "EA" },
-        { "id": "lf_013", "name": "Ceiling Fan Downrod 18\"", "unit": "EA" },
-        { "id": "lf_014", "name": "Ceiling Fan Remote Control Kit", "unit": "EA" },
-        { "id": "lf_015", "name": "Chandelier/Pendant Canopy Kit", "unit": "EA" },
-        { "id": "lf_016", "name": "Light Fixture Mounting Strap/Crossbar", "unit": "EA" },
-        { "id": "lf_017", "name": "Canopy Cover Plate (Ceiling Box Cover)", "unit": "EA" }
+        { "id": "lf_001", "name": "Recessed Light Trim 4\" Baffle White", "unit": "EA", "default_price": 5.98 },
+        { "id": "lf_002", "name": "Recessed Light Trim 6\" Baffle White", "unit": "EA", "default_price": 6.98 },
+        { "id": "lf_003", "name": "Recessed Light Trim 4\" Gimbal/Eyeball", "unit": "EA", "default_price": 9.98 },
+        { "id": "lf_004", "name": "Recessed Light Trim 6\" Gimbal/Eyeball", "unit": "EA", "default_price": 11.98 },
+        { "id": "lf_005", "name": "Recessed Light Trim Wet/Damp Rated (Bath)", "unit": "EA", "default_price": 9.98 },
+        { "id": "lf_006", "name": "LED Retrofit Bulb 65W Eq. BR30 (Recessed)", "unit": "EA", "default_price": 4.98 },
+        { "id": "lf_007", "name": "LED Retrofit Bulb 100W Eq. A19", "unit": "EA", "default_price": 2.98 },
+        { "id": "lf_008", "name": "Bath Fan Trim/Grille (Replacement)", "unit": "EA", "default_price": 12.98 },
+        { "id": "lf_009", "name": "Ceiling Fan (52\" Standard)", "unit": "EA", "default_price": 89.98 },
+        { "id": "lf_010", "name": "Ceiling Fan Light Kit", "unit": "EA", "default_price": 29.98 },
+        { "id": "lf_011", "name": "Ceiling Fan Downrod 6\"", "unit": "EA", "default_price": 9.98 },
+        { "id": "lf_012", "name": "Ceiling Fan Downrod 12\"", "unit": "EA", "default_price": 12.98 },
+        { "id": "lf_013", "name": "Ceiling Fan Downrod 18\"", "unit": "EA", "default_price": 14.98 },
+        { "id": "lf_014", "name": "Ceiling Fan Remote Control Kit", "unit": "EA", "default_price": 24.98 },
+        { "id": "lf_015", "name": "Chandelier/Pendant Canopy Kit", "unit": "EA", "default_price": 12.98 },
+        { "id": "lf_016", "name": "Light Fixture Mounting Strap/Crossbar", "unit": "EA", "default_price": 3.98 },
+        { "id": "lf_017", "name": "Canopy Cover Plate (Ceiling Box Cover)", "unit": "EA", "default_price": 4.98 }
       ]
     },
     {
       "id": "fasteners_hardware",
       "label": "FASTENERS, CONNECTORS & HARDWARE",
       "items": [
-        { "id": "fh_001", "name": "Wire Nut Assorted Pack (Red/Yellow/Orange)", "unit": "PK" },
-        { "id": "fh_002", "name": "Wire Nut Red (Large — 3+ #14)", "unit": "EA" },
-        { "id": "fh_003", "name": "Wire Nut Yellow (Medium — 2x #14)", "unit": "EA" },
-        { "id": "fh_004", "name": "Push-In Connector 3-Port (Wago-Style)", "unit": "EA" },
-        { "id": "fh_005", "name": "Push-In Connector 5-Port (Wago-Style)", "unit": "EA" },
-        { "id": "fh_006", "name": "Grounding Pigtail Pre-Made #12 w/ Ring", "unit": "EA" },
-        { "id": "fh_007", "name": "Device Screw 6-32 x 1\" (Standard Mount)", "unit": "EA" },
-        { "id": "fh_008", "name": "Device Screw 6-32 x 1.5\" (Deep Box)", "unit": "EA" },
-        { "id": "fh_009", "name": "Fan Mounting Screw 10-32 (Fan-Rated Box)", "unit": "EA" },
-        { "id": "fh_010", "name": "Box Extender 1-Gang (Flush Fix)", "unit": "EA" },
-        { "id": "fh_011", "name": "Box Extender 2-Gang (Flush Fix)", "unit": "EA" },
-        { "id": "fh_012", "name": "Plaster Ring 1-Gang (Box Extension)", "unit": "EA" },
-        { "id": "fh_013", "name": "Electrical Tape 3/4\" Black", "unit": "RL" },
-        { "id": "fh_014", "name": "Outlet Tester (3-Light Receptacle Tester)", "unit": "EA" },
-        { "id": "fh_015", "name": "Non-Contact Voltage Tester (NCV)", "unit": "EA" }
+        { "id": "fh_001", "name": "Wire Nut Assorted Pack (Red/Yellow/Orange)", "unit": "PK", "default_price": 6.98 },
+        { "id": "fh_002", "name": "Wire Nut Red (Large — 3+ #14)", "unit": "EA", "default_price": 0.12 },
+        { "id": "fh_003", "name": "Wire Nut Yellow (Medium — 2x #14)", "unit": "EA", "default_price": 0.08 },
+        { "id": "fh_004", "name": "Push-In Connector 3-Port (Wago-Style)", "unit": "EA", "default_price": 0.65 },
+        { "id": "fh_005", "name": "Push-In Connector 5-Port (Wago-Style)", "unit": "EA", "default_price": 0.85 },
+        { "id": "fh_006", "name": "Grounding Pigtail Pre-Made #12 w/ Ring", "unit": "EA", "default_price": 1.25 },
+        { "id": "fh_007", "name": "Device Screw 6-32 x 1\" (Standard Mount)", "unit": "EA", "default_price": 0.08 },
+        { "id": "fh_008", "name": "Device Screw 6-32 x 1.5\" (Deep Box)", "unit": "EA", "default_price": 0.10 },
+        { "id": "fh_009", "name": "Fan Mounting Screw 10-32 (Fan-Rated Box)", "unit": "EA", "default_price": 0.12 },
+        { "id": "fh_010", "name": "Box Extender 1-Gang (Flush Fix)", "unit": "EA", "default_price": 2.48 },
+        { "id": "fh_011", "name": "Box Extender 2-Gang (Flush Fix)", "unit": "EA", "default_price": 3.98 },
+        { "id": "fh_012", "name": "Plaster Ring 1-Gang (Box Extension)", "unit": "EA", "default_price": 1.48 },
+        { "id": "fh_013", "name": "Electrical Tape 3/4\" Black", "unit": "RL", "default_price": 3.98 },
+        { "id": "fh_014", "name": "Outlet Tester (3-Light Receptacle Tester)", "unit": "EA", "default_price": 12.98 },
+        { "id": "fh_015", "name": "Non-Contact Voltage Tester (NCV)", "unit": "EA", "default_price": 19.98 }
       ]
     }
   ]

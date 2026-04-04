@@ -1,4 +1,7 @@
-const CACHE_NAME = 'astra-v68';
+// S-09: Every supabase.min.js update REQUIRES a CACHE_NAME bump.
+// The SW caches the vendored Supabase client — a vulnerability in the cached copy
+// persists until the cache is invalidated. Bump the version suffix on every update.
+const CACHE_NAME = 'astra-v69';
 const ASSETS = [
   'index.html', 'diagnostics.html', 'app.js', 'astra-materials.js', 'astra-maps.js', 'astra-auth.js', 'astra-sync.js', 'astra-estimates.js',
   'manifest.json', 'rough_materials.json', 'trim_materials.json',
@@ -8,6 +11,11 @@ const ASSETS = [
 const TIMEOUT_MS = 3000;
 
 self.addEventListener('install', e => {
+  // S-02: Validate origin on install — reject if loaded over HTTP (MitM/cache poisoning defense)
+  if (self.location.protocol !== 'https:' && self.location.hostname !== 'localhost' && self.location.hostname !== '127.0.0.1') {
+    console.error('SW: Refusing to install on insecure origin:', self.location.origin);
+    return; // Do not cache anything — prevents poisoned SW persistence
+  }
   e.waitUntil(
     caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())
   );
