@@ -2,6 +2,8 @@
 // ASTRA v0.7 — FIELD SERVICE
 // ═══════════════════════════════════════════
 window.Astra = window.Astra || {};
+// BUG-01: Single source of truth for job types — used by Create Ticket, Estimate Builder, and seed intelligence
+window.Astra.JOB_TYPES = ['PANEL UPGRADE','EV CHARGER','GENERATOR','REWIRE','LIGHTING INSTALL','CEILING FAN','OUTLET/SWITCH/CIRCUIT','SERVICE CALL/TROUBLESHOOT','REMODEL'];
 // S-15: Polyfill crypto.randomUUID for non-secure contexts (HTTP without localhost)
 // Prevents silent undefined IDs when HTTPS is unavailable
 if (!crypto.randomUUID) {
@@ -77,13 +79,14 @@ document.addEventListener('keydown', function(e) {
 });
 
 // ── GLOBAL ERROR HANDLING ──
+// T2-2: Show user-friendly message, log detail to console only
 window.onerror = function(msg, src, line) {
   console.error('Global error:', msg, src, line);
-  showToast('ERROR: ' + msg, 'error');
+  showToast('SOMETHING WENT WRONG — TRY AGAIN', 'error');
 };
 window.addEventListener('unhandledrejection', function(e) {
   console.error('Unhandled promise rejection:', e.reason);
-  showToast('ERROR: ' + (e.reason && e.reason.message ? e.reason.message : String(e.reason)), 'error');
+  showToast('SOMETHING WENT WRONG — TRY AGAIN', 'error');
 });
 
 // ── DATA LAYER (IndexedDB + In-Memory Cache) ──
@@ -593,7 +596,7 @@ function _idbDelete(storeName, id) {
   } catch (e) { console.error('IDB delete error (' + storeName + '):', e); }
 }
 
-function _idbReplaceAll(storeName, items) {
+function _idbReplaceAll(storeName, items, rollbackFn) {
   if (!_astraDB) return;
   try {
     const tx = _astraDB.transaction(storeName, 'readwrite');
@@ -605,10 +608,12 @@ function _idbReplaceAll(storeName, items) {
     };
     tx.onabort = tx.onerror = function() {
       console.error('IDB replaceAll FAILED (' + storeName + '):', tx.error);
+      if (rollbackFn) rollbackFn();
       showToast('BULK SAVE FAILED — DATA NOT SAVED. DO NOT CLOSE APP.', 'error');
     };
   } catch (e) {
     console.error('IDB replaceAll error (' + storeName + '):', e);
+    if (rollbackFn) rollbackFn();
     showToast('BULK SAVE FAILED — CHECK STORAGE', 'error');
   }
 }
@@ -717,15 +722,24 @@ async function initDataLayer() {
 // Synchronous read/write API
 function loadJobs() { return _cache.jobs; }
 function replaceAllJobs(jobs) {
+  var prev = _cache.jobs;
   _cache.jobs = jobs.map(j => _cleanJobForStorage(j));
-  _idbReplaceAll('jobs', _cache.jobs);
+  _idbReplaceAll('jobs', _cache.jobs, function() { _cache.jobs = prev; });
 }
 function loadTechs() { return _cache.techs; }
 // D23: write-through to IDB on tech add (matches addJob pattern)
 function addTech(tech) { _cache.techs.push(tech); _idbPut('techs', tech); }
-function replaceAllTechs(techs) { _cache.techs = techs; _idbReplaceAll('techs', techs); }
+function replaceAllTechs(techs) {
+  var prev = _cache.techs;
+  _cache.techs = techs;
+  _idbReplaceAll('techs', techs, function() { _cache.techs = prev; });
+}
 function loadAddresses() { return _cache.addresses; }
-function replaceAllAddresses(addrs) { _cache.addresses = addrs; _idbReplaceAll('addresses', addrs); }
+function replaceAllAddresses(addrs) {
+  var prev = _cache.addresses;
+  _cache.addresses = addrs;
+  _idbReplaceAll('addresses', addrs, function() { _cache.addresses = prev; });
+}
 // FAT-023: Return shallow copy to prevent direct cache mutation
 function getAddress(id) { var a = _cache.addresses.find(a => a.id === id); return a ? Object.assign({}, a) : undefined; }
 function updateAddress(id, updates) {
@@ -920,6 +934,16 @@ if (navigator.storage && navigator.storage.persist) {
 }
 
 // Init — data layer must be ready before any rendering
+// BUG-01: Populate Create Ticket chips from canonical JOB_TYPES
+(function() {
+  var container = document.getElementById('c-types');
+  if (container) {
+    container.innerHTML = window.Astra.JOB_TYPES.map(function(t) {
+      return '<button class="chip" onclick="toggleChip(this)">' + t + '</button>';
+    }).join('');
+  }
+})();
+
 initDataLayer()
   .then(() => window.autoLoadBuiltInLibraries && window.autoLoadBuiltInLibraries())
   .then(() => {
@@ -1031,11 +1055,11 @@ function updateSidebarActive() {
       item.style.display = (role === 'tech') ? 'none' : '';
     }
   });
-  // S3: Rename HOME to MY JOBS for techs
+  // S3: Rename HOME to MY JOBS for techs (BUG-03: target span, not loose text node)
   var homeItem = document.querySelector('.sidebar-item[data-screen="screen-jobs"]');
   if (homeItem) {
-    var label = homeItem.childNodes[homeItem.childNodes.length - 1];
-    if (label && label.nodeType === 3) label.textContent = (role === 'tech') ? ' MY JOBS' : ' HOME';
+    var label = homeItem.querySelector('.sidebar-label');
+    if (label) label.textContent = (role === 'tech') ? ' MY JOBS' : ' HOME';
   }
 }
 
@@ -1052,6 +1076,10 @@ let skipPushState = false;
 
 // Phase C: Track which job is currently locked by this user for release on nav
 var _lockedJobId = null;
+
+// T2-1: Track blob URLs so they can be revoked to prevent memory leaks
+var _thumbObjectURLs = [];
+var _overlayObjectURL = null;
 
 // T2-C1 (BUG-012): Lock release retry queue — ensures locks don't leak
 var _pendingLockReleases = [];
@@ -1692,6 +1720,7 @@ async function renderDetail(jobId) {
         continue;
       }
       const src = (data instanceof Blob) ? URL.createObjectURL(data) : (data || '');
+      if (data instanceof Blob) _thumbObjectURLs.push(src);
       if (item.type === 'pdf') {
         parts.push(`<div class="media-thumb" onclick="openMedia('${jobId}','${type}',${i})" style="display:flex;align-items:center;justify-content:center;background:#2a2a2a;">
           <div style="text-align:center;"><div style="font-size:28px;">📄</div><div style="font-size:10px;color:#888;margin-top:4px;">PDF</div></div>
@@ -1715,6 +1744,9 @@ async function renderDetail(jobId) {
     return parts.join('');
   }
 
+  // T2-1: Revoke previous thumbnail blob URLs before creating new ones
+  _thumbObjectURLs.forEach(function(u) { URL.revokeObjectURL(u); });
+  _thumbObjectURLs = [];
   const photoThumbs = await thumbHTML(j.photos, 'photos');
   const drawingThumbs = await thumbHTML(j.drawings, 'drawings');
   const videoThumbs = await thumbHTML(j.videos, 'videos');
@@ -1771,7 +1803,7 @@ async function renderDetail(jobId) {
     + '<div style="color:#999;font-size:14px;line-height:1.5;">' + (esc(j.notes) || '<span style="color:#333;">NO JOB NOTES.</span>') + '</div>'
     + '</div>';
   notesContent += '<div style="background:#222;border:1px solid #333;border-radius:8px;padding:12px;">'
-    + '<div style="font-size:10px;color:#FF6B00;font-weight:700;letter-spacing:1px;margin-bottom:6px;">YOUR NOTES <span id="tech-notes-saved" style="color:#2d8a4e;display:none;">SAVED ✓</span></div>'
+    + '<div style="font-size:10px;color:#aaa;font-weight:700;letter-spacing:1px;margin-bottom:6px;">YOUR NOTES <span id="tech-notes-saved" style="color:#2d8a4e;display:none;">SAVED ✓</span></div>'
     + (isLocked
       ? '<div style="color:#aaa;font-size:14px;line-height:1.5;">' + (esc(j.techNotes) || '<span style="color:#333;">NO TECH NOTES.</span>') + '</div>'
       : '<textarea id="detail-tech-notes" style="min-height:90px;" placeholder="NOTES FROM THE JOB..." onblur="updateJob(\'' + jobId + '\',{techNotes:this.value});_showTechNotesSaved()">' + esc(j.techNotes || '') + '</textarea>')
@@ -2008,14 +2040,27 @@ function _saveAddressText(addrId, newAddress) {
 }
 
 // A1: Create standalone address without a ticket
+// T3-1: Replace prompt() with modal input per CLAUDE_UX.md
 function createNewAddress() {
-  var addr = prompt('ENTER ADDRESS:');
-  if (!addr || !addr.trim()) return;
-  var addrId = findOrCreateAddress(addr.trim());
-  if (addrId) {
-    showToast('ADDRESS CREATED');
-    goTo('screen-addr-detail', addrId);
-  }
+  _modalOnConfirm = function() {
+    var input = document.getElementById('new-addr-input');
+    var addr = input ? input.value.trim() : '';
+    if (!addr) return;
+    var addrId = findOrCreateAddress(addr);
+    if (addrId) {
+      showToast('ADDRESS CREATED');
+      goTo('screen-addr-detail', addrId);
+    }
+  };
+  document.getElementById('modal-title').textContent = 'NEW ADDRESS';
+  document.getElementById('modal-message').innerHTML =
+    '<input id="new-addr-input" type="text" placeholder="ENTER ADDRESS" style="width:100%;box-sizing:border-box;padding:12px;font-size:16px;background:#1a1a1a;border:1px solid #555;border-radius:8px;color:#e0e0e0;margin-top:8px;min-height:48px;">';
+  document.getElementById('modal-actions').innerHTML =
+    '<button class="modal-btn modal-btn-confirm" onclick="_modalConfirm()">CREATE</button>' +
+    '<button class="modal-btn modal-btn-cancel" onclick="_closeModal()">CANCEL</button>';
+  document.getElementById('modal-backdrop').classList.add('active');
+  document.getElementById('modal-sheet').classList.add('active');
+  setTimeout(function() { var el = document.getElementById('new-addr-input'); if (el) el.focus(); }, 100);
 }
 
 function renderAddrDetail(addrId) {
@@ -2391,12 +2436,12 @@ function renderDashboard() {
   var needsDedup = loadAddresses().filter(a => a.needsDedup).length;
 
   // DA1: Dashboard hierarchy — actionable first, historical collapsed
-  var supervisorCard = isAdminOrSuper ? '<div class="dash-card" style="border:1px solid #6a4c93;">'
-    + '<div class="dash-card-title" style="color:#6a4c93;">ACTIONABLE</div>'
+  var supervisorCard = isAdminOrSuper ? '<div class="dash-card" style="border:1px solid #FF6B00;">'
+    + '<div class="dash-card-title" style="color:#aaa;">ACTIONABLE</div>'
     + '<div class="dash-row"><div class="dash-row-label">PENDING APPROVAL</div><div class="dash-row-value" style="color:' + (pendingApproval > 0 ? '#FF6B00' : '#555') + ';">' + pendingApproval + '</div></div>'
     + '<div class="dash-row"><div class="dash-row-label">TECHS</div><div class="dash-row-value">' + techCount + '</div></div>'
     + '<div class="dash-row"><div class="dash-row-label">ADDRESS DUPES</div><div class="dash-row-value" style="color:' + (needsDedup > 0 ? '#c0392b' : '#555') + ';">' + needsDedup + '</div></div>'
-    + (pendingApproval > 0 ? '<button class="btn btn-secondary" style="margin-top:8px;border-color:#6a4c93;color:#6a4c93;" onclick="setApprovalFilter(true);goTo(\'screen-jobs\')">VIEW PENDING</button>' : '')
+    + (pendingApproval > 0 ? '<button class="btn btn-secondary" style="margin-top:8px;border-color:#FF6B00;color:#FF6B00;" onclick="setApprovalFilter(true);goTo(\'screen-jobs\')">VIEW PENDING</button>' : '')
     + '</div>' : '';
 
   var thisWeekCard = '<div class="dash-card" style="margin-top:10px;">'
@@ -2611,9 +2656,14 @@ async function openMedia(jobId, type, idx) {
       return;
     }
   }
+  // T2-1: Revoke previous overlay URL before creating a new one
+  if (_overlayObjectURL) { URL.revokeObjectURL(_overlayObjectURL); _overlayObjectURL = null; }
   const mediaUrl = (data instanceof Blob) ? URL.createObjectURL(data) : (data || '');
+  if (data instanceof Blob) _overlayObjectURL = mediaUrl;
   if (item.type === 'pdf') {
     window.open(mediaUrl, '_blank');
+    // PDF opens in new tab — revoke after a short delay to let the tab load
+    if (_overlayObjectURL === mediaUrl) { setTimeout(function() { URL.revokeObjectURL(mediaUrl); _overlayObjectURL = null; }, 5000); }
     return;
   }
   if (item.type === 'video') {
@@ -2677,7 +2727,11 @@ function getTouchDist(touches) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-function closeOverlay() { document.getElementById('media-overlay').classList.remove('active'); }
+function closeOverlay() {
+  document.getElementById('media-overlay').classList.remove('active');
+  // T2-1: Revoke overlay blob URL on close
+  if (_overlayObjectURL) { URL.revokeObjectURL(_overlayObjectURL); _overlayObjectURL = null; }
+}
 
 // ═══════════════════════════════════════════
 // UTILS
@@ -2952,7 +3006,8 @@ async function renderSettings() {
   // ═══ SECTION 4: TOOLS (supervisor/admin only) ═══
   var toolsContent =
     '<button class="btn btn-primary" style="margin-bottom:10px;min-height:48px;" onclick="exportData()">EXPORT BACKUP</button>' +
-    '<button class="btn btn-secondary" style="margin-bottom:16px;min-height:48px;" onclick="document.getElementById(\'import-input\').click()">IMPORT BACKUP</button>' +
+    '<button class="btn btn-secondary" style="margin-bottom:10px;min-height:48px;" onclick="document.getElementById(\'import-input\').click()">IMPORT BACKUP</button>' +
+    '<button class="btn btn-secondary" style="margin-bottom:16px;min-height:48px;border:1px dashed #666;" onclick="restorePreImportBackup()">UNDO LAST IMPORT</button>' +
     '<div class="dash-card" style="padding:14px;margin-bottom:12px;">' +
       '<div style="font-size:12px;color:#444;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">IMPORT JSON FILES FOR ROUGH AND TRIM</div>' +
       '<button class="btn btn-secondary" style="margin-bottom:0;border:2px solid #FF6B00;color:#FF6B00;min-height:48px;" onclick="document.getElementById(\'material-import-input\').click()">IMPORT MATERIAL LIBRARY</button>' +
@@ -3420,6 +3475,13 @@ function _processImportData(jsonStr, input) {
     }
 
     showConfirmModal('RESTORE BACKUP', 'REPLACE ALL DATA WITH BACKUP? (' + data.jobs.length + ' TICKETS)', 'REPLACE', async function() {
+      // T1-2: Snapshot current data before destructive replace
+      _idbConfigPut('_preImportBackup', {
+        savedAt: new Date().toISOString(),
+        jobs: loadJobs(),
+        techs: loadTechs(),
+        addresses: loadAddresses()
+      });
       data.jobs.forEach(function(j) {
         if (!j.photos) j.photos = [];
         if (!j.drawings) j.drawings = [];
@@ -3455,6 +3517,23 @@ function _processImportData(jsonStr, input) {
     }, { destructive: true });
   } catch (e) { showInfoModal('IMPORT FAILED', e.message); }
   input.value = '';
+}
+
+// T1-2: Restore pre-import backup snapshot
+async function restorePreImportBackup() {
+  var snap = await _idbConfigGet('_preImportBackup');
+  if (!snap || !snap.jobs) {
+    showInfoModal('NO BACKUP', 'NO PRE-IMPORT SNAPSHOT FOUND.');
+    return;
+  }
+  var age = snap.savedAt ? ' (SAVED ' + snap.savedAt.slice(0, 16).replace('T', ' ') + ')' : '';
+  showConfirmModal('UNDO IMPORT', 'RESTORE ' + snap.jobs.length + ' TICKETS FROM BEFORE LAST IMPORT?' + age, 'RESTORE', function() {
+    replaceAllJobs(snap.jobs);
+    if (snap.techs) replaceAllTechs(snap.techs);
+    if (snap.addresses) replaceAllAddresses(snap.addresses);
+    renderSettings();
+    showInfoModal('RESTORED', snap.jobs.length + ' TICKETS RESTORED FROM PRE-IMPORT SNAPSHOT.');
+  }, { destructive: true });
 }
 
 // ── Cloud Sync UI ──
@@ -3726,7 +3805,7 @@ Object.assign(window, {
   // Media
   openMedia, deleteMedia, closeOverlay,
   // Data import/export
-  exportData, importData,
+  exportData, importData, restorePreImportBackup,
   // Cloud sync
   runSyncPush, runSyncPull,
   // D29: Onboarding

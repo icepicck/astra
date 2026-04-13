@@ -465,7 +465,7 @@ function renderEstimateBuilder(estId) {
   const delBtn = document.getElementById('est-delete-btn');
   if (delBtn) delBtn.style.display = A.getEstimate(est.id) ? 'flex' : 'none';
 
-  const JOB_TYPES = ['SERVICE CALL','PANEL UPGRADE','EV CHARGER','ROUGH-IN','TRIM-OUT','TROUBLESHOOT','GENERATOR','REWIRE','LIGHTING','GENERAL'];
+  const JOB_TYPES = window.Astra.JOB_TYPES || [];
 
   let html = '';
 
@@ -598,7 +598,10 @@ function renderEstimateBuilder(estId) {
   }
   html += '<div style="height:80px;"></div>';
 
+  // T3-2: Preserve scroll position across re-renders
+  var scrollY = body.scrollTop;
   body.innerHTML = html;
+  body.scrollTop = scrollY;
 
   // ── Attach blur listeners for auto-recalc ──
   _attachBlurListeners();

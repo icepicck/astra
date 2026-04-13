@@ -1,70 +1,30 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "source": "TX residential electrical industry averages — seed data for cold start",
-  "note": "Customer data overrides seed data once 5+ jobs of same type are logged",
+  "note": "Customer data overrides seed data once 5+ jobs of same type are logged. Job type names must exactly match window.Astra.JOB_TYPES.",
   "jobTypes": [
     {
-      "jobType": "Panel Swap",
-      "jobCount": 8,
+      "jobType": "PANEL UPGRADE",
+      "jobCount": 14,
       "materials": [
         { "itemId": "PNL-200A", "name": "200A Main Panel", "avgQty": 1, "unit": "EA" },
-        { "itemId": "BRK-20A-1P", "name": "20A Single Pole Breaker", "avgQty": 12, "unit": "EA" },
+        { "itemId": "BRK-20A-1P", "name": "20A Single Pole Breaker", "avgQty": 14, "unit": "EA" },
         { "itemId": "BRK-30A-2P", "name": "30A Double Pole Breaker", "avgQty": 2, "unit": "EA" },
         { "itemId": "BRK-50A-2P", "name": "50A Double Pole Breaker", "avgQty": 1, "unit": "EA" },
+        { "itemId": "SER-4/0", "name": "4/0 SER Cable", "avgQty": 18, "unit": "FT" },
         { "itemId": "ROMEX-6-3", "name": "6/3 Romex NM-B", "avgQty": 8, "unit": "FT" },
         { "itemId": "ROMEX-4-3", "name": "4/3 Romex NM-B", "avgQty": 6, "unit": "FT" },
-        { "itemId": "SER-4/0", "name": "4/0 SER Cable", "avgQty": 12, "unit": "FT" },
-        { "itemId": "GND-4", "name": "#4 Bare Copper Ground", "avgQty": 8, "unit": "FT" },
+        { "itemId": "GND-4", "name": "#4 Bare Copper Ground", "avgQty": 12, "unit": "FT" },
         { "itemId": "CONN-MAIN", "name": "Main Lug Kit", "avgQty": 1, "unit": "EA" },
-        { "itemId": "GND-ROD", "name": "Ground Rod 8ft", "avgQty": 2, "unit": "EA" },
-        { "itemId": "GND-CLAMP", "name": "Ground Rod Clamp", "avgQty": 2, "unit": "EA" }
-      ]
-    },
-    {
-      "jobType": "Service Upgrade",
-      "jobCount": 6,
-      "materials": [
-        { "itemId": "PNL-200A", "name": "200A Main Panel", "avgQty": 1, "unit": "EA" },
-        { "itemId": "METER-200A", "name": "200A Meter Base", "avgQty": 1, "unit": "EA" },
-        { "itemId": "SER-4/0", "name": "4/0 SER Cable", "avgQty": 25, "unit": "FT" },
-        { "itemId": "MAST-2", "name": "2\" Rigid Mast", "avgQty": 10, "unit": "FT" },
-        { "itemId": "WHEAD-2", "name": "2\" Weatherhead", "avgQty": 1, "unit": "EA" },
         { "itemId": "GND-ROD", "name": "Ground Rod 8ft", "avgQty": 2, "unit": "EA" },
         { "itemId": "GND-CLAMP", "name": "Ground Rod Clamp", "avgQty": 2, "unit": "EA" },
-        { "itemId": "GND-4", "name": "#4 Bare Copper Ground", "avgQty": 15, "unit": "FT" },
-        { "itemId": "CONN-MAIN", "name": "Main Lug Kit", "avgQty": 1, "unit": "EA" },
-        { "itemId": "BRK-20A-1P", "name": "20A Single Pole Breaker", "avgQty": 15, "unit": "EA" },
-        { "itemId": "BRK-30A-2P", "name": "30A Double Pole Breaker", "avgQty": 2, "unit": "EA" }
+        { "itemId": "METER-200A", "name": "200A Meter Base", "avgQty": 1, "unit": "EA" },
+        { "itemId": "MAST-2", "name": "2\" Rigid Mast", "avgQty": 10, "unit": "FT" },
+        { "itemId": "WHEAD-2", "name": "2\" Weatherhead", "avgQty": 1, "unit": "EA" }
       ]
     },
     {
-      "jobType": "Outlet Install",
-      "jobCount": 12,
-      "materials": [
-        { "itemId": "ROMEX-12-2", "name": "12/2 Romex NM-B", "avgQty": 35, "unit": "FT" },
-        { "itemId": "BOX-1G-NW", "name": "1-Gang New Work Box", "avgQty": 1, "unit": "EA" },
-        { "itemId": "REC-TR-20A", "name": "20A TR Receptacle", "avgQty": 1, "unit": "EA", "variant": "Decora" },
-        { "itemId": "PLT-1G", "name": "1-Gang Wall Plate", "avgQty": 1, "unit": "EA", "variant": "Decora" },
-        { "itemId": "CONN-3/8-NM", "name": "3/8\" NM Connector", "avgQty": 1, "unit": "EA" },
-        { "itemId": "STAPLE-12", "name": "Romex Staple", "avgQty": 6, "unit": "EA" },
-        { "itemId": "BRK-20A-1P", "name": "20A Single Pole Breaker", "avgQty": 1, "unit": "EA" }
-      ]
-    },
-    {
-      "jobType": "Switch Install",
-      "jobCount": 10,
-      "materials": [
-        { "itemId": "ROMEX-14-2", "name": "14/2 Romex NM-B", "avgQty": 30, "unit": "FT" },
-        { "itemId": "ROMEX-14-3", "name": "14/3 Romex NM-B", "avgQty": 15, "unit": "FT" },
-        { "itemId": "BOX-1G-NW", "name": "1-Gang New Work Box", "avgQty": 1, "unit": "EA" },
-        { "itemId": "SW-SP-15A", "name": "15A Single Pole Switch", "avgQty": 1, "unit": "EA", "variant": "Decora" },
-        { "itemId": "PLT-1G", "name": "1-Gang Wall Plate", "avgQty": 1, "unit": "EA", "variant": "Decora" },
-        { "itemId": "CONN-3/8-NM", "name": "3/8\" NM Connector", "avgQty": 1, "unit": "EA" },
-        { "itemId": "STAPLE-14", "name": "Romex Staple", "avgQty": 5, "unit": "EA" }
-      ]
-    },
-    {
-      "jobType": "Ceiling Fan",
+      "jobType": "CEILING FAN",
       "jobCount": 9,
       "materials": [
         { "itemId": "ROMEX-14-3", "name": "14/3 Romex NM-B", "avgQty": 25, "unit": "FT" },
@@ -76,40 +36,30 @@
       ]
     },
     {
-      "jobType": "GFCI Install",
-      "jobCount": 11,
+      "jobType": "OUTLET/SWITCH/CIRCUIT",
+      "jobCount": 43,
       "materials": [
-        { "itemId": "ROMEX-12-2", "name": "12/2 Romex NM-B", "avgQty": 25, "unit": "FT" },
+        { "itemId": "ROMEX-12-2", "name": "12/2 Romex NM-B", "avgQty": 30, "unit": "FT" },
+        { "itemId": "ROMEX-14-2", "name": "14/2 Romex NM-B", "avgQty": 30, "unit": "FT" },
         { "itemId": "BOX-1G-NW", "name": "1-Gang New Work Box", "avgQty": 1, "unit": "EA" },
+        { "itemId": "REC-TR-20A", "name": "20A TR Receptacle", "avgQty": 1, "unit": "EA", "variant": "Decora" },
+        { "itemId": "SW-SP-15A", "name": "15A Single Pole Switch", "avgQty": 1, "unit": "EA", "variant": "Decora" },
         { "itemId": "GFCI-20A", "name": "20A GFCI Receptacle", "avgQty": 1, "unit": "EA", "variant": "Decora" },
-        { "itemId": "PLT-1G-GFCI", "name": "GFCI Wall Plate", "avgQty": 1, "unit": "EA", "variant": "Decora" },
-        { "itemId": "CONN-3/8-NM", "name": "3/8\" NM Connector", "avgQty": 1, "unit": "EA" },
+        { "itemId": "PLT-1G", "name": "1-Gang Wall Plate", "avgQty": 1, "unit": "EA", "variant": "Decora" },
+        { "itemId": "CONN-3/8-NM", "name": "3/8\" NM Connector", "avgQty": 2, "unit": "EA" },
+        { "itemId": "STAPLE-12", "name": "Romex Staple", "avgQty": 6, "unit": "EA" },
         { "itemId": "BRK-20A-1P", "name": "20A Single Pole Breaker", "avgQty": 1, "unit": "EA" }
       ]
     },
     {
-      "jobType": "Dedicated Circuit",
-      "jobCount": 10,
-      "materials": [
-        { "itemId": "ROMEX-10-2", "name": "10/2 Romex NM-B", "avgQty": 45, "unit": "FT" },
-        { "itemId": "BOX-1G-NW", "name": "1-Gang New Work Box", "avgQty": 1, "unit": "EA" },
-        { "itemId": "REC-30A", "name": "30A Dryer/Range Receptacle", "avgQty": 1, "unit": "EA", "variant": "Flush" },
-        { "itemId": "PLT-1G-30A", "name": "30A Receptacle Plate", "avgQty": 1, "unit": "EA", "variant": "Flush" },
-        { "itemId": "BRK-30A-2P", "name": "30A Double Pole Breaker", "avgQty": 1, "unit": "EA" },
-        { "itemId": "CONN-3/8-NM", "name": "3/8\" NM Connector", "avgQty": 2, "unit": "EA" },
-        { "itemId": "STAPLE-10", "name": "Romex Staple", "avgQty": 8, "unit": "EA" }
-      ]
-    },
-    {
-      "jobType": "Smoke Detector",
+      "jobType": "SERVICE CALL/TROUBLESHOOT",
       "jobCount": 8,
       "materials": [
-        { "itemId": "ROMEX-14-2", "name": "14/2 Romex NM-B", "avgQty": 50, "unit": "FT" },
-        { "itemId": "ROMEX-14-3", "name": "14/3 Romex NM-B", "avgQty": 20, "unit": "FT" },
-        { "itemId": "BOX-4-RND", "name": "4\" Round Ceiling Box", "avgQty": 4, "unit": "EA" },
-        { "itemId": "SMOKE-HW", "name": "Hardwired Smoke Detector", "avgQty": 4, "unit": "EA" },
-        { "itemId": "CONN-3/8-NM", "name": "3/8\" NM Connector", "avgQty": 4, "unit": "EA" },
-        { "itemId": "STAPLE-14", "name": "Romex Staple", "avgQty": 15, "unit": "EA" },
+        { "itemId": "ROMEX-14-2", "name": "14/2 Romex NM-B", "avgQty": 25, "unit": "FT" },
+        { "itemId": "ROMEX-12-2", "name": "12/2 Romex NM-B", "avgQty": 15, "unit": "FT" },
+        { "itemId": "BOX-4-RND", "name": "4\" Round Ceiling Box", "avgQty": 1, "unit": "EA" },
+        { "itemId": "CONN-3/8-NM", "name": "3/8\" NM Connector", "avgQty": 2, "unit": "EA" },
+        { "itemId": "BRK-20A-1P", "name": "20A Single Pole Breaker", "avgQty": 1, "unit": "EA" },
         { "itemId": "BRK-15A-1P", "name": "15A Single Pole Breaker", "avgQty": 1, "unit": "EA" }
       ]
     }
